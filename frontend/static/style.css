@@ -49,6 +49,16 @@ body[data-theme="dark-contrast"] {
   --red: #f87171;
   --amber: #fbbf24;
 }
+body[data-theme="dark-blue"] .tag.on { background: #123c2f; color: #7ee2a8; }
+body[data-theme="dark-blue"] .tag.off { background: #3c1215; color: #fda4af; }
+body[data-theme="dark-blue"] .tag.fav { background: #3a2c06; color: #fcd34d; }
+body[data-theme="dark-blue"] .tag.learn { background: #122b45; color: #93c5fd; }
+body[data-theme="dark-blue"] .tag.none { background: #1e293b; color: #94a3b8; }
+body[data-theme="dark-contrast"] .tag.on { background: #0f3d24; color: #6ee7a0; }
+body[data-theme="dark-contrast"] .tag.off { background: #3d1216; color: #ff9a9a; }
+body[data-theme="dark-contrast"] .tag.fav { background: #3d2f07; color: #ffe066; }
+body[data-theme="dark-contrast"] .tag.learn { background: #122a3d; color: #9ecbff; }
+body[data-theme="dark-contrast"] .tag.none { background: #202020; color: #cccccc; }
 * { box-sizing: border-box; }
 body {
   margin: 0;
@@ -124,6 +134,7 @@ main { max-width: 860px; margin: 0 auto; padding: 20px 16px 80px; }
   font-size: 18px;
   padding: 6px 10px;
   cursor: pointer;
+  color: var(--ink);
 }
 .fields { margin-top: 18px; display: grid; gap: 10px; }
 .field { display: grid; grid-template-columns: 74px 1fr auto; gap: 8px; align-items: start; }
@@ -156,6 +167,7 @@ main { max-width: 860px; margin: 0 auto; padding: 20px 16px 80px; }
   border-radius: 10px;
   cursor: pointer;
   font-size: 14px;
+  color: var(--ink);
 }
 .btn:hover { border-color: var(--accent); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
