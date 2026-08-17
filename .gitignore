@@ -1,0 +1,18 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# 用户数据（含 API Key 与词库，不入库）
+data/*
+!data/README.md
+
+# 数据库
+*.db
+*.sqlite
+
+# 系统/编辑器
+.DS_Store
+.idea/
+.vscode/
+Thumbs.db
