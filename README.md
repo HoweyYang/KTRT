@@ -9,6 +9,14 @@
 - **离线可用**：ECDICT 离线词典（77 万词条）查词、SQLite 本地存储。
 - **可扩展**：AI 厂商/模型/Key 可配置（DeepSeek、豆包、GPT、Gemini、Claude、千问、Grok 等），edge-tts 多语言朗读（英/法）。
 
+## 功能展示
+
+AI 自定义造句：在输入框填入中文提示词，AI 用当前单词生成句子并高亮目标词，保存进个人造句收藏（每词最多 3 句）。
+
+![AI 造句提问示例](docs/ai_sentence_prompt.png)
+
+![AI 造句回答示例](docs/ai_sentence_result.png)
+
 ## 快速开始
 
 环境：Python 3.10+
