@@ -330,16 +330,23 @@ def lookup(word: str):
 @app.get('/api/references')
 def references(word: str = Query(''), limit: int = Query(10)):
     """动词短语参考素材库；可按当前单词匹配（短语中任意词命中）。"""
-    with db.get_conn() as conn:
-        rows = conn.execute(
-            'SELECT id, phrase, meaning, example, source FROM reference_phrases '
-            'ORDER BY phrase, id'
-        ).fetchall()
     wl = word.strip().lower()
-    hits = [dict(r) for r in rows]
-    if wl:
-        hits = [r for r in hits if any(tok.lower() == wl for tok in r['phrase'].split())]
-    return hits[:max(1, min(limit, 50))]
+    limit = max(1, min(limit, 50))
+    with db.get_conn() as conn:
+        if wl:
+            rows = conn.execute(
+                "SELECT id, phrase, meaning, example, source FROM reference_phrases "
+                "WHERE ' ' || lower(phrase) || ' ' LIKE '% ' || lower(?) || ' %' "
+                "ORDER BY phrase, id LIMIT ?",
+                (wl, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                'SELECT id, phrase, meaning, example, source FROM reference_phrases '
+                'ORDER BY phrase, id LIMIT ?',
+                (limit,),
+            ).fetchall()
+    return [dict(r) for r in rows]
 
 
 @app.get('/api/tts')

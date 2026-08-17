@@ -17,7 +17,7 @@
   #define OUT_BASE "KTRTSetup-lite"
 #endif
 
-#define APP_VERSION "0.1.0"
+#define APP_VERSION "0.1.1"
 #define APP_NAME "KillTimeRecitationTool"
 
 [Setup]
@@ -54,3 +54,4 @@ Name: "{autoprograms}\KTRT"; Filename: "{app}\{#APP_EXE}"
 
 [Run]
 Filename: "{app}\{#APP_EXE}"; Description: "立即启动 KTRT"; Flags: nowait postinstall skipifsilent
+

@@ -2,8 +2,6 @@ import csv
 import os
 import re
 
-from openpyxl import load_workbook
-
 from . import db
 
 WORD_KEYS = {'【单词】', 'word', '单词', 'word_en', 'entry'}
@@ -64,6 +62,7 @@ def _build_rows(records, cmap):
 
 
 def parse_xlsx(path):
+    from openpyxl import load_workbook  # 延迟导入，降低启动内存
     wb = load_workbook(path, read_only=True, data_only=True)
     ws = wb[wb.sheetnames[0]]
     it = ws.iter_rows(values_only=True)
