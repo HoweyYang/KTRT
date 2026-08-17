@@ -447,6 +447,35 @@ $('m-search').addEventListener('input', () => {
   _searchTimer = setTimeout(loadManage, 200);
 });
 $('m-filter').addEventListener('change', loadManage);
+/* ---------- 导出词汇 ---------- */
+async function exportWords(scope) {
+  try {
+    const res = await fetch('/api/export?scope=' + encodeURIComponent(scope));
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || '导出失败');
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    let fname = 'KTRT_export.xlsx';
+    const m = cd.match(/filename\*=UTF-8''([^;]+)/i) || cd.match(/filename="?([^";]+)"?/i);
+    if (m) fname = decodeURIComponent(m[1]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast('已导出：' + fname);
+  } catch (e) {
+    toast('导出失败：' + e.message);
+  }
+}
+$('btn-export-unfamiliar').addEventListener('click', () => exportWords('unfamiliar'));
+$('btn-export-favorite').addEventListener('click', () => exportWords('favorite'));
+$('btn-export-both').addEventListener('click', () => exportWords('both'));
 
 function renderBookList() {
   const box = $('book-list');
