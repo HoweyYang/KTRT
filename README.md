@@ -72,9 +72,9 @@ docs/               设计文档、路线图、教程
 
 把任意单词书整理成标准 Excel 后即可导入。列格式、AI 提取提示词见 [docs/Excel生成教程.md](docs/Excel生成教程.md)，程序操作见 [docs/使用教程.md](docs/使用教程.md)。
 
-## 路线图
+## 后续开发规划
 
-校验语料库 → LLM Wiki 知识图谱 → exe 桌面版 → 网站部署 → 微信小程序，详见 [docs/TO_BE_CONTINUED.md](docs/TO_BE_CONTINUED.md)。
+详见 [docs/TO_BE_CONTINUED.md](docs/TO_BE_CONTINUED.md)。
 
 ## 许可
 
