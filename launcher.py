@@ -93,7 +93,12 @@ def main():
 
     # 单实例保护：已有 KTRT 在运行则直接打开浏览器并退出，避免多实例互相锁库
     if _port_open(HOST, PORT):
-        print('[KTRT] 已有实例在运行，直接打开浏览器…')
+        print('[KTRT] 已有实例在运行，仍显示启动弹窗…')
+        from splash import run_splash
+        try:
+            run_splash(HOST, PORT, RESOURCE_DIR)
+        except Exception as e:
+            print('[KTRT] 弹窗异常：%s' % e)
         if os.environ.get('KTRT_NO_BROWSER') != '1':
             try:
                 webbrowser.open(URL)

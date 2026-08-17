@@ -98,6 +98,7 @@ def run_splash(host, port, asset_dir):
         state['ready'] = ready
         state['done'] = True
         try:
+            root.photo = None  # 在 Tcl 解释器销毁前释放图片，避免 Image.__del__ 报错
             root.destroy()
         except Exception:
             pass
