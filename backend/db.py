@@ -3,7 +3,9 @@ import sqlite3
 import threading
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
+# 打包/安装版通过环境变量指定用户数据目录（如 %APPDATA%\KTRT），
+# 源码运行默认使用项目内 data 目录。
+DATA_DIR = os.environ.get('KTRT_DATA_DIR') or os.path.join(PROJECT_ROOT, 'data')
 DB_PATH = os.path.join(DATA_DIR, 'ktrt.db')
 DICT_DB_PATH = os.path.join(DATA_DIR, 'dictionary.db')
 
