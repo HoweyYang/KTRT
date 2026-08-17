@@ -22,3 +22,6 @@ release/
 .idea/
 .vscode/
 Thumbs.db
+
+# 开发脚本（本机维护用，不入库）
+tools/

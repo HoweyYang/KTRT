@@ -261,6 +261,39 @@ def manage(filter: str = Query('all')):
     return [dict(r) for r in rows]
 
 
+@app.get('/api/export')
+def export_words(scope: str = Query('unfamiliar')):
+    if scope not in ('unfamiliar', 'favorite', 'both'):
+        raise HTTPException(400, '未知导出范围')
+    if scope == 'favorite':
+        where = 'WHERE s.favorite=1'
+    elif scope == 'both':
+        where = 'WHERE (s.unfamiliar=1 OR s.favorite=1)'
+    else:
+        where = 'WHERE s.unfamiliar=1'
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            'SELECT w.word, w.phonetic, w.meaning, w.collocations, w.phrases, '
+            'w.synonyms, w.antonyms, w.root_words, w.list_no, b.name AS book_name, b.language '
+            'FROM words w JOIN word_books b ON b.id=w.book_id '
+            f'LEFT JOIN word_status s ON s.word_id=w.id {where} ORDER BY b.id, w.list_no, w.seq',
+        ).fetchall()
+    if not rows:
+        raise HTTPException(404, '没有符合条件可导出的词汇')
+    from openpyxl import Workbook
+    from datetime import datetime
+    wb = Workbook()
+    ws = wb.active
+    ws.title = '词汇'
+    ws.append(['【单词】', '【音标】', '【词性释义】', '【搭配】', '【短语】', '【同义词】', '【反义词】', '【同根词】', '【List】', '【语言】', '【单词书】'])
+    for r in rows:
+        ws.append([r['word'], r['phonetic'], r['meaning'], r['collocations'], r['phrases'], r['synonyms'], r['antonyms'], r['root_words'], r['list_no'], r['language'], r['book_name']])
+    label = {'unfamiliar': '不熟悉', 'favorite': '收藏', 'both': '不熟悉与收藏'}[scope]
+    name = f"KTRT_{label}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    path = os.path.join(tempfile.gettempdir(), name)
+    wb.save(path)
+    return FileResponse(path, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=name)
+
 @app.post('/api/import')
 async def import_book(
     file: UploadFile = File(...),

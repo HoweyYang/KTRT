@@ -88,7 +88,13 @@
         <select id="clear-list"></select>
         <button id="btn-clear-list" class="btn danger">清空该 List 进度</button>
       </div>
-      <div id="manage-list"></div>
+      <div class="toolbar">
+        <span>导出词汇：</span>
+        <button id="btn-export-unfamiliar" class="btn">不熟悉</button>
+        <button id="btn-export-favorite" class="btn">收藏</button>
+        <button id="btn-export-both" class="btn">一并导出</button>
+        <span style="color:var(--muted);font-size:12px">导出该词在 Excel 中的完整一行</span>
+      </div>      <div id="manage-list"></div>
     </section>
 
     <!-- ============ 导入页 ============ -->

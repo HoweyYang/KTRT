@@ -58,28 +58,31 @@ def run_splash(host, port, asset_dir):
     canvas = tk.Canvas(root, width=W - 24, height=178, bg='#ffffff', highlightthickness=0)
     canvas.pack()
 
+    canvas_width = W - 24
     y_track = 148            # 轨道（小人贴地行走的线）
-    x0 = 74
-    x1 = W - 24 - 92         # 右侧留出球门
-    # 轨道槽
-    canvas.create_rectangle(x0, y_track - 5, x1, y_track + 7, fill='#e8edf2', outline='')
-    # 球门（终点）
-    gx = x1 + 22
-    gy0 = y_track - 26
+    x0 = 56                  # 左侧起点
+    goal_w = 34              # 球门宽度
+    goal_h = 50              # 球门高度
+    right_margin = 14
+    gx = canvas_width - right_margin - goal_w   # 球门左立柱，进度条终点直接连到它
+    gy0 = y_track - 32
     gy1 = y_track + 14
-    canvas.create_rectangle(gx, gy0, gx + 22, gy1, outline='#17202a', width=2)
-    canvas.create_line(gx, gy0, gx + 22, gy0, fill='#17202a', width=2)
+    # 轨道槽：从起点一路连到球门左立柱，不留缺口
+    canvas.create_rectangle(x0, y_track - 5, gx, y_track + 7, fill='#e8edf2', outline='')
+    # 球门（终点），左立柱与轨道槽相接
+    canvas.create_rectangle(gx, gy0, gx + goal_w, gy1, outline='#17202a', width=2)
+    canvas.create_line(gx, gy0, gx + goal_w, gy0, fill='#17202a', width=2)
     for i in range(1, 4):
-        canvas.create_line(gx, gy0 + i * 9, gx + 22, gy0 + i * 9, fill='#c3ccd6')
+        canvas.create_line(gx, gy0 + i * 12, gx + goal_w, gy0 + i * 12, fill='#c3ccd6')
     for j in range(1, 3):
-        canvas.create_line(gx + j * 7, gy0, gx + j * 7, gy1, fill='#c3ccd6')
+        canvas.create_line(gx + j * 11, gy0, gx + j * 11, gy1, fill='#c3ccd6')
 
-    # 绿色渐变进度条（从左往右填充，颜色由浅绿渐深）
+    # 绿色渐变进度条（从左往右填充，终点连到球门左立柱）
     bar = canvas.create_rectangle(x0, y_track - 5, x0, y_track + 7, fill='#7cfc00', outline='')
 
     # 带球小人（透明抠图，整张图从左往右移动）
     img_item = None
-    img_path = os.path.join(asset_dir, 'dribble_small.png')
+    img_path = os.path.join(asset_dir, 'assets', 'dribble_small.png')
     if os.path.exists(img_path):
         photo = tk.PhotoImage(file=img_path)
         root.photo = photo
@@ -103,13 +106,13 @@ def run_splash(host, port, asset_dir):
         if state['done']:
             return
         p = min(1.0, i / TOTAL_TICKS)
-        xw = x0 + (x1 - x0) * p
+        xw = x0 + (gx - x0) * p
         canvas.coords(bar, x0, y_track - 5, xw, y_track + 7)
         r = int(0x7C + (0x00 - 0x7C) * p)
         g = int(0xFC + (0x64 - 0xFC) * p)
         b = 0
         canvas.itemconfig(bar, fill='#%02x%02x%02x' % (r, g, b))
-        px = x0 + (x1 - x0) * p
+        px = x0 + (gx - x0) * p
         if img_item is not None:
             canvas.coords(img_item, px, y_track + 2)
         status.config(text='正在准备词库… %d%%' % int(p * 100))
