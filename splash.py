@@ -133,6 +133,18 @@ def run_splash(host, port, asset_dir):
     root.mainloop()
     return state['ready']
 
+def main():
+    """独立进程入口：pythonw splash.py --host 127.0.0.1 --port 8000 --assets DIR"""
+    import argparse
+    import sys
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--host', default='127.0.0.1')
+    ap.add_argument('--port', type=int, default=8000)
+    ap.add_argument('--assets', default=os.path.dirname(os.path.abspath(__file__)))
+    args = ap.parse_args()
+    ok = run_splash(args.host, args.port, args.assets)
+    sys.exit(0 if ok else 1)
 
 
-
+if __name__ == '__main__':
+    main()

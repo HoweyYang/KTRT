@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""KTRT 启动器 v2：无终端、先弹窗后建库、日志写文件。
+"""KTRT 启动器 v3：无终端、独立弹窗子进程、日志写文件。
 
-流程：重定向日志 → 立即显示预备弹窗（后台线程先建库再启动服务）→
-动画播完且服务就绪后弹窗关闭 → 打开浏览器 → 进程驻留。
+流程：重定向日志 → 后台线程建库 + 起服务 → 独立子进程显示预备弹窗
+（Tk 销毁崩溃只影响弹窗自己，不连累主服务）→ 弹窗关闭 → 打开浏览器 → 进程驻留。
 """
 import os
 import shutil
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -39,7 +40,7 @@ def _setup_logging():
     os.makedirs(db.DATA_DIR, exist_ok=True)
     log_path = os.path.join(db.DATA_DIR, 'launcher.log')
     try:
-        f = open(log_path, 'a', encoding='utf-8', buffering=1)  # 行缓冲，日志实时落盘
+        f = open(log_path, 'a', encoding='utf-8', buffering=1)
         sys.stdout = f
         sys.stderr = f
     except Exception:
@@ -53,6 +54,43 @@ def _port_open(host, port, timeout=0.3):
             return True
     except OSError:
         return False
+
+
+def _pythonw():
+    exe = sys.executable
+    if exe.lower().endswith('python.exe'):
+        pw = exe[:-len('python.exe')] + 'pythonw.exe'
+        if os.path.exists(pw):
+            return pw
+    return exe
+
+
+def _spawn_splash():
+    """独立子进程显示弹窗，Tk 销毁崩溃不会连累主服务。"""
+    if FROZEN:
+        cmd = [sys.executable, '--splash-only', '--host', HOST,
+               '--port', str(PORT), '--assets', RESOURCE_DIR]
+    else:
+        cmd = [_pythonw(), os.path.join(RESOURCE_DIR, 'splash.py'),
+               '--host', HOST, '--port', str(PORT), '--assets', RESOURCE_DIR]
+    try:
+        return subprocess.Popen(
+            cmd, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    except Exception as e:
+        print('[KTRT] 弹窗进程启动失败：%s' % e)
+        return None
+
+
+def _wait_splash(proc, timeout=25):
+    if proc is None:
+        return
+    try:
+        proc.wait(timeout=timeout)
+    except Exception:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
 
 
 def ensure_bundled_resources():
@@ -91,14 +129,10 @@ def main():
     log_path = _setup_logging()
     print('[KTRT] 正在启动… 日志文件：' + log_path)
 
-    # 单实例保护：已有 KTRT 在运行则直接打开浏览器并退出，避免多实例互相锁库
+    # 单实例保护：已有 KTRT 在运行则仍显示弹窗、打开浏览器后退出
     if _port_open(HOST, PORT):
         print('[KTRT] 已有实例在运行，仍显示启动弹窗…')
-        from splash import run_splash
-        try:
-            run_splash(HOST, PORT, RESOURCE_DIR)
-        except Exception as e:
-            print('[KTRT] 弹窗异常：%s' % e)
+        _wait_splash(_spawn_splash())
         if os.environ.get('KTRT_NO_BROWSER') != '1':
             try:
                 webbrowser.open(URL)
@@ -106,16 +140,21 @@ def main():
                 print('[KTRT] 打开浏览器失败：%s' % e)
         return
 
-    # 立即弹窗（动画约 3 秒，期间后台建库 + 起服务）
+    # 后台线程建库 + 起服务；独立子进程显示弹窗
     threading.Thread(target=prepare_and_serve, daemon=True).start()
+    splash_proc = _spawn_splash()
 
-    from splash import run_splash
+    # 轮询服务就绪（最长 25 秒）
     t0 = time.time()
-    try:
-        ready = run_splash(HOST, PORT, RESOURCE_DIR)
-    except Exception as e:
-        ready = False
-        print('[KTRT] 弹窗异常：%s' % e)
+    ready = False
+    while time.time() - t0 < 25:
+        if _port_open(HOST, PORT):
+            ready = True
+            break
+        if splash_proc is not None and splash_proc.poll() is not None:
+            break
+        time.sleep(0.3)
+    _wait_splash(splash_proc)
     print('[KTRT] 预备弹窗结束，耗时 %.1fs，服务就绪=%s' % (time.time() - t0, ready))
 
     if os.environ.get('KTRT_NO_BROWSER') != '1':
@@ -132,6 +171,20 @@ def main():
         pass
 
 
-if __name__ == '__main__':
-    main()
+def _run_splash_only():
+    """--splash-only：打包版子进程入口，仅显示弹窗后退出。"""
+    import argparse
+    from splash import run_splash
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--host', default='127.0.0.1')
+    ap.add_argument('--port', type=int, default=8000)
+    ap.add_argument('--assets', default=RESOURCE_DIR)
+    args, _ = ap.parse_known_args()
+    ok = run_splash(args.host, args.port, args.assets)
+    sys.exit(0 if ok else 1)
 
+
+if __name__ == '__main__':
+    if '--splash-only' in sys.argv:
+        _run_splash_only()
+    main()
