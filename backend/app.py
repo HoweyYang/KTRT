@@ -10,6 +10,7 @@ from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.staticfiles import StaticFiles as StarletteStaticFiles
 from pydantic import BaseModel
 
 from backend import db, ai, tts, importer
@@ -21,7 +22,16 @@ app = FastAPI(title='KillTimeRecitationTool')
 app.add_middleware(
     CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'],
 )
-app.mount('/static', StaticFiles(directory=FRONTEND), name='static')
+
+
+class NoCacheStaticFiles(StarletteStaticFiles):
+    async def get_response(self, path: str, scope):
+        resp = await super().get_response(path, scope)
+        resp.headers['Cache-Control'] = 'no-store, must-revalidate'
+        return resp
+
+
+app.mount('/static', NoCacheStaticFiles(directory=FRONTEND), name='static')
 
 
 def _lists_meta(book_id):
@@ -45,7 +55,9 @@ def _status(conn, word_id):
 
 @app.get('/')
 def index():
-    return FileResponse(os.path.join(FRONTEND, 'index.html'))
+    resp = FileResponse(os.path.join(FRONTEND, 'index.html'))
+    resp.headers['Cache-Control'] = 'no-store, must-revalidate'
+    return resp
 
 
 @app.get('/api/bootstrap')
