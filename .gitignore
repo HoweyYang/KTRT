@@ -11,6 +11,12 @@ data/*
 *.db
 *.sqlite
 
+# 构建产物
+build/
+dist/
+release/
+*.spec
+
 # 系统/编辑器
 .DS_Store
 .idea/
