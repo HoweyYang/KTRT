@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KillTimeRecitationTool</title>
+  <link rel="icon" href="/static/logo.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img class="logo" src="/static/logo.png" alt="KTRT">
+      <span class="title">KillTimeRecitationTool</span>
+      <span class="dev">by HoweyYueng</span>
+    </div>
+    <nav>
+      <button class="tab active" data-view="study">学习</button>
+      <button class="tab" data-view="manage">管理</button>
+      <button class="tab" data-view="import">导入</button>
+      <button class="tab" data-view="settings">设置</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ============ 学习页 ============ -->
+    <section id="view-study" class="view active">
+      <div class="toolbar">
+        <select id="book-select"></select>
+        <select id="list-select"></select>
+        <div class="progress-wrap">
+          <div class="progress-bar"><div id="progress-fill"></div></div>
+          <span id="progress-text"></span>
+        </div>
+        <span class="pos" id="pos-text"></span>
+      </div>
+
+      <div class="card">
+        <div class="word-head">
+          <h1 id="word" class="word"></h1>
+          <button class="icon-btn" id="btn-word-tts" title="朗读单词">🔊</button>
+          <span id="phonetic" class="phonetic"></span>
+        </div>
+        <div class="fields" id="fields"></div>
+        <div id="ref-section" class="ref-section hidden">
+          <h3 class="ref-title">动词短语参考</h3>
+          <div id="ref-list"></div>
+        </div>
+        <button class="dict-btn" id="btn-dict">📖 查词典</button>
+        <div id="dict-box" class="dict-box hidden"></div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-prev" class="btn">← 上一个</button>
+        <button id="btn-learn" class="btn primary">✔ 背（计入进度）</button>
+        <button id="btn-familiar" class="btn">熟悉</button>
+        <button id="btn-unfamiliar" class="btn">不熟悉</button>
+        <button id="btn-favorite" class="btn">☆ 收藏</button>
+        <button id="btn-next" class="btn">下一个 →</button>
+      </div>
+
+      <div class="sentences">
+        <h3>造句收藏（每词最多 3 句）</h3>
+        <div id="sentence-list"></div>
+        <div class="make-sentence">
+          <input id="sentence-prompt" type="text" placeholder="输入中文提示词（每次打开自动清空），如：他努力弥补过错">
+          <button id="btn-make-sentence" class="btn primary">生成造句</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 管理页 ============ -->
+    <section id="view-manage" class="view">
+      <div class="toolbar">
+        <input id="m-search" type="text" placeholder="搜索单词或音标…" style="min-width:220px">
+        <select id="m-filter">
+          <option value="all">全部</option>
+          <option value="familiar">熟悉</option>
+          <option value="unfamiliar">不熟悉</option>
+          <option value="favorite">收藏</option>
+          <option value="learned">已背</option>
+          <option value="sentences">有造句</option>
+        </select>
+        <button id="btn-refresh-manage" class="btn">刷新</button>
+        <span class="spacer"></span>
+        <span>清空进度：</span>
+        <select id="clear-book"></select>
+        <select id="clear-list"></select>
+        <button id="btn-clear-list" class="btn danger">清空该 List 进度</button>
+      </div>
+      <div id="manage-list"></div>
+    </section>
+
+    <!-- ============ 导入页 ============ -->
+    <section id="view-import" class="view">
+      <div class="panel">
+        <h2>导入单词书</h2>
+        <p>支持多种格式：
+          <b>①【】格式 Excel</b>（<code>【单词】【音标】【词性释义】【搭配】【短语】【同义词】【反义词】【同根词】【List】【语言】【单词书】</code>）、
+          <b>② CSV</b>（含表头或纯单词）、
+          <b>③ 纯文本</b>（每行一个单词，可用 Tab 分隔「单词 / 音标 / 释义」）。
+          纯单词/法语等无表头文件会在下方按指定语言和书名导入。</p>
+        <label>单词书名（留空则用文件名）
+          <input id="import-bookname" type="text" placeholder="例如：法语A1词汇">
+        </label>
+        <label>语言（决定朗读语音）
+          <select id="import-language">
+            <option value="英语">英语</option>
+            <option value="法语">法语</option>
+            <option value="德语">德语</option>
+            <option value="日语">日语</option>
+            <option value="自定义">自定义</option>
+          </select>
+        </label>
+        <input type="file" id="import-file" accept=".xlsx,.xls,.csv,.txt">
+        <button id="btn-import" class="btn primary">导入</button>
+        <div id="import-result"></div>
+        <div class="book-manage">
+          <h3>已导入的单词书</h3>
+          <div id="book-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 设置页 ============ -->
+    <section id="view-settings" class="view">
+      <div class="panel">
+        <h2>AI 与语音设置</h2>
+        <label>界面主题
+          <select id="s-theme">
+            <option value="light">浅色（默认）</option>
+            <option value="dark-blue">深色 · 蓝</option>
+            <option value="dark-contrast">深色 · 高对比</option>
+          </select>
+        </label>
+        <label>模型厂商
+          <select id="s-vendor"></select>
+        </label>
+        <label>API Base URL
+          <input id="s-base" type="text" placeholder="https://api.deepseek.com">
+        </label>
+        <label>模型名
+          <input id="s-model" type="text" placeholder="deepseek-chat">
+        </label>
+        <label>API Key
+          <input id="s-key" type="password" placeholder="sk-...">
+        </label>
+        <label>朗读方式
+          <select id="s-tts">
+            <option value="edge-tts">edge-tts（联网，音质好）</option>
+            <option value="browser">浏览器语音（离线）</option>
+          </select>
+        </label>
+        <div class="row">
+          <button id="btn-test-ai" class="btn">测试 AI</button>
+          <button id="btn-save-settings" class="btn primary">保存设置</button>
+        </div>
+        <div id="settings-msg"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
