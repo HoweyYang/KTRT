@@ -25,6 +25,7 @@ add_data = [
     '--add-data=' + p('frontend') + os.pathsep + 'frontend',
     '--add-data=' + p(os.path.join('data', 'reference_phrasal_verbs.json')) + os.pathsep + 'data',
     '--add-data=' + p('docs') + os.pathsep + 'docs',
+    '--add-data=' + p('assets') + os.pathsep + 'assets',
 ]
 if not LITE:
     add_data.append(
@@ -37,7 +38,7 @@ args = [
     '--onedir',
     '--noconfirm',
     '--clean',
-    '--console',
+    '--noconsole',
     '--icon=' + p('logo.ico'),
 ] + add_data + [
     '--hidden-import=multipart',

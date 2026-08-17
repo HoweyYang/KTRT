@@ -7,6 +7,8 @@
 
 开发者：HoweyYueng。
 
+> **v0.1.1 更新**：双击启动不再弹终端，改为带球小人的启动预备弹窗；GRE 词库搭配/短语已内置中文翻译并扩充动词短语；新增考研词库附件；TTS 缓存自动清理；整体内存优化。详见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 它有什么不一样
 
 - **AI 帮你造句，还帮你记住**：输入一句中文提示（比如「他努力弥补过错」），AI 用当前单词造出英文句、高亮目标词、配好中文翻译，存进你的造句收藏——背单词不再只是「看」，而是真的会用。
@@ -30,12 +32,12 @@ AI 自定义造句：在输入框填入中文提示词，AI 用当前单词生�
 
 从 [GitHub Releases](https://github.com/HoweyYang/KTRT/releases) 下载安装包，双击安装即可：
 
-- `KTRTSetup-0.1.0.exe`：**完整版**，内置 GRE必背 词库，装完即用。
-- `KTRTSetup-lite-0.1.0.exe`：**纯净版**，不含任何词库，按需自行导入。
+- `KTRTSetup-0.1.1.exe`：**完整版**，内置 GRE必背 词库，装完即用。
+- `KTRTSetup-lite-0.1.1.exe`：**纯净版**，不含任何词库，按需自行导入。
 
 安装后自动创建桌面快捷方式，启动即自动打开使用页面。
 
-> **词库独立下载**：Release 附件另提供 `GRE_Wordbook.xlsx`（GRE必背，6519 词）与 `IELTS_Wordbook.xlsx`（雅思词汇真经，3608 词），
+> **词库独立下载**：Release 附件另提供 `GRE_Wordbook.xlsx`（GRE必背，6519 词）、`IELTS_Wordbook.xlsx`（雅思词汇真经，3608 词）与 `KAOYAN_Wordbook.xlsx`（考研英语词汇词根+联想记忆法，5905 词），
 > 想背哪本下载哪本，到「导入」页手动导入即可（具体步骤见 [docs/使用教程.md](docs/使用教程.md)）。
 
 **方式二：源码运行（开发）**
@@ -43,7 +45,8 @@ AI 自定义造句：在输入框填入中文提示词，AI 用当前单词生�
 环境：Python 3.10+
 
 ```bash
-# Windows：直接双击 KTRT.bat（首次运行自动建虚拟环境并安装依赖）
+# Windows：日常使用双击 KTRT.vbs（无终端）；调试用 KTRT.bat（控制台）
+# 首次运行会自动建虚拟环境并安装依赖
 # 或手动：
 python -m venv venv
 venv\Scripts\activate
@@ -60,7 +63,9 @@ python launcher.py
 ## 项目结构
 
 ```
-KTRT.bat            一键启动
+KTRT.vbs            无终端启动（源码模式，日常用）
+KTRT.bat            一键启动（控制台调试版）
+splash.py           启动预备弹窗（进度条）
 launcher.py         启动器（准备词库→启动服务→打开浏览器）
 backend/            FastAPI 后端（数据库/导入/AI/朗读）
 frontend/static/    前端页面（原生 HTML/CSS/JS）
@@ -81,3 +86,5 @@ docs/               设计文档、路线图、教程
 MIT License，见 [LICENSE](LICENSE)。
 
 > 说明：`data/` 目录（含词库与 API Key）不随仓库分发，请自行准备词库。
+
+
