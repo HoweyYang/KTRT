@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""KTRT 启动器：无终端启动，预备弹窗显示加载进度，后台日志写入文件。"""
+"""KTRT 启动器 v2：无终端、先弹窗后建库、日志写文件。
+
+流程：重定向日志 → 立即显示预备弹窗（后台线程先建库再启动服务）→
+动画播完且服务就绪后弹窗关闭 → 打开浏览器 → 进程驻留。
+"""
 import os
 import shutil
 import sys
@@ -30,11 +34,11 @@ URL = 'http://127.0.0.1:%d' % PORT
 
 
 def _setup_logging():
-    """把 stdout/stderr 重定向到日志文件（无终端模式不会丢失启动信息）。"""
+    """把 stdout/stderr 重定向到日志文件（无终端模式不丢失启动信息）。"""
     os.makedirs(db.DATA_DIR, exist_ok=True)
     log_path = os.path.join(db.DATA_DIR, 'launcher.log')
     try:
-        f = open(log_path, 'a', encoding='utf-8')
+        f = open(log_path, 'a', encoding='utf-8', buffering=1)  # 行缓冲，日志实时落盘
         sys.stdout = f
         sys.stderr = f
     except Exception:
@@ -61,9 +65,8 @@ def start_server():
     server.run()
 
 
-def main():
-    log_path = _setup_logging()
-    print('[KTRT] 正在启动… 日志文件：' + log_path)
+def prepare_and_serve():
+    """后台线程：先建库（首次可能较慢），再启动服务。"""
     try:
         ensure_bundled_resources()
         from backend.seed import seed_gre, seed_dictionary, seed_references
@@ -72,16 +75,24 @@ def main():
         seed_references()
     except Exception as e:
         print('[KTRT] 初始化失败：%s' % e)
+    start_server()
 
-    threading.Thread(target=start_server, daemon=True).start()
+
+def main():
+    log_path = _setup_logging()
+    print('[KTRT] 正在启动… 日志文件：' + log_path)
+
+    # 立即弹窗（动画约 3 秒，期间后台建库 + 起服务）
+    threading.Thread(target=prepare_and_serve, daemon=True).start()
 
     from splash import run_splash
+    t0 = time.time()
     try:
         ready = run_splash(HOST, PORT, RESOURCE_DIR)
     except Exception as e:
         ready = False
         print('[KTRT] 弹窗异常：%s' % e)
-    print('[KTRT] 预备弹窗结束，服务就绪=%s' % ready)
+    print('[KTRT] 预备弹窗结束，耗时 %.1fs，服务就绪=%s' % (time.time() - t0, ready))
 
     if os.environ.get('KTRT_NO_BROWSER') != '1':
         try:
@@ -99,3 +110,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
