@@ -147,7 +147,17 @@ main { max-width: 860px; margin: 0 auto; padding: 20px 16px 80px; }
 .ref-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ref-mean { color: var(--muted); font-size: 13px; }
 .ref-ex { font-size: 13px; line-height: 1.5; margin-top: 4px; }
-.dict-btn { margin-top: 16px; }
+.dict-btn {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.dict-btn:hover { border-color: var(--accent); }
 .dict-box {
   margin-top: 12px;
   background: var(--th);
