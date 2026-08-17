@@ -6,6 +6,7 @@
 """
 import os
 import shutil
+import socket
 import sys
 import threading
 import time
@@ -46,6 +47,14 @@ def _setup_logging():
     return log_path
 
 
+def _port_open(host, port, timeout=0.3):
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def ensure_bundled_resources():
     """首次运行：把安装包内置的词库/参考素材复制到用户数据目录。"""
     os.makedirs(db.DATA_DIR, exist_ok=True)
@@ -81,6 +90,16 @@ def prepare_and_serve():
 def main():
     log_path = _setup_logging()
     print('[KTRT] 正在启动… 日志文件：' + log_path)
+
+    # 单实例保护：已有 KTRT 在运行则直接打开浏览器并退出，避免多实例互相锁库
+    if _port_open(HOST, PORT):
+        print('[KTRT] 已有实例在运行，直接打开浏览器…')
+        if os.environ.get('KTRT_NO_BROWSER') != '1':
+            try:
+                webbrowser.open(URL)
+            except Exception as e:
+                print('[KTRT] 打开浏览器失败：%s' % e)
+        return
 
     # 立即弹窗（动画约 3 秒，期间后台建库 + 起服务）
     threading.Thread(target=prepare_and_serve, daemon=True).start()
