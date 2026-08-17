@@ -16,6 +16,7 @@ def get_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA foreign_keys = ON')
+    conn.execute('PRAGMA cache_size = -8192')  # 限制 SQLite 内存缓存约 8MB
     return conn
 
 
