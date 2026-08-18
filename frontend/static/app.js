@@ -258,16 +258,25 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* ---------- 造句 ---------- */
-function highlightWord(sentence, word) {
-  const base = word.replace(/[()].*/, '').trim();
-  const forms = [word, base];
+function highlightWord(sentence, word, roots) {
+  const bases = [word.replace(/[()].*/, '').trim()];
+  (roots || '').split('；').forEach((r) => {
+    const rw = (r || '').replace(/[()].*/, '').trim();
+    if (rw && !bases.includes(rw)) bases.push(rw);
+  });
   const lower = sentence.toLowerCase();
-  let target = forms.find((f) => f && lower.includes(f.toLowerCase()));
+  let target = null;
+  for (const b of bases) {
+    if (b && lower.includes(b.toLowerCase())) { target = b; break; }
+  }
   if (!target) {
     const suffixes = ['s', 'es', 'ed', 'd', 'ing', 'ies'];
-    for (const s of suffixes) {
-      const cand = base + s;
-      if (cand && lower.includes(cand.toLowerCase())) { target = cand; break; }
+    outer:
+    for (const b of bases) {
+      for (const sf of suffixes) {
+        const cand = b + sf;
+        if (cand && lower.includes(cand.toLowerCase())) { target = cand; break outer; }
+      }
     }
   }
   if (!target) return escapeHtml(sentence);
@@ -283,7 +292,7 @@ function renderSentences(list) {
   $('sentence-list').innerHTML = list.map((s) => `
     <div class="sentence-item">
       <button class="del" data-del="${s.id}">删除</button>
-      <div class="en">${highlightWord(s.sentence, state.card.word.word)}</div>
+      <div class="en">${highlightWord(s.sentence, state.card.word.word, state.card.word.root_words)}</div>
       <div class="zh">${escapeHtml(s.translation || '')}</div>
       <div class="meta">${escapeHtml(s.prompt || '')} · ${s.created_at || ''}</div>
     </div>`).join('');
@@ -339,21 +348,46 @@ $('btn-dict').addEventListener('click', async () => {
 });
 
 /* ---------- 朗读 ---------- */
+function ttsClean(text) {
+  // 只朗读英文/法文部分：多条内容（；分隔）先加逗号停顿，再去掉中文翻译与全角符号
+  return String(text || '').replace(/；/g, ', ').replace(/[\u3000-\u303F\uFF00-\uFFEF\u3400-\u4DBF\u4E00-\u9FFF]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function ttsNum(v, dft) {
+  const n = Number(v);
+  return isFinite(n) ? n : dft;
+}
 function speak(text) {
   const lang = bookLang();
-  if (state.settings && state.settings.tts_provider === 'browser') {
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = lang === '法语' ? 'fr-FR' : 'en-US';
+  const s = state.settings || {};
+  const clean = ttsClean(text);
+  if (!clean) { toast('没有可朗读的内容'); return; }
+  if (s.tts_provider === 'browser') {
+    const u = new SpeechSynthesisUtterance(clean);
+    u.rate = Math.min(2, Math.max(0.5, ttsNum(s.tts_rate, 0) / 100 + 1));
+    u.pitch = Math.min(2, Math.max(0, ttsNum(s.tts_pitch, 0) / 50 + 1));
+    u.volume = Math.min(1, Math.max(0, ttsNum(s.tts_volume, 100) / 100));
+    if (lang === '法语') {
+      u.lang = 'fr-FR';
+    } else {
+      const voiceKey = s.tts_voice_en || '美音·男';
+      const uk = voiceKey.includes('英音');
+      const male = voiceKey.includes('男');
+      u.lang = uk ? 'en-GB' : 'en-US';
+      const voices = speechSynthesis.getVoices();
+      let v = voices.find((x) => x.lang.toLowerCase().startsWith(u.lang) &&
+        (male ? /male/i.test(x.name) : /female/i.test(x.name)));
+      if (!v) v = voices.find((x) => x.lang.toLowerCase().startsWith(u.lang));
+      if (v) u.voice = v;
+    }
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
     return;
   }
-  const a = new Audio('/api/tts?text=' + encodeURIComponent(text) + '&lang=' + encodeURIComponent(lang));
+  const a = new Audio('/api/tts?text=' + encodeURIComponent(clean) + '&lang=' + encodeURIComponent(lang) + '&t=' + Date.now());
   a.play().catch(() => toast('语音合成失败（需联网）'));
 }
 $('btn-word-tts').addEventListener('click', () => {
-  const w = state.card.word;
-  speak(`${w.word}. ${w.phonetic || ''}`);
+  speak(state.card.word.word);
 });
 
 /* ---------- 管理页 ---------- */
@@ -561,6 +595,13 @@ function populateSettings() {
   $('s-model').value = s.model || '';
   $('s-key').value = s.api_key || '';
   $('s-tts').value = s.tts_provider || 'edge-tts';
+  $('s-voice-en').value = s.tts_voice_en || '美音·男';
+  $('s-voice-fr').value = s.tts_voice_fr || '女声';
+  $('s-rate').value = String(Math.min(150, Math.max(50, ttsNum(s.tts_rate, 0) + 100)));
+  $('s-pitch').value = s.tts_pitch || '0';
+  $('s-volume').value = s.tts_volume || '100';
+  syncTtsLabels();
+  ['s-rate', 's-pitch', 's-volume'].forEach((id) => $(id).addEventListener('input', syncTtsLabels));
   $('s-theme').value = s.theme || 'dark-blue';
   sel.onchange = () => {
     const p = state.presets[sel.value];
@@ -570,6 +611,13 @@ function populateSettings() {
     }
   };
   $('s-theme').onchange = () => applyTheme($('s-theme').value);
+}
+
+function syncTtsLabels() {
+  const rate = $('s-rate'), pitch = $('s-pitch'), volume = $('s-volume');
+  if (rate) $('rate-val').textContent = rate.value + '%';
+  if (pitch) $('pitch-val').textContent = (Number(pitch.value) > 0 ? '+' : '') + pitch.value + 'Hz';
+  if (volume) $('volume-val').textContent = volume.value + '%';
 }
 
 $('btn-save-settings').addEventListener('click', async () => {
@@ -583,6 +631,11 @@ $('btn-save-settings').addEventListener('click', async () => {
         model: $('s-model').value,
         vendor: $('s-vendor').value,
         tts_provider: $('s-tts').value,
+        tts_voice_en: $('s-voice-en').value,
+        tts_voice_fr: $('s-voice-fr').value,
+        tts_rate: String(Number($('s-rate').value) - 100),
+        tts_pitch: $('s-pitch').value,
+        tts_volume: $('s-volume').value,
         theme: $('s-theme').value,
       }),
     });
@@ -598,6 +651,51 @@ $('btn-test-ai').addEventListener('click', async () => {
   $('settings-msg').innerHTML = r.ok
     ? `<p class="ok">AI 连接成功：${escapeHtml(r.reply)}</p>`
     : `<p class="err">AI 连接失败：${escapeHtml(r.error)}</p>`;
+});
+
+/* ---------- 软件更新 ---------- */
+$('btn-check-patch').addEventListener('click', async () => {
+  const box = $('update-msg');
+  box.innerHTML = '<p class="ok">检查中…</p>';
+  try {
+    const r = await api('/api/update/status');
+    let html = '';
+    if (r.patch) {
+      html += `<p>最新补丁：<b>${escapeHtml(r.patch.sha)}</b> · ${escapeHtml(r.patch.message)}<br>
+        <span style="color:var(--muted)">${escapeHtml((r.patch.date || '').slice(0, 10))}</span></p>`;
+    }
+    if (r.error) html += `<p class="err">${escapeHtml(r.error)}</p>`;
+    box.innerHTML = html || '<p class="ok">未获取到补丁信息</p>';
+  } catch (e) {
+    box.innerHTML = `<p class="err">${e.message}</p>`;
+  }
+});
+
+$('btn-check-release').addEventListener('click', async () => {
+  const box = $('update-msg');
+  box.innerHTML = '<p class="ok">检查中…</p>';
+  try {
+    const r = await api('/api/update/status');
+    let html = '';
+    if (r.release) {
+      const cur = (r.current_version || '').replace(/^v/, '').split('.').map(Number);
+      const rel = (r.release.tag_name || '').replace(/^v/, '').split('.').map(Number);
+      let isNewer = false;
+      for (let i = 0; i < 3; i++) {
+        if ((rel[i] || 0) > (cur[i] || 0)) { isNewer = true; break; }
+        if ((rel[i] || 0) < (cur[i] || 0)) break;
+      }
+      html += `<p>当前版本：v${escapeHtml(r.current_version)}<br>
+        最新 Release：${escapeHtml(r.release.tag_name)}（${escapeHtml((r.release.published_at || '').slice(0, 10))}）</p>`;
+      html += isNewer
+        ? `<p class="ok">有新版！<a href="${escapeAttr(r.release.html_url)}" target="_blank" rel="noopener">去 GitHub 下载</a></p>`
+        : '<p class="ok">已是最新版本</p>';
+    }
+    if (r.error) html += `<p class="err">${escapeHtml(r.error)}</p>`;
+    box.innerHTML = html || '<p class="err">未获取到 Release 信息</p>';
+  } catch (e) {
+    box.innerHTML = `<p class="err">${e.message}</p>`;
+  }
 });
 
 /* ---------- 启动 ---------- */

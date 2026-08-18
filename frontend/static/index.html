@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>KillTimeRecitationTool</title>
   <link rel="icon" href="/static/logo.png">
-  <link rel="stylesheet" href="/static/style.css?v=20260819">
+  <link rel="stylesheet" href="/static/style.css?v=20260824">
 </head>
 <body>
   <header>
@@ -157,16 +157,61 @@
             <option value="browser">浏览器语音（离线）</option>
           </select>
         </label>
+        <label>英语发音
+          <select id="s-voice-en">
+            <option value="美音·男">美音 · 男声（默认）</option>
+            <option value="美音·女">美音 · 女声</option>
+            <option value="英音·男">英音 · 男声</option>
+            <option value="英音·女">英音 · 女声</option>
+          </select>
+        </label>
+        <label>法语发音
+          <select id="s-voice-fr">
+            <option value="女声">女声（默认）</option>
+            <option value="男声">男声</option>
+          </select>
+        </label>
+        <label>语速 <span class="tts-val" id="rate-val"></span>
+          <input id="s-rate" type="range" min="50" max="150" step="5">
+        </label>
+        <label>音调 <span class="tts-val" id="pitch-val"></span>
+          <input id="s-pitch" type="range" min="-50" max="50" step="5">
+        </label>
+        <label>音量 <span class="tts-val" id="volume-val"></span>
+          <input id="s-volume" type="range" min="0" max="100" step="5">
+        </label>
         <div class="row">
           <button id="btn-test-ai" class="btn">测试 AI</button>
           <button id="btn-save-settings" class="btn primary">保存设置</button>
         </div>
         <div id="settings-msg"></div>
       </div>
+      <div class="panel" style="margin-top:18px">
+        <h3>软件更新</h3>
+        <div class="row">
+          <button id="btn-check-patch" class="btn">检查补丁更新</button>
+          <button id="btn-check-release" class="btn">检查版本更新</button>
+        </div>
+        <div id="update-msg" style="margin-top:10px;font-size:13px;line-height:1.7"></div>
+      </div>
+      <div class="panel" style="margin-top:18px">
+        <details>
+          <summary style="font-weight:700;cursor:pointer">⚠️ 使用须知 · 避坑指南（怎么容易把程序搞崩）</summary>
+          <ul class="notice-list">
+            <li>不要同时双击启动多个 KTRT 实例——会抢数据库锁，出现「导入失败 / failed to fetch」。</li>
+            <li>程序运行时不要删除或移动 <code>data</code> 目录下的 xlsx、ktrt.db、tts_cache。</li>
+            <li>导入 Excel 前先关闭 Excel / WPS，避免文件被占用导致导入失败。</li>
+            <li>不要手动编辑 ktrt.db；删词、清进度请用管理页/导入页的按钮。</li>
+            <li>杀毒软件或网盘同步不要实时扫描 <code>C:\KTRT\data</code>（会锁文件、拖慢甚至中断服务）。</li>
+            <li>出现异常后查看 <code>C:\KTRT\launcher.log</code>，把最后几行发给开发者最有效。</li>
+            <li>升级/重装前先备份 data 目录——词库、进度、收藏、造句全在里面。</li>
+          </ul>
+        </details>
+      </div>
     </section>
   </main>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="/static/app.js?v=20260819"></script>
+  <script src="/static/app.js?v=20260824"></script>
 </body>
 </html>
