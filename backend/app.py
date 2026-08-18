@@ -3,6 +3,8 @@ import os
 import re
 import sys
 import tempfile
+import urllib.request
+import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -17,6 +19,8 @@ from backend import db, ai, tts, importer
 
 db.init_db()
 
+APP_VERSION = '0.1.2'
+GITHUB_REPO = 'HoweyYang/KTRT'
 FRONTEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'static')
 app = FastAPI(title='KillTimeRecitationTool')
 app.add_middleware(
@@ -184,7 +188,12 @@ def create_sentence(body: SentenceBody):
     messages = [
         {'role': 'system', 'content': '你是英语造句老师。只输出 JSON，不要任何多余文字。'},
         {'role': 'user', 'content': (
-            f'用英文为单词「{w["word"]}」造一个自然地道的句子，句子必须包含该单词。'
+            f'用英文为单词「{w["word"]}」造句，规则：'
+            '1) 先判断中文提示词是否与该单词语义相关；'
+            '2) 若提示词与单词无关，完全忽略提示词，基于该单词随机造一个自然句子；'
+            '3) 若提示词相关，按提示词的意思造句，句中可以使用该单词，也可以使用其同根词或不同词性变形'
+            f'（如动词变名词、名词变形容词等，示例：abbreviate → abbreviation），只要读者能看出与「{w["word"]}」相关即可；'
+            '4) 句子自然地道、长度适中。'
             f'中文提示词：{prompt or "（无）"}。'
             '输出 JSON：{"sentence": "英文句子", "translation": "整句中文翻译"}'
         )},
@@ -387,10 +396,15 @@ def read_aloud(text: str = Query(''), lang: str = Query('英语')):
     if not text.strip():
         raise HTTPException(400, '没有可朗读的文本')
     try:
-        path = tts.synthesize(text.strip(), lang)
+        voice_key = db.get_setting('tts_voice_fr' if lang == '法语' else 'tts_voice_en',
+                                   '女声' if lang == '法语' else '美音·男')
+        rate = db.get_setting('tts_rate', '0')
+        pitch = db.get_setting('tts_pitch', '0')
+        volume = db.get_setting('tts_volume', '100')
+        path = tts.synthesize(text.strip(), lang, voice_key, rate, pitch, volume)
     except Exception as e:
         raise HTTPException(502, f'语音合成失败：{e}')
-    return FileResponse(path, media_type='audio/mpeg')
+    return FileResponse(path, media_type='audio/mpeg', headers={'Cache-Control': 'no-store'})
 
 
 def _get_settings():
@@ -401,6 +415,11 @@ def _get_settings():
         'model': cfg['model'],
         'vendor': cfg['vendor'],
         'tts_provider': db.get_setting('tts_provider', 'edge-tts'),
+        'tts_voice_en': db.get_setting('tts_voice_en', '美音·男'),
+        'tts_voice_fr': db.get_setting('tts_voice_fr', '女声'),
+        'tts_rate': db.get_setting('tts_rate', '0'),
+        'tts_pitch': db.get_setting('tts_pitch', '0'),
+        'tts_volume': db.get_setting('tts_volume', '100'),
         'theme': db.get_setting('theme', 'dark-blue'),
     }
 
@@ -411,6 +430,11 @@ class SettingsBody(BaseModel):
     model: str = ''
     vendor: str = 'ds'
     tts_provider: str = 'edge-tts'
+    tts_voice_en: str = '美音·男'
+    tts_voice_fr: str = '女声'
+    tts_rate: str = '0'
+    tts_pitch: str = '0'
+    tts_volume: str = '100'
     theme: str = 'dark-blue'
 
 
@@ -426,8 +450,57 @@ def save_settings(body: SettingsBody):
     db.set_setting('model', body.model.strip())
     db.set_setting('vendor', body.vendor.strip() or 'ds')
     db.set_setting('tts_provider', body.tts_provider.strip() or 'edge-tts')
+    db.set_setting('tts_voice_en', body.tts_voice_en.strip() or '美音·男')
+    db.set_setting('tts_voice_fr', body.tts_voice_fr.strip() or '女声')
+    db.set_setting('tts_rate', body.tts_rate.strip() or '0')
+    db.set_setting('tts_pitch', body.tts_pitch.strip() or '0')
+    db.set_setting('tts_volume', body.tts_volume.strip() or '100')
     db.set_setting('theme', body.theme.strip() or 'dark-blue')
     return _get_settings()
+
+
+@app.get('/api/update/status')
+def update_status():
+    """检查 GitHub 最新补丁（main 最新 commit）与最新 Release（Atom 订阅源，无 API 限流）。"""
+    def feed(url):
+        req = urllib.request.Request(url, headers={'User-Agent': 'KTRT/' + APP_VERSION})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return ET.fromstring(r.read().decode('utf-8', 'replace'))
+
+    ns = {'a': 'http://www.w3.org/2005/Atom'}
+
+    out = {'ok': True, 'current_version': APP_VERSION, 'patch': None, 'release': None, 'error': ''}
+    try:
+        root = feed('https://github.com/%s/commits/main.atom' % GITHUB_REPO)
+        entries = root.findall('a:entry', ns)
+        if entries:
+            e = entries[0]
+            link = e.find('a:link', ns)
+            href = link.get('href', '') if link is not None else ''
+            sha = href.rstrip('/').split('/')[-1][:7] if href else ''
+            out['patch'] = {
+                'sha': sha,
+                'message': (e.findtext('a:title', '', ns) or '').strip(),
+                'date': e.findtext('a:updated', '', ns),
+                'url': href,
+            }
+    except Exception as e:
+        out['error'] += '补丁检查失败：%s' % e
+    try:
+        root = feed('https://github.com/%s/releases.atom' % GITHUB_REPO)
+        entries = root.findall('a:entry', ns)
+        if entries:
+            e = entries[0]
+            link = e.find('a:link', ns)
+            out['release'] = {
+                'tag_name': (e.findtext('a:title', '', ns) or '').strip(),
+                'name': (e.findtext('a:title', '', ns) or '').strip(),
+                'published_at': e.findtext('a:updated', '', ns),
+                'html_url': link.get('href', '') if link is not None else '',
+            }
+    except Exception as e:
+        out['error'] += ('；' if out['error'] else '') + '版本检查失败：%s' % e
+    return out
 
 
 @app.post('/api/ai/test')
