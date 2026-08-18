@@ -271,3 +271,21 @@ code { background: var(--code); padding: 2px 5px; border-radius: 4px; font-size:
 .hidden { display: none !important; }
 .ok { color: var(--green); font-size: 14px; margin-top: 8px; }
 .err { color: var(--red); font-size: 14px; margin-top: 8px; }
+
+/* 书信体落款水印 */
+.watermark {
+  position: fixed;
+  right: 20px;
+  bottom: 12px;
+  font-family: "Segoe Script", "Ink Free", "Brush Script MT", "Lucida Handwriting", cursive;
+  font-size: 30px;
+  font-style: italic;
+  font-weight: 600;
+  color: var(--ink);
+  opacity: .28;
+  transform: rotate(-8deg);
+  letter-spacing: 1px;
+  user-select: none;
+  pointer-events: none;
+  z-index: 5;
+}
