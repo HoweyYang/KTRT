@@ -401,7 +401,7 @@ def _get_settings():
         'model': cfg['model'],
         'vendor': cfg['vendor'],
         'tts_provider': db.get_setting('tts_provider', 'edge-tts'),
-        'theme': db.get_setting('theme', 'light'),
+        'theme': db.get_setting('theme', 'dark-blue'),
     }
 
 
@@ -411,7 +411,7 @@ class SettingsBody(BaseModel):
     model: str = ''
     vendor: str = 'ds'
     tts_provider: str = 'edge-tts'
-    theme: str = 'light'
+    theme: str = 'dark-blue'
 
 
 @app.get('/api/settings')
@@ -426,7 +426,7 @@ def save_settings(body: SettingsBody):
     db.set_setting('model', body.model.strip())
     db.set_setting('vendor', body.vendor.strip() or 'ds')
     db.set_setting('tts_provider', body.tts_provider.strip() or 'edge-tts')
-    db.set_setting('theme', body.theme.strip() or 'light')
+    db.set_setting('theme', body.theme.strip() or 'dark-blue')
     return _get_settings()
 
 

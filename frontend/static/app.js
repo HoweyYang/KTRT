@@ -13,7 +13,7 @@ const state = {
 const $ = (id) => document.getElementById(id);
 
 function applyTheme(theme) {
-  document.body.dataset.theme = theme || 'light';
+  document.body.dataset.theme = theme || 'dark-blue';
 }
 
 async function api(path, opts = {}) {
@@ -561,7 +561,7 @@ function populateSettings() {
   $('s-model').value = s.model || '';
   $('s-key').value = s.api_key || '';
   $('s-tts').value = s.tts_provider || 'edge-tts';
-  $('s-theme').value = s.theme || 'light';
+  $('s-theme').value = s.theme || 'dark-blue';
   sel.onchange = () => {
     const p = state.presets[sel.value];
     if (p) {
