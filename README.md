@@ -82,6 +82,20 @@ python launcher.py
 
 启动后浏览器打开 http://127.0.0.1:8000。
 
+**方式三：Mac（源码运行）**
+
+目前还没有 Mac 安装包，但核心是跨平台的，Mac 上可以源码直接跑：
+
+```bash
+# 需要 Python 3.10+
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python launcher.py
+```
+
+启动后浏览器自动打开 http://127.0.0.1:8000。Windows 专属的 VBS 与桌面快捷方式在 Mac 上不适用，直接用上面的命令即可；正式的 Mac 安装包（.app）后续会通过 GitHub Actions 云端打包发布。
+
 > **API Key**：本项目不内置、不提交任何 API Key。首次使用请在「设置」页填写你自己的 Key，并可自由切换厂商/模型。
 
 ## 项目结构
