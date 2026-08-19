@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>KillTimeRecitationTool</title>
   <link rel="icon" href="/static/logo.png">
-  <link rel="stylesheet" href="/static/style.css?v=20260826">
+  <link rel="stylesheet" href="/static/style.css?v=20260830">
 </head>
 <body>
   <header>
@@ -47,13 +47,20 @@
           <div id="ref-list"></div>
         </div>
         <button class="dict-btn" id="btn-dict">📖 查词典</button>
+        <button class="dict-btn" id="btn-custom-dict">🔎 自定义查词典</button>
         <div id="dict-box" class="dict-box hidden"></div>
+        <div id="custom-dict-box" class="dict-box hidden">
+          <div class="row">
+            <input id="cd-word" type="text" placeholder="输入英文单词，如：phenomenon" style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)">
+            <button id="btn-cd-lookup" class="btn primary">查询</button>
+          </div>
+          <div id="cd-result" style="margin-top:12px;font-size:14px;line-height:1.7"></div>
+        </div>
       </div>
 
       <div class="actions">
         <button id="btn-prev" class="btn nav">← 上一个</button>
         <button id="btn-learn" class="btn primary">✔ 背（计入进度）</button>
-        <button id="btn-familiar" class="btn">熟悉</button>
         <button id="btn-unfamiliar" class="btn">不熟悉</button>
         <button id="btn-favorite" class="btn">☆ 收藏</button>
         <button id="btn-next" class="btn nav">下一个 →</button>
@@ -67,6 +74,23 @@
           <button id="btn-make-sentence" class="btn primary">生成造句</button>
         </div>
       </div>
+      <div class="notes">
+        <h3>笔记本</h3>
+        <div class="notes-tabs">
+          <button id="note-tab-code" class="btn active">代码</button>
+          <button id="note-tab-view" class="btn">展示</button>
+          <span class="spacer"></span>
+          <button id="btn-note-save" class="btn primary">保存</button>
+        </div>
+        <div class="notes-toolbar">
+          <button class="btn" data-md="# " title="一级标题">标题 1</button>
+          <button class="btn" data-md="## " title="二级标题">标题 2</button>
+          <button class="btn" data-md="**" title="加粗">加粗</button>
+          <button class="btn" data-md="==" title="高亮">高亮</button>
+        </div>
+        <textarea id="note-editor" placeholder="用 Markdown 记笔记，如：## 标题、**加粗**、==高亮=="></textarea>
+        <div id="note-preview" class="note-preview hidden"></div>
+      </div>
     </section>
 
     <!-- ============ 管理页 ============ -->
@@ -75,25 +99,29 @@
         <input id="m-search" type="text" placeholder="搜索单词或音标…" style="min-width:220px">
         <select id="m-filter">
           <option value="all">全部</option>
-          <option value="familiar">熟悉</option>
           <option value="unfamiliar">不熟悉</option>
           <option value="favorite">收藏</option>
           <option value="learned">已背</option>
           <option value="sentences">有造句</option>
+          <option value="notes">有笔记</option>
         </select>
-        <button id="btn-refresh-manage" class="btn">刷新</button>
         <span class="spacer"></span>
         <span>清空进度：</span>
         <select id="clear-book"></select>
         <select id="clear-list"></select>
         <button id="btn-clear-list" class="btn danger">清空该 List 进度</button>
+        <button id="btn-clear-notes" class="btn danger">清空笔记</button>
       </div>
       <div class="toolbar">
         <span>导出词汇：</span>
         <button id="btn-export-unfamiliar" class="btn">不熟悉</button>
         <button id="btn-export-favorite" class="btn">收藏</button>
-        <button id="btn-export-both" class="btn">一并导出</button>
-        <span style="color:var(--muted);font-size:12px">导出该词在 Excel 中的完整一行</span>
+        <button id="btn-export-both" class="btn">一并</button>
+        <select id="export-book"><option value="">全部词书</option></select>
+        <select id="export-list"><option value="">全部 List</option></select>
+        <button id="btn-export-go" class="btn primary">导出</button>
+        <button id="btn-export-notes" class="btn">导出笔记</button>
+        <span style="color:var(--muted);font-size:12px">先选范围，再选词书 / List</span>
       </div>      <div id="manage-list"></div>
     </section>
 
@@ -212,7 +240,8 @@
   </main>
 
   <div id="toast" class="toast hidden"></div>
+  <div id="note-context" class="hidden"></div>
   <div class="watermark" aria-hidden="true">Howey</div>
-  <script src="/static/app.js?v=20260826"></script>
+  <script src="/static/app.js?v=20260830"></script>
 </body>
 </html>

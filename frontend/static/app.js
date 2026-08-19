@@ -32,18 +32,21 @@ function toast(msg) {
 }
 
 /* ---------- 视图切换 ---------- */
+function switchView(name) {
+  document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x.dataset.view === name));
+  document.querySelectorAll('.view').forEach((x) => x.classList.toggle('active', x.id === 'view-' + name));
+  localStorage.setItem('activeView', name);
+  if (name === 'manage') {
+    refreshBooksUI().then(loadManage);
+  } else if (name === 'import') {
+    renderBookList();
+  } else if (name === 'study') {
+    if (state.books.length && !state.bookId) state.bookId = state.books[0].id;
+    if (state.bookId && !state.lists.length) loadLists();
+  }
+}
 document.querySelectorAll('.tab').forEach((b) => {
-  b.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
-    document.querySelectorAll('.view').forEach((x) => x.classList.remove('active'));
-    b.classList.add('active');
-    $('view-' + b.dataset.view).classList.add('active');
-    if (b.dataset.view === 'manage') {
-      refreshBooksUI().then(loadManage);
-    } else if (b.dataset.view === 'import') {
-      renderBookList();
-    }
-  });
+  b.addEventListener('click', () => switchView(b.dataset.view));
 });
 
 /* ---------- 初始化 ---------- */
@@ -56,10 +59,8 @@ async function init() {
     applyTheme(b.settings.theme);
     populateBookSelect();
     populateSettings();
-    if (state.books.length) {
-      state.bookId = state.books[0].id;
-      await loadLists();
-    }
+    refreshExportSelects();
+    switchView(localStorage.getItem('activeView') || 'study');
   } catch (e) {
     toast('初始化失败：' + e.message);
   }
@@ -104,6 +105,7 @@ async function refreshBooksUI() {
   state.presets = b.presets || {};
   populateBookSelect();
   renderBookList();
+  refreshExportSelects();
 }
 
 async function loadLists() {
@@ -125,6 +127,7 @@ async function loadCard() {
   try {
     state.card = await api(`/api/card?book_id=${state.bookId}&list_no=${state.listNo}&seq=${state.seq}`);
     renderCard();
+    loadNote(state.card.word.id);
     $('sentence-prompt').value = '';
     $('dict-box').classList.add('hidden');
   } catch (e) {
@@ -200,7 +203,6 @@ async function loadReferences(word) {
 
 function renderStatus(s) {
   $('btn-learn').classList.toggle('active', !!s.learned);
-  $('btn-familiar').classList.toggle('active', !!s.familiar);
   $('btn-unfamiliar').classList.toggle('active', !!s.unfamiliar);
   $('btn-favorite').classList.toggle('active-fav', !!s.favorite);
   $('btn-learn').textContent = s.learned ? '✔ 已背' : '✔ 背（计入进度）';
@@ -237,7 +239,6 @@ $('btn-learn').addEventListener('click', async () => {
     await setStatus('learned', false);
   }
 });
-$('btn-familiar').addEventListener('click', () => setStatus('familiar', !state.card.status.familiar));
 $('btn-unfamiliar').addEventListener('click', () => setStatus('unfamiliar', !state.card.status.unfamiliar));
 $('btn-favorite').addEventListener('click', () => setStatus('favorite', !state.card.status.favorite));
 
@@ -347,6 +348,84 @@ $('btn-dict').addEventListener('click', async () => {
   }
 });
 
+/* ---------- 自定义查词典 ---------- */
+$('btn-custom-dict').addEventListener('click', () => {
+  const box = $('custom-dict-box');
+  box.classList.toggle('hidden');
+  if (!box.classList.contains('hidden')) $('cd-word').focus();
+});
+
+async function cdLookup() {
+  const w = $('cd-word').value.trim();
+  const out = $('cd-result');
+  if (!w) { toast('请输入单词'); return; }
+  out.innerHTML = '<span style="color:var(--muted)">查询中…</span>';
+  try {
+    const r = await api('/api/custom-dict/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word: w }),
+    });
+    const d = r.dict || {};
+    let html = `<b>${escapeHtml(r.word)}</b>`;
+    if (d.found) {
+      html += d.phonetic ? ` [${escapeHtml(d.phonetic)}]` : '';
+      if (d.translation) html += `<br>释义：${escapeHtml(d.translation.replace(/;/g, '；'))}`;
+      if (d.definition) html += `<br>定义：${escapeHtml(d.definition)}`;
+      if (d.exchange) html += `<br>词形变化：${escapeHtml(d.exchange)}`;
+    } else {
+      html += '<br><span style="color:var(--muted)">离线词典未收录（仍可尝试添加到外部单词收藏册）</span>';
+    }
+    const names = (r.in_books || []).map((b) => b.book_name).join('、');
+    if (names) {
+      html += `<br>所在词书：${escapeHtml(names)}`;
+      html += r.favorite
+        ? '<br><span class="ok">已收藏</span>'
+        : '<br><button id="cd-fav" class="btn">☆ 收藏</button>';
+    } else {
+      html += '<br><span style="color:var(--muted)">不在任何已导入词书中，可在线添加到「外部单词收藏册」</span>'
+        + '<br><button id="cd-add" class="btn primary">＋ 添加到外部单词收藏册</button>';
+    }
+    out.innerHTML = html;
+    const favBtn = $('cd-fav');
+    if (favBtn) favBtn.addEventListener('click', async () => {
+      await api('/api/custom-dict/favorite', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ word: r.word }),
+      });
+      toast('已收藏');
+      cdLookup();
+    });
+    const addBtn = $('cd-add');
+    if (addBtn) addBtn.addEventListener('click', async () => {
+      addBtn.disabled = true;
+      addBtn.textContent = '生成中…';
+      try {
+        await api('/api/custom-dict/add', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ word: r.word }),
+        });
+        toast('已添加到「外部单词收藏册」');
+        out.innerHTML = '<span class="ok">已添加到「外部单词收藏册」，可切换到该词书背诵。</span>';
+        await refreshBooksUI();
+        const fb = state.books.find((b) => b.name === '外部单词收藏册');
+        if (fb) {
+          state.bookId = fb.id;
+          state.seq = 1;
+          await loadLists();
+        }
+      } catch (e) {
+        out.innerHTML = `<span class="err">${e.message}</span>`;
+      } finally {
+        addBtn.disabled = false;
+        addBtn.textContent = '＋ 添加到外部单词收藏册';
+      }
+    });
+  } catch (e) {
+    out.innerHTML = `<span class="err">${e.message}</span>`;
+  }
+}
+$('btn-cd-lookup').addEventListener('click', cdLookup);
+$('cd-word').addEventListener('keydown', (e) => { if (e.key === 'Enter') cdLookup(); });
+
 /* ---------- 朗读 ---------- */
 function ttsClean(text) {
   // 只朗读英文/法文部分：多条内容（；分隔）先加逗号停顿，再去掉中文翻译与全角符号
@@ -420,17 +499,17 @@ function renderManage(rows) {
     const listNos = [...byList.keys()].sort((a, b) => a - b);
     for (const ln of listNos) {
       const listRows = byList.get(ln);
-      html += `<details class="list-group" open>
+      html += `<details class="list-group">
         <summary>Word List ${ln}<span class="cnt">（${listRows.length} 词）</span></summary>
         <table><thead><tr>
           <th>序号</th><th>单词</th><th>音标</th><th>状态</th><th>句子</th><th>操作</th>
         </tr></thead><tbody>`;
       for (const r of listRows) {
         const tags = [];
-        if (r.familiar) tags.push('<span class="tag on">熟悉</span>');
         if (r.unfamiliar) tags.push('<span class="tag off">不熟悉</span>');
         if (r.favorite) tags.push('<span class="tag fav">收藏</span>');
         if (r.learned) tags.push('<span class="tag learn">已背</span>');
+        if (r.has_note) tags.push('<span class="tag learn">笔记</span>');
         if (!tags.length) tags.push('<span class="tag none">无</span>');
         html += `<tr data-wid="${r.id}">
           <td>${r.seq}</td>
@@ -482,9 +561,49 @@ $('m-search').addEventListener('input', () => {
 });
 $('m-filter').addEventListener('change', loadManage);
 /* ---------- 导出词汇 ---------- */
-async function exportWords(scope) {
+let exportScope = 'unfamiliar';
+
+function refreshExportSelects() {
+  const bs = $('export-book');
+  if (!bs) return;
+  const cur = bs.value;
+  bs.innerHTML = '<option value="">全部词书</option>' + state.books.map((b) =>
+    `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
+  if (cur !== '' && state.books.some((b) => String(b.id) === cur)) bs.value = cur;
+  refreshExportLists();
+}
+
+async function refreshExportLists() {
+  const ls = $('export-list');
+  const bookId = Number($('export-book').value || 0);
+  if (!bookId) {
+    ls.innerHTML = '<option value="">全部 List</option>';
+    return;
+  }
   try {
-    const res = await fetch('/api/export?scope=' + encodeURIComponent(scope));
+    const meta = await api(`/api/books/${bookId}/lists`);
+    ls.innerHTML = '<option value="">全部 List</option>' + meta.map((l) =>
+      `<option value="${l.list_no}">List ${l.list_no}</option>`).join('');
+  } catch (e) {
+    ls.innerHTML = '<option value="">全部 List</option>';
+  }
+}
+
+function setExportScope(scope) {
+  exportScope = scope;
+  ['unfamiliar', 'favorite', 'both'].forEach((s) => {
+    $('btn-export-' + s).classList.toggle('active', s === scope);
+  });
+}
+
+async function exportWords() {
+  try {
+    const bookId = $('export-book').value;
+    const listNo = $('export-list').value;
+    let apiUrl = '/api/export?scope=' + encodeURIComponent(exportScope);
+    if (bookId) apiUrl += '&book_id=' + encodeURIComponent(bookId);
+    if (listNo) apiUrl += '&list_no=' + encodeURIComponent(listNo);
+    const res = await fetch(apiUrl);
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       throw new Error(d.detail || '导出失败');
@@ -507,9 +626,11 @@ async function exportWords(scope) {
     toast('导出失败：' + e.message);
   }
 }
-$('btn-export-unfamiliar').addEventListener('click', () => exportWords('unfamiliar'));
-$('btn-export-favorite').addEventListener('click', () => exportWords('favorite'));
-$('btn-export-both').addEventListener('click', () => exportWords('both'));
+$('btn-export-unfamiliar').addEventListener('click', () => setExportScope('unfamiliar'));
+$('btn-export-favorite').addEventListener('click', () => setExportScope('favorite'));
+$('btn-export-both').addEventListener('click', () => setExportScope('both'));
+$('btn-export-go').addEventListener('click', exportWords);
+$('export-book').addEventListener('change', refreshExportLists);
 
 function renderBookList() {
   const box = $('book-list');
@@ -521,7 +642,7 @@ function renderBookList() {
   box.innerHTML = state.books.map((b) => `
     <div class="book-row">
       <span><b>${escapeHtml(b.name)}</b>（${b.language}，${b.word_count} 词）</span>
-      ${b.name === 'GRE必背'
+      ${b.name === '外部单词收藏册'
         ? '<span class="tag learn">默认</span>'
         : `<button class="btn danger" data-delbook="${b.id}" data-name="${escapeAttr(b.name)}">删除</button>`}
     </div>`).join('');
@@ -548,7 +669,6 @@ function renderBookList() {
   });
 }
 
-$('btn-refresh-manage').addEventListener('click', loadManage);
 $('btn-clear-list').addEventListener('click', async () => {
   const bookId = Number($('clear-book').value);
   const listNo = Number($('clear-list').value);
@@ -695,6 +815,175 @@ $('btn-check-release').addEventListener('click', async () => {
     box.innerHTML = html || '<p class="err">未获取到 Release 信息</p>';
   } catch (e) {
     box.innerHTML = `<p class="err">${e.message}</p>`;
+  }
+});
+
+/* ---------- 笔记本 ---------- */
+function renderNote(md) {
+  const esc = escapeHtml(md || '');
+  let html = '';
+  for (const line of esc.split(/\r?\n/)) {
+    if (/^##\s+/.test(line)) html += '<h4>' + line.replace(/^##\s+/, '') + '</h4>';
+    else if (/^#\s+/.test(line)) html += '<h3>' + line.replace(/^#\s+/, '') + '</h3>';
+    else if (line.trim() === '') html += '<p><br></p>';
+    else html += '<p>' + line + '</p>';
+  }
+  html = html.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+  html = html.replace(/==([^=\n]+)==/g, '<mark>$1</mark>');
+  return html;
+}
+
+function renderNotePreview() {
+  $('note-preview').innerHTML = renderNote($('note-editor').value);
+}
+
+async function loadNote(wordId) {
+  state.noteDirty = false;
+  try {
+    const n = await api('/api/notes/' + wordId);
+    $('note-editor').value = n.content || '';
+  } catch (e) {
+    $('note-editor').value = '';
+  }
+  renderNotePreview();
+}
+
+function setNoteLayer(layer) {
+  const code = layer === 'code';
+  $('note-editor').classList.toggle('hidden', !code);
+  $('note-preview').classList.toggle('hidden', code);
+  $('note-tab-code').classList.toggle('active', code);
+  $('note-tab-view').classList.toggle('active', !code);
+  if (!code) renderNotePreview();
+}
+
+function closeNoteContext() {
+  $('note-context').classList.add('hidden');
+}
+
+function applyNoteHighlight(text) {
+  const ta = $('note-editor');
+  const idx = ta.value.indexOf(text);
+  if (idx === -1) { toast('无法定位所选文本'); closeNoteContext(); return; }
+  ta.value = ta.value.slice(0, idx) + '==' + text + '==' + ta.value.slice(idx + text.length);
+  state.noteDirty = true;
+  renderNotePreview();
+  closeNoteContext();
+}
+
+function removeNoteHighlight(text) {
+  const ta = $('note-editor');
+  const idx = ta.value.indexOf('==' + text + '==');
+  if (idx === -1) { toast('未找到高亮'); closeNoteContext(); return; }
+  ta.value = ta.value.slice(0, idx) + text + ta.value.slice(idx + text.length + 4);
+  state.noteDirty = true;
+  renderNotePreview();
+  closeNoteContext();
+}
+
+$('note-preview').addEventListener('contextmenu', (e) => {
+  const selText = (window.getSelection() && window.getSelection().toString().trim()) || '';
+  const markEl = e.target && e.target.closest ? e.target.closest('mark') : null;
+  const markText = markEl ? markEl.textContent.trim() : '';
+  if (!selText && !markText) return;
+  e.preventDefault();
+  const menu = $('note-context');
+  menu.innerHTML = '';
+  if (selText) {
+    const b = document.createElement('button');
+    b.textContent = '高亮「' + (selText.length > 12 ? selText.slice(0, 12) + '…' : selText) + '」';
+    b.addEventListener('click', () => applyNoteHighlight(selText));
+    menu.appendChild(b);
+  }
+  if (markText) {
+    const b = document.createElement('button');
+    b.textContent = '取消高亮';
+    b.addEventListener('click', () => removeNoteHighlight(markText));
+    menu.appendChild(b);
+  }
+  menu.classList.remove('hidden');
+  menu.style.left = e.clientX + 'px';
+  menu.style.top = e.clientY + 'px';
+  document.addEventListener('click', closeNoteContext, { once: true });
+});
+
+$('note-tab-code').addEventListener('click', () => setNoteLayer('code'));
+$('note-tab-view').addEventListener('click', () => setNoteLayer('view'));
+$('note-editor').addEventListener('input', () => { state.noteDirty = true; renderNotePreview(); });
+document.querySelectorAll('.notes-toolbar [data-md]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const md = btn.dataset.md;
+    const ta = $('note-editor');
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    const sel = ta.value.slice(start, end) || (md.endsWith(' ') ? '标题' : '文本');
+    const ins = md.endsWith(' ') ? md + sel : md + sel + md;
+    ta.value = ta.value.slice(0, start) + ins + ta.value.slice(end);
+    state.noteDirty = true;
+    renderNotePreview();
+    ta.focus();
+  });
+});
+$('btn-note-save').addEventListener('click', async () => {
+  if (!state.card || !state.card.word) { toast('还没有单词'); return; }
+  try {
+    await api('/api/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word_id: state.card.word.id, content: $('note-editor').value }),
+    });
+    state.noteDirty = false;
+    toast('笔记已保存');
+  } catch (e) {
+    toast('保存失败：' + e.message);
+  }
+});
+
+$('btn-clear-notes').addEventListener('click', async () => {
+  const bookId = Number($('clear-book').value);
+  const listNo = Number($('clear-list').value);
+  if (!bookId) { toast('请先选择单词书'); return; }
+  if (!confirm('确定清空所选范围的笔记？（不可恢复）')) return;
+  try {
+    await api('/api/notes/clear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ book_id: bookId, list_no: listNo || 0 }),
+    });
+    toast('笔记已清空');
+    loadManage();
+  } catch (e) {
+    toast('清空失败：' + e.message);
+  }
+});
+
+$('btn-export-notes').addEventListener('click', async () => {
+  try {
+    const bookId = $('export-book').value;
+    const listNo = $('export-list').value;
+    let url = '/api/export/notes?';
+    if (bookId) url += 'book_id=' + encodeURIComponent(bookId) + '&';
+    if (listNo) url += 'list_no=' + encodeURIComponent(listNo);
+    const res = await fetch(url);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || '导出失败');
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    let fname = 'KTRT_笔记.md';
+    const m = cd.match(/filename\*=UTF-8''([^;]+)/i) || cd.match(/filename="?([^";]+)"?/i);
+    if (m) fname = decodeURIComponent(m[1]);
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objUrl;
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objUrl);
+    toast('笔记已导出：' + fname);
+  } catch (e) {
+    toast(e.message);
   }
 });
 
