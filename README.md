@@ -62,7 +62,7 @@ Electron 会把整个 Chromium 浏览器内核打包进安装包，光内核就�
 
 安装后自动创建桌面快捷方式，启动即自动打开使用页面。
 
-> **词库独立下载**：Release 附件另提供 `GRE_Wordbook.xlsx`（GRE必背，6519 词）、`IELTS_Wordbook.xlsx`（雅思词汇真经，3608 词）与 `KAOYAN_Wordbook.xlsx`（考研英语词汇词根+联想记忆法，5905 词），
+> **词库独立下载**：仓库 `wordbooks/` 目录提供 `GRE_Wordbook.xlsx`（GRE必背，6519 词）、`IELTS_Wordbook.xlsx`（雅思词汇真经，3608 词）与 `KAOYAN_Wordbook.xlsx`（考研英语词汇词根+联想记忆法，5905 词），
 > 想背哪本下载哪本，到「导入」页手动导入即可（具体步骤见 [docs/使用教程.md](docs/使用教程.md)）。
 
 **方式二：源码运行（开发）**
