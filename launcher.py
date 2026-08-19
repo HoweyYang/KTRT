@@ -96,7 +96,7 @@ def _wait_splash(proc, timeout=25):
 def ensure_bundled_resources():
     """首次运行：把安装包内置的词库/参考素材复制到用户数据目录。"""
     os.makedirs(db.DATA_DIR, exist_ok=True)
-    for name in ('GRE必背_扩展词库.xlsx', 'reference_phrasal_verbs.json'):
+    for name in ('reference_phrasal_verbs.json',):
         src = os.path.join(RESOURCE_DIR, 'data', name)
         dst = os.path.join(db.DATA_DIR, name)
         if os.path.exists(src) and not os.path.exists(dst):
@@ -116,8 +116,8 @@ def prepare_and_serve():
     """后台线程：先建库（首次可能较慢），再启动服务。"""
     try:
         ensure_bundled_resources()
-        from backend.seed import seed_gre, seed_dictionary, seed_references
-        seed_gre()
+        from backend.seed import seed_default_book, seed_dictionary, seed_references
+        seed_default_book()
         seed_dictionary()
         seed_references()
     except Exception as e:
