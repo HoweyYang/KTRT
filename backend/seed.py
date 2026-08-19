@@ -1,4 +1,4 @@
-"""导入 GRE必背 扩展词库与 ECDICT 词典（幂等）。"""
+"""初始化默认词书与 ECDICT 词典（幂等）。"""
 import csv
 import os
 import sqlite3
@@ -10,46 +10,20 @@ from backend import db
 from backend.importer import parse_xlsx
 
 
-def seed_gre():
+DEFAULT_BOOK = '外部单词收藏册'
+
+
+def seed_default_book():
+    """确保默认「外部单词收藏册」存在（空书也算存在）。"""
     db.init_db()
     with db.get_conn() as conn:
-        exists = conn.execute('SELECT id FROM word_books WHERE name=?', ('GRE必背',)).fetchone()
-    if exists:
-        print('GRE必背 已存在，跳过')
-        return
-    excel = os.path.join(db.DATA_DIR, 'GRE必背_扩展词库.xlsx')
-    if not os.path.exists(excel):
-        print('未找到', excel)
-        return
-    book_name, language, rows = parse_xlsx(excel)
-    if not rows:
-        print('GRE必背 Excel 无数据')
-        return
-    with db._lock:
-        with db.get_conn() as conn:
-            cur = conn.execute(
-                'INSERT OR IGNORE INTO word_books(name, language, source) VALUES(?,?,?)',
-                (book_name, language, excel),
-            )
-            book_id = cur.lastrowid
-            if cur.rowcount == 0:
-                book_id = conn.execute('SELECT id FROM word_books WHERE name=?', (book_name,)).fetchone()['id']
-            seq_counter = {}
-            insert_rows = []
-            for r in rows:
-                seq_counter[r['list_no']] = seq_counter.get(r['list_no'], 0) + 1
-                insert_rows.append((
-                    book_id, r['list_no'], seq_counter[r['list_no']],
-                    r['word'], r['phonetic'], r['meaning'], r['collocations'],
-                    r['phrases'], r['synonyms'], r['antonyms'], r['root_words'],
-                ))
-            conn.executemany(
-                'INSERT OR REPLACE INTO words(book_id, list_no, seq, word, phonetic, meaning, '
-                'collocations, phrases, synonyms, antonyms, root_words) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
-                insert_rows,
-            )
-            n = conn.execute('SELECT COUNT(*) c FROM words WHERE book_id=?', (book_id,)).fetchone()['c']
-    print(f'GRE必背 导入完成：{n} 词，{len(set(r["list_no"] for r in rows))} 个 List')
+        exists = conn.execute('SELECT id FROM word_books WHERE name=?', (DEFAULT_BOOK,)).fetchone()
+        if exists:
+            print(DEFAULT_BOOK + ' 已存在，跳过')
+            return
+        conn.execute('INSERT INTO word_books(name, language, source) VALUES(?,?,?)',
+                     (DEFAULT_BOOK, '英语', ''))
+    print(DEFAULT_BOOK + ' 已创建（空书）')
 
 
 def seed_dictionary():
@@ -118,6 +92,6 @@ def seed_references():
 
 
 if __name__ == '__main__':
-    seed_gre()
+    seed_default_book()
     seed_dictionary()
     seed_references()

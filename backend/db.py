@@ -65,6 +65,11 @@ def init_db():
                   translation TEXT DEFAULT '',
                   created_at TEXT DEFAULT (datetime('now','localtime'))
                 );
+                CREATE TABLE IF NOT EXISTS notes(
+                  word_id INTEGER PRIMARY KEY REFERENCES words(id) ON DELETE CASCADE,
+                  content TEXT NOT NULL DEFAULT '',
+                  updated_at TEXT DEFAULT (datetime('now','localtime'))
+                );
                 CREATE TABLE IF NOT EXISTS settings(
                   key TEXT PRIMARY KEY,
                   value TEXT

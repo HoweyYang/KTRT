@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sqlite3
 import sys
 import tempfile
 import urllib.request
@@ -19,7 +20,7 @@ from backend import db, ai, tts, importer
 
 db.init_db()
 
-APP_VERSION = '0.1.2'
+APP_VERSION = '0.1.3'
 GITHUB_REPO = 'HoweyYang/KTRT'
 FRONTEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'static')
 app = FastAPI(title='KillTimeRecitationTool')
@@ -244,6 +245,67 @@ def list_sentences(word_id: int = Query(...)):
     return [dict(s) for s in sents]
 
 
+class NoteBody(BaseModel):
+    word_id: int
+    content: str = ''
+
+
+class NotesClearBody(BaseModel):
+    book_id: int = 0
+    list_no: int = 0
+
+
+@app.get('/api/notes/{word_id}')
+def get_note(word_id: int):
+    with db.get_conn() as conn:
+        row = conn.execute('SELECT content, updated_at FROM notes WHERE word_id=?', (word_id,)).fetchone()
+    return {'word_id': word_id, 'content': row['content'] if row else '', 'updated_at': row['updated_at'] if row else ''}
+
+
+@app.post('/api/notes')
+def save_note(body: NoteBody):
+    content = (body.content or '').strip()
+    with db._lock:
+        with db.get_conn() as conn:
+            if conn.execute('SELECT 1 FROM words WHERE id=?', (body.word_id,)).fetchone() is None:
+                raise HTTPException(404, '未找到该词')
+            if content:
+                conn.execute(
+                    'INSERT INTO notes(word_id, content, updated_at) '
+                    'VALUES(?,?,datetime(\'now\',\'localtime\')) '
+                    'ON CONFLICT(word_id) DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at',
+                    (body.word_id, content),
+                )
+            else:
+                conn.execute('DELETE FROM notes WHERE word_id=?', (body.word_id,))
+    return {'ok': True, 'content': content}
+
+
+@app.delete('/api/notes/{word_id}')
+def delete_note(word_id: int):
+    with db._lock:
+        with db.get_conn() as conn:
+            conn.execute('DELETE FROM notes WHERE word_id=?', (word_id,))
+    return {'ok': True}
+
+
+@app.post('/api/notes/clear')
+def clear_notes(body: NotesClearBody):
+    sql = 'DELETE FROM notes WHERE word_id IN (SELECT w.id FROM words w WHERE 1=1'
+    params = []
+    if body.book_id:
+        sql += ' AND w.book_id=?'
+        params.append(body.book_id)
+    if body.list_no:
+        sql += ' AND w.list_no=?'
+        params.append(body.list_no)
+    sql += ')'
+    with db._lock:
+        with db.get_conn() as conn:
+            cur = conn.execute(sql, params)
+    return {'ok': True, 'cleared': cur.rowcount}
+
+
 @app.get('/api/manage')
 def manage(filter: str = Query('all')):
     where = ''
@@ -258,11 +320,14 @@ def manage(filter: str = Query('all')):
         where = 'WHERE s.favorite=1'
     elif filter == 'sentences':
         where = 'WHERE (SELECT COUNT(*) FROM sentences x WHERE x.word_id=w.id)>0'
+    elif filter == 'notes':
+        where = 'WHERE EXISTS(SELECT 1 FROM notes n WHERE n.word_id=w.id)'
     with db.get_conn() as conn:
         rows = conn.execute(
             'SELECT w.id, w.word, w.phonetic, w.list_no, w.seq, b.name book_name, b.language, '
             's.familiar, s.unfamiliar, s.favorite, s.learned, '
-            '(SELECT COUNT(*) FROM sentences x WHERE x.word_id=w.id) sent_count '
+            '(SELECT COUNT(*) FROM sentences x WHERE x.word_id=w.id) sent_count, '
+            'EXISTS(SELECT 1 FROM notes n WHERE n.word_id=w.id) has_note '
             f'FROM words w JOIN word_books b ON b.id=w.book_id '
             f'LEFT JOIN word_status s ON s.word_id=w.id {where} ORDER BY b.id, w.list_no, w.seq',
             params,
@@ -271,21 +336,30 @@ def manage(filter: str = Query('all')):
 
 
 @app.get('/api/export')
-def export_words(scope: str = Query('unfamiliar')):
+def export_words(scope: str = Query('unfamiliar'), book_id: int = Query(None), list_no: int = Query(None)):
     if scope not in ('unfamiliar', 'favorite', 'both'):
         raise HTTPException(400, '未知导出范围')
+    conds, params = [], []
     if scope == 'favorite':
-        where = 'WHERE s.favorite=1'
+        conds.append('s.favorite=1')
     elif scope == 'both':
-        where = 'WHERE (s.unfamiliar=1 OR s.favorite=1)'
+        conds.append('(s.unfamiliar=1 OR s.favorite=1)')
     else:
-        where = 'WHERE s.unfamiliar=1'
+        conds.append('s.unfamiliar=1')
+    if book_id is not None:
+        conds.append('w.book_id=?')
+        params.append(book_id)
+    if list_no is not None:
+        conds.append('w.list_no=?')
+        params.append(list_no)
+    where = 'WHERE ' + ' AND '.join(conds)
     with db.get_conn() as conn:
         rows = conn.execute(
             'SELECT w.word, w.phonetic, w.meaning, w.collocations, w.phrases, '
             'w.synonyms, w.antonyms, w.root_words, w.list_no, b.name AS book_name, b.language '
             'FROM words w JOIN word_books b ON b.id=w.book_id '
             f'LEFT JOIN word_status s ON s.word_id=w.id {where} ORDER BY b.id, w.list_no, w.seq',
+            params,
         ).fetchall()
     if not rows:
         raise HTTPException(404, '没有符合条件可导出的词汇')
@@ -302,6 +376,40 @@ def export_words(scope: str = Query('unfamiliar')):
     path = os.path.join(tempfile.gettempdir(), name)
     wb.save(path)
     return FileResponse(path, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=name)
+
+
+@app.get('/api/export/notes')
+def export_notes(book_id: int = Query(None), list_no: int = Query(None)):
+    """导出笔记：只含写了笔记的词，Markdown 文件，格式为「词 + 笔记」循环。"""
+    conds, params = [], []
+    if book_id is not None:
+        conds.append('w.book_id=?')
+        params.append(book_id)
+    if list_no is not None:
+        conds.append('w.list_no=?')
+        params.append(list_no)
+    where = ('WHERE ' + ' AND '.join(conds)) if conds else ''
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            'SELECT w.word, n.content FROM words w '
+            'JOIN notes n ON n.word_id=w.id '
+            'JOIN word_books b ON b.id=w.book_id '
+            f'{where} ORDER BY b.id, w.list_no, w.seq',
+            params,
+        ).fetchall()
+    if not rows:
+        raise HTTPException(404, '没有可导出的笔记')
+    from datetime import datetime
+    parts = []
+    for r in rows:
+        parts.append('## ' + r['word'] + '\n\n' + (r['content'] or '') + '\n')
+    text = '\n'.join(parts)
+    name = f"KTRT_笔记_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+    path = os.path.join(tempfile.gettempdir(), name)
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(text)
+    return FileResponse(path, media_type='text/markdown', filename=name)
+
 
 @app.post('/api/import')
 async def import_book(
@@ -331,8 +439,8 @@ def delete_book(book_id: int):
             book = conn.execute('SELECT * FROM word_books WHERE id=?', (book_id,)).fetchone()
             if book is None:
                 raise HTTPException(404, '单词书不存在')
-            if book['name'] == 'GRE必背':
-                raise HTTPException(400, 'GRE必背 为默认单词书，不可删除')
+            if book['name'] == '外部单词收藏册':
+                raise HTTPException(400, '外部单词收藏册 为默认单词书，不可删除')
             conn.execute('DELETE FROM word_books WHERE id=?', (book_id,))
     return {'ok': True, 'deleted': book['name']}
 
@@ -367,6 +475,126 @@ def lookup(word: str):
         'bnc': row[9] or '',
         'frq': row[10] or '',
     }
+
+
+class CustomDictBody(BaseModel):
+    word: str = ''
+
+
+@app.post('/api/custom-dict/lookup')
+def custom_dict_lookup(body: CustomDictBody):
+    """自定义查词典·速查：离线词典定义 + 词是否在已导入词书 + 是否已收藏。"""
+    word = (body.word or '').strip()
+    if not word:
+        raise HTTPException(400, '请输入单词')
+    dict_result = {'found': False, 'phonetic': '', 'translation': '', 'definition': '', 'exchange': ''}
+    if os.path.exists(db.DICT_DB_PATH):
+        try:
+            conn = sqlite3.connect(db.DICT_DB_PATH)
+            row = conn.execute('SELECT * FROM dict WHERE word=? COLLATE NOCASE', (word.lower(),)).fetchone()
+            conn.close()
+            if row:
+                dict_result = {
+                    'found': True,
+                    'phonetic': row[1] or '',
+                    'translation': row[3] or '',
+                    'definition': row[2] or '',
+                    'exchange': row[5] or '',
+                }
+        except Exception:
+            pass
+    in_books = []
+    favorite = False
+    with db.get_conn() as conn:
+        for r in conn.execute(
+                'SELECT w.id, b.id book_id, b.name FROM words w '
+                'JOIN word_books b ON b.id=w.book_id WHERE w.word=? COLLATE NOCASE',
+                (word,)):
+            st = conn.execute('SELECT favorite FROM word_status WHERE word_id=?', (r['id'],)).fetchone()
+            if st and st['favorite']:
+                favorite = True
+            in_books.append({'book_id': r['book_id'], 'book_name': r['name']})
+    return {
+        'word': word,
+        'dict': dict_result,
+        'in_books': in_books,
+        'favorite': favorite,
+        'in_fav_book': any(b['book_name'] == '外部单词收藏册' for b in in_books),
+    }
+
+
+@app.post('/api/custom-dict/favorite')
+def custom_dict_favorite(body: CustomDictBody):
+    """自定义查词典·收藏：词在任意已导入词书中则标记为收藏。"""
+    word = (body.word or '').strip()
+    if not word:
+        raise HTTPException(400, '请输入单词')
+    with db._lock:
+        with db.get_conn() as conn:
+            row = conn.execute('SELECT id FROM words WHERE word=? COLLATE NOCASE LIMIT 1', (word,)).fetchone()
+            if row is None:
+                raise HTTPException(404, '该词不在任何已导入单词书中，请先「添加」')
+            conn.execute('INSERT OR IGNORE INTO word_status(word_id) VALUES(?)', (row['id'],))
+            conn.execute('UPDATE word_status SET favorite=1 WHERE word_id=?', (row['id'],))
+    return {'ok': True}
+
+
+@app.post('/api/custom-dict/add')
+def custom_dict_add(body: CustomDictBody):
+    """自定义查词典·添加：词不在任何已导入词书时，AI 生成词条入默认书。"""
+    word = (body.word or '').strip()
+    if not word or not re.match(r"^[A-Za-z][A-Za-z\-']*$", word):
+        raise HTTPException(400, '请输入合法的英文单词')
+    with db.get_conn() as conn:
+        exists = conn.execute('SELECT 1 FROM words WHERE word=? COLLATE NOCASE LIMIT 1', (word,)).fetchone()
+    if exists:
+        raise HTTPException(400, '该词已在已导入单词书中，请改用「收藏」')
+    prompt = (
+        f'为英语单词「{word}」生成词条数据，只输出一个 JSON 对象，不要任何其他文字：'
+        '{"phonetic": "国际音标", "meaning": "词性. 中文释义", '
+        '"collocations": "两个常见搭配（英文短语，用分号分隔）", '
+        '"phrases": "两个常见短语（英文短语，用分号分隔）", '
+        '"synonyms": "2-3 个同义词（英文，用分号分隔）", '
+        '"antonyms": "1-2 个反义词（英文，用分号分隔）", '
+        '"root_words": "2-3 个同根词（英文，用分号分隔）"}。'
+        '要求：字段齐全、内容真实准确、不要编造。'
+    )
+    try:
+        raw = ai.chat([{'role': 'user', 'content': prompt}], max_tokens=800, temperature=0.3)
+        data = _extract_json(raw)
+    except Exception as e:
+        raise HTTPException(502, f'AI 生成失败（需联网且已配置 API Key）：{e}')
+    phon = str(data.get('phonetic') or '').strip()
+    meaning = str(data.get('meaning') or '').strip()
+    colloc = str(data.get('collocations') or '').strip()
+    phras = str(data.get('phrases') or '').strip()
+    syns = str(data.get('synonyms') or '').strip()
+    ants = str(data.get('antonyms') or '').strip()
+    roots = str(data.get('root_words') or '').strip()
+    with db._lock:
+        with db.get_conn() as conn:
+            book = conn.execute("SELECT id FROM word_books WHERE name='外部单词收藏册'").fetchone()
+            if book is None:
+                cur = conn.execute("INSERT INTO word_books(name, language, source) VALUES('外部单词收藏册','英语','')")
+                book_id = cur.lastrowid
+            else:
+                book_id = book['id']
+            row = conn.execute(
+                'SELECT list_no, COUNT(*) c FROM words WHERE book_id=? GROUP BY list_no '
+                'ORDER BY list_no DESC LIMIT 1', (book_id,)).fetchone()
+            if row and row['c'] >= 50:
+                list_no, seq = row['list_no'] + 1, 1
+            elif row:
+                list_no, seq = row['list_no'], row['c'] + 1
+            else:
+                list_no, seq = 1, 1
+            cur = conn.execute(
+                'INSERT INTO words(book_id, list_no, seq, word, phonetic, meaning, collocations, '
+                'phrases, synonyms, antonyms, root_words) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                (book_id, list_no, seq, word, phon, meaning, colloc, phras, syns, ants, roots),
+            )
+            conn.execute('INSERT OR IGNORE INTO word_status(word_id) VALUES(?)', (cur.lastrowid,))
+    return {'ok': True, 'book_name': '外部单词收藏册', 'list_no': list_no, 'seq': seq}
 
 
 @app.get('/api/references')
