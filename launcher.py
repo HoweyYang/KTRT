@@ -152,8 +152,7 @@ def main():
     if _port_open(HOST, PORT):
         print('[KTRT] 已有实例在运行，仍显示启动弹窗…')
         _wait_splash(_spawn_splash())
-        if os.environ.get('KTRT_NO_BROWSER') != '1':
-            _open_app(URL)
+        # 已有实例的窗口/页面正在显示，不重复开新窗口，避免残留空窗口指向已退出的服务
         return
 
     # 后台线程建库 + 起服务；独立子进程显示弹窗
