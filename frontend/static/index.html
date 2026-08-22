@@ -4,23 +4,30 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>KillTimeRecitationTool</title>
-  <link rel="icon" href="/static/logo.png">
-  <link rel="stylesheet" href="/static/style.css?v=20260830">
+  <link rel="icon" href="/static/logo.png?v=2">
+  <link rel="stylesheet" href="/static/style.css?v=20260842">
 </head>
 <body>
-  <header>
-    <div class="brand">
-      <img class="logo" src="/static/logo.png" alt="KTRT">
-      <span class="title">KillTimeRecitationTool</span>
-      <span class="dev">by HoweyYueng</span>
-    </div>
+  <aside class="side">
+    <div class="wordmark">KTRT</div>
     <nav>
-      <button class="tab active" data-view="study">学习</button>
-      <button class="tab" data-view="manage">管理</button>
-      <button class="tab" data-view="import">导入</button>
-      <button class="tab" data-view="settings">设置</button>
+      <button class="tab active" data-view="study"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>学词</button>
+      <button class="tab" data-view="challenge"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>杀词</button>
+      <button class="tab" data-view="manage"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>管理</button>
+      <button class="tab" data-view="import"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>导入</button>
+      <button class="tab" data-view="settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>设置</button>
+      <button class="tab" data-view="guide"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>操作指南</button>
     </nav>
-  </header>
+    <div class="themes">
+      <button id="theme-light" class="on">浅色</button>
+      <button id="theme-dark">深色</button>
+      <button id="theme-blue">深蓝</button>
+    </div>
+    <div class="brand">
+      <img class="logo" src="/static/logo.png?v=2" alt="KTRT">
+      <span class="brand-text">KillTimeRecitationTool<br>by HoweyYueng</span>
+    </div>
+  </aside>
 
   <main>
     <!-- ============ 学习页 ============ -->
@@ -38,7 +45,7 @@
       <div class="card">
         <div class="word-head">
           <h1 id="word" class="word"></h1>
-          <button class="icon-btn" id="btn-word-tts" title="朗读单词">🔊</button>
+          <button class="icon-btn" id="btn-word-tts" title="朗读单词"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg></button>
           <span id="phonetic" class="phonetic"></span>
         </div>
         <div class="fields" id="fields"></div>
@@ -46,8 +53,8 @@
           <h3 class="ref-title">动词短语参考</h3>
           <div id="ref-list"></div>
         </div>
-        <button class="dict-btn" id="btn-dict">📖 查词典</button>
-        <button class="dict-btn" id="btn-custom-dict">🔎 自定义查词典</button>
+        <button class="dict-btn" id="btn-dict"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>查词典</button>
+        <button class="dict-btn" id="btn-custom-dict"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>自定义查词典</button>
         <div id="dict-box" class="dict-box hidden"></div>
         <div id="custom-dict-box" class="dict-box hidden">
           <div class="row">
@@ -93,6 +100,44 @@
       </div>
     </section>
 
+    <!-- ============ 杀词页 ============ -->
+    <section id="view-challenge" class="view">
+      <div class="panel">
+        <div id="chg-setup">
+          <h2>杀词</h2>
+          <div class="row">
+            <button id="chg-mode-word" class="btn active">记词闯关</button>
+            <button id="chg-mode-mistake" class="btn">错题闯关</button>
+          </div>
+          <div id="chg-word-panel">
+            <label>单词书
+              <select id="chg-book"></select>
+            </label>
+            <label>List
+              <select id="chg-list"></select>
+            </label>
+            <button id="chg-start-word" class="btn primary">开始闯关</button>
+          </div>
+          <div id="chg-mistake-panel" class="hidden">
+            <label>单词书
+              <select id="chg-mbook"></select>
+            </label>
+            <div id="chg-mlists" class="chg-lists"></div>
+            <button id="chg-start-mistake" class="btn primary">开始错题闯关</button>
+          </div>
+        </div>
+        <div id="chg-stage" class="hidden">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <span id="chg-progress" style="font-size:13px;color:var(--muted)"></span>
+            <button id="chg-exit" class="btn">退出闯关</button>
+          </div>
+          <div class="progress-bar" style="max-width:640px;margin:0 0 14px"><div id="chg-fill"></div></div>
+          <div id="chg-question" style="max-width:640px"></div>
+        </div>
+        <div id="chg-result" class="hidden"></div>
+      </div>
+    </section>
+
     <!-- ============ 管理页 ============ -->
     <section id="view-manage" class="view">
       <div class="toolbar">
@@ -129,11 +174,7 @@
     <section id="view-import" class="view">
       <div class="panel">
         <h2>导入单词书</h2>
-        <p>支持多种格式：
-          <b>①【】格式 Excel</b>（<code>【单词】【音标】【词性释义】【搭配】【短语】【同义词】【反义词】【同根词】【List】【语言】【单词书】</code>）、
-          <b>② CSV</b>（含表头或纯单词）、
-          <b>③ 纯文本</b>（每行一个单词，可用 Tab 分隔「单词 / 音标 / 释义」）。
-          纯单词/法语等无表头文件会在下方按指定语言和书名导入。</p>
+        <p>支持 Excel（【】格式）/ CSV / 纯文本；纯单词、法语等无表头文件按下方指定的语言和书名导入。格式细节见设置页「操作指南」。</p>
         <label>单词书名（留空则用文件名）
           <input id="import-bookname" type="text" placeholder="例如：法语A1词汇">
         </label>
@@ -162,9 +203,9 @@
         <h2>AI 与语音设置</h2>
         <label>界面主题
           <select id="s-theme">
-            <option value="dark-blue">深色 · 蓝（默认）</option>
             <option value="light">浅色</option>
-            <option value="dark-contrast">深色 · 高对比</option>
+            <option value="dark">深色</option>
+            <option value="dark-blue">深蓝 · 高对比</option>
           </select>
         </label>
         <label>模型厂商
@@ -213,6 +254,13 @@
           <button id="btn-save-settings" class="btn primary">保存设置</button>
         </div>
         <div id="settings-msg"></div>
+        <div class="dev-card">
+          <img class="dev-avatar" src="/static/logo.png?v=2" alt="Howey Yueng">
+          <div class="dev-info">
+            <div class="dev-name">Howey Yueng</div>
+            <div class="dev-role">开发者 · KillTimeRecitationTool</div>
+          </div>
+        </div>
       </div>
       <div class="panel" style="margin-top:18px">
         <h3>软件更新</h3>
@@ -222,19 +270,29 @@
         </div>
         <div id="update-msg" style="margin-top:10px;font-size:13px;line-height:1.7"></div>
       </div>
-      <div class="panel" style="margin-top:18px">
-        <details>
-          <summary style="font-weight:700;cursor:pointer">⚠️ 使用须知 · 避坑指南（怎么容易把程序搞崩）</summary>
-          <ul class="notice-list">
-            <li>不要同时双击启动多个 KTRT 实例——会抢数据库锁，出现「导入失败 / failed to fetch」。</li>
-            <li>程序运行时不要删除或移动 <code>data</code> 目录下的 xlsx、ktrt.db、tts_cache。</li>
-            <li>导入 Excel 前先关闭 Excel / WPS，避免文件被占用导致导入失败。</li>
-            <li>不要手动编辑 ktrt.db；删词、清进度请用管理页/导入页的按钮。</li>
-            <li>杀毒软件或网盘同步不要实时扫描 <code>C:\KTRT\data</code>（会锁文件、拖慢甚至中断服务）。</li>
-            <li>出现异常后查看 <code>C:\KTRT\launcher.log</code>，把最后几行发给开发者最有效。</li>
-            <li>升级/重装前先备份 data 目录——词库、进度、收藏、造句全在里面。</li>
-          </ul>
-        </details>
+    </section>
+
+    <!-- ============ 操作指南页 ============ -->
+    <section id="view-guide" class="view">
+      <div class="guide">
+        <h1>操作指南</h1>
+        <h2>快速开始</h2>
+        <ol class="plain-steps">
+          <li><b>导入词库</b><p>点「导入」，选择一个 xlsx 文件即可。GRE、雅思、考研词库在压缩包的 wordbooks 文件夹里。</p></li>
+          <li><b>填写 API Key</b><p>在「设置」填入你自己的 Key 并保存。不填也能背词，只是不能用 AI 造句和添加新词。</p></li>
+          <li><b>开始学习</b><p>「学词」背单词，「杀词」闯关，答错自动进错题本。</p></li>
+        </ol>
+        <h2>文档</h2>
+        <p class="doc-link"><a href="/static/docs/guide_usage.pdf" target="_blank">软件使用说明（PDF）</a></p>
+        <p class="doc-link"><a href="/static/docs/guide_extract.pdf" target="_blank">把单词书变成 Excel（AI 方法）</a></p>
+        <h2>注意事项</h2>
+        <ul class="plain-list">
+          <li>不要同时打开两个 KTRT。</li>
+          <li>不要删除或移动 data 文件夹。</li>
+          <li>导入前先关闭 Excel / WPS。</li>
+          <li>不要手动修改数据库文件。</li>
+          <li>升级、重装前先备份 data 文件夹。</li>
+        </ul>
       </div>
     </section>
   </main>
@@ -242,6 +300,6 @@
   <div id="toast" class="toast hidden"></div>
   <div id="note-context" class="hidden"></div>
   <div class="watermark" aria-hidden="true">Howey</div>
-  <script src="/static/app.js?v=20260830"></script>
+  <script src="/static/app.js?v=20260842"></script>
 </body>
 </html>

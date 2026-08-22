@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import re
 import sqlite3
 import sys
@@ -20,7 +21,7 @@ from backend import db, ai, tts, importer
 
 db.init_db()
 
-APP_VERSION = '0.1.3'
+APP_VERSION = '0.1.4a'
 GITHUB_REPO = 'HoweyYang/KTRT'
 FRONTEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'static')
 app = FastAPI(title='KillTimeRecitationTool')
@@ -304,6 +305,134 @@ def clear_notes(body: NotesClearBody):
         with db.get_conn() as conn:
             cur = conn.execute(sql, params)
     return {'ok': True, 'cleared': cur.rowcount}
+
+
+def _challenge_options(conn, book_id, word_ids):
+    """给一组 word_id 生成四选一题目：1 正确 + 3 错误（错误项来自本书其他词的中文释义）。"""
+    meanings = [r['meaning'] for r in conn.execute(
+        'SELECT meaning FROM words WHERE book_id=? AND TRIM(COALESCE(meaning,""))<>""', (book_id,)).fetchall()]
+    questions = []
+    for wid in word_ids:
+        w = conn.execute('SELECT word, meaning FROM words WHERE id=?', (wid,)).fetchone()
+        if w is None or not (w['meaning'] or '').strip():
+            continue
+        correct = w['meaning'].strip()
+        pool = [m.strip() for m in meanings if m.strip() != correct]
+        wrong = random.sample(pool, min(3, len(pool)))
+        opts = [correct] + wrong
+        random.shuffle(opts)
+        questions.append({
+            'word_id': wid,
+            'word': w['word'],
+            'options': opts,
+            'correct': opts.index(correct),
+        })
+    random.shuffle(questions)
+    return questions
+
+
+@app.get('/api/challenge')
+def challenge(book_id: int = Query(...), list_no: int = Query(...)):
+    with db.get_conn() as conn:
+        ids = [r['id'] for r in conn.execute(
+            'SELECT id FROM words WHERE book_id=? AND list_no=? ORDER BY seq', (book_id, list_no)).fetchall()]
+        questions = _challenge_options(conn, book_id, ids)
+        best = conn.execute('SELECT best FROM challenge_scores WHERE book_id=? AND list_no=?',
+                            (book_id, list_no)).fetchone()
+    return {'questions': questions, 'total': len(questions), 'best': best['best'] if best else 0, 'list_total': len(ids)}
+
+
+class ChallengeResultBody(BaseModel):
+    book_id: int
+    list_no: int
+    wrong_ids: list = []
+    total: int = 0
+    correct: int = 0
+
+
+@app.post('/api/challenge/result')
+def challenge_result(body: ChallengeResultBody):
+    """记词闯关结算：只更新最高分（错词已由 /api/mistakes/add 即时入库）。"""
+    with db._lock:
+        with db.get_conn() as conn:
+            conn.execute(
+                'INSERT INTO challenge_scores(book_id, list_no, best) VALUES(?,?,?) '
+                'ON CONFLICT(book_id, list_no) DO UPDATE SET best=MAX(best, excluded.best), '
+                'updated_at=datetime(\'now\',\'localtime\')',
+                (body.book_id, body.list_no, body.correct),
+            )
+    with db.get_conn() as conn:
+        best = conn.execute('SELECT best FROM challenge_scores WHERE book_id=? AND list_no=?',
+                            (body.book_id, body.list_no)).fetchone()
+    return {'ok': True, 'best': best['best'] if best else 0}
+
+
+class MistakesAddBody(BaseModel):
+    word_id: int
+
+
+@app.post('/api/mistakes/add')
+def mistake_add(body: MistakesAddBody):
+    """记词闯关答错时即时调用：标不熟悉 + 入错题本（切换/退出不影响已入册的错词）。"""
+    with db._lock:
+        with db.get_conn() as conn:
+            w = conn.execute('SELECT book_id, list_no FROM words WHERE id=?', (body.word_id,)).fetchone()
+            if w is None:
+                raise HTTPException(404, '未找到该词')
+            conn.execute('INSERT OR IGNORE INTO word_status(word_id) VALUES(?)', (body.word_id,))
+            conn.execute('UPDATE word_status SET unfamiliar=1 WHERE word_id=?', (body.word_id,))
+            conn.execute('INSERT OR IGNORE INTO mistakes(word_id, book_id, list_no) VALUES(?,?,?)',
+                         (body.word_id, w['book_id'], w['list_no']))
+    return {'ok': True}
+
+
+@app.get('/api/mistakes')
+def mistakes(book_id: int = Query(...)):
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            'SELECT m.word_id, m.list_no, w.word, w.meaning FROM mistakes m '
+            'JOIN words w ON w.id=m.word_id WHERE m.book_id=? ORDER BY m.list_no, w.seq', (book_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.get('/api/mistakes/lists')
+def mistake_lists(book_id: int = Query(...)):
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            'SELECT list_no, COUNT(*) c FROM mistakes WHERE book_id=? GROUP BY list_no ORDER BY list_no', (book_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+class MistakesStartBody(BaseModel):
+    book_id: int
+    list_nos: list = []
+
+
+@app.post('/api/mistakes/start')
+def mistakes_start(body: MistakesStartBody):
+    ids = []
+    if body.list_nos:
+        ph = ','.join('?' * len(body.list_nos))
+        with db.get_conn() as conn:
+            ids = [r['word_id'] for r in conn.execute(
+                'SELECT word_id FROM mistakes WHERE book_id=? AND list_no IN (%s)' % ph,
+                [body.book_id] + body.list_nos).fetchall()]
+    with db.get_conn() as conn:
+        questions = _challenge_options(conn, body.book_id, ids)
+    return {'questions': questions, 'total': len(questions)}
+
+
+class MistakesResultBody(BaseModel):
+    removed_ids: list = []
+
+
+@app.post('/api/mistakes/result')
+def mistakes_result(body: MistakesResultBody):
+    with db._lock:
+        with db.get_conn() as conn:
+            for wid in body.removed_ids:
+                conn.execute('DELETE FROM mistakes WHERE word_id=?', (wid,))
+    return {'ok': True}
 
 
 @app.get('/api/manage')
