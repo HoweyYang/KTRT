@@ -125,25 +125,6 @@ def prepare_and_serve():
     start_server()
 
 
-def _open_app(url):
-    """打开应用：优先独立窗口（pywebview/WebView2），失败退回浏览器。返回 True=窗口模式。"""
-    use_window = db.get_setting('window_mode', '1') != '0'
-    if use_window:
-        try:
-            import webview
-            webview.create_window('KillTimeRecitationTool', url,
-                                  width=1200, height=820, min_size=(900, 640))
-            webview.start()
-            return True
-        except Exception as e:
-            print('[KTRT] 独立窗口启动失败，改用浏览器：%s' % e)
-    try:
-        webbrowser.open(url)
-    except Exception as e:
-        print('[KTRT] 打开浏览器失败：%s' % e)
-    return False
-
-
 def main():
     log_path = _setup_logging()
     print('[KTRT] 正在启动… 日志文件：' + log_path)
@@ -152,7 +133,11 @@ def main():
     if _port_open(HOST, PORT):
         print('[KTRT] 已有实例在运行，仍显示启动弹窗…')
         _wait_splash(_spawn_splash())
-        # 已有实例的窗口/页面正在显示，不重复开新窗口，避免残留空窗口指向已退出的服务
+        if os.environ.get('KTRT_NO_BROWSER') != '1':
+            try:
+                webbrowser.open(URL)
+            except Exception as e:
+                print('[KTRT] 打开浏览器失败：%s' % e)
         return
 
     # 后台线程建库 + 起服务；独立子进程显示弹窗
@@ -172,13 +157,11 @@ def main():
     _wait_splash(splash_proc)
     print('[KTRT] 预备弹窗结束，耗时 %.1fs，服务就绪=%s' % (time.time() - t0, ready))
 
-    windowed = False
     if os.environ.get('KTRT_NO_BROWSER') != '1':
-        windowed = _open_app(URL)
-
-    if windowed:
-        print('[KTRT] 独立窗口已关闭，程序退出')
-        return
+        try:
+            webbrowser.open(URL)
+        except Exception as e:
+            print('[KTRT] 打开浏览器失败：%s' % e)
 
     # 保持进程存活，直到用户关闭
     try:
