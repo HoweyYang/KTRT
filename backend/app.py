@@ -777,6 +777,7 @@ def _get_settings():
         'tts_rate': db.get_setting('tts_rate', '0'),
         'tts_pitch': db.get_setting('tts_pitch', '0'),
         'tts_volume': db.get_setting('tts_volume', '100'),
+        'window_mode': db.get_setting('window_mode', '1'),
         'theme': db.get_setting('theme', 'dark-blue'),
     }
 
@@ -792,6 +793,7 @@ class SettingsBody(BaseModel):
     tts_rate: str = '0'
     tts_pitch: str = '0'
     tts_volume: str = '100'
+    window_mode: str = '1'
     theme: str = 'dark-blue'
 
 
@@ -812,6 +814,7 @@ def save_settings(body: SettingsBody):
     db.set_setting('tts_rate', body.tts_rate.strip() or '0')
     db.set_setting('tts_pitch', body.tts_pitch.strip() or '0')
     db.set_setting('tts_volume', body.tts_volume.strip() or '100')
+    db.set_setting('window_mode', body.window_mode.strip() or '1')
     db.set_setting('theme', body.theme.strip() or 'dark-blue')
     return _get_settings()
 

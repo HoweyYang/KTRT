@@ -3,3 +3,4 @@ uvicorn>=0.29
 python-multipart>=0.0.9
 openpyxl>=3.1
 edge-tts>=6.1
+pywebview>=5.0
