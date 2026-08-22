@@ -11,6 +11,7 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+const SPEAKER_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>';
 
 function applyTheme(theme) {
   document.body.dataset.theme = theme || 'dark-blue';
@@ -33,6 +34,10 @@ function toast(msg) {
 
 /* ---------- 视图切换 ---------- */
 function switchView(name) {
+  if (chg.active && name !== 'challenge') {
+    if (!confirm('闯关进行中，切换页面将丢弃本次进度（已入错题本的词不受影响），确定退出？')) return;
+    resetChallengeState();
+  }
   document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x.dataset.view === name));
   document.querySelectorAll('.view').forEach((x) => x.classList.toggle('active', x.id === 'view-' + name));
   localStorage.setItem('activeView', name);
@@ -40,6 +45,8 @@ function switchView(name) {
     refreshBooksUI().then(loadManage);
   } else if (name === 'import') {
     renderBookList();
+  } else if (name === 'challenge') {
+    refreshChallengeBooks();
   } else if (name === 'study') {
     if (state.books.length && !state.bookId) state.bookId = state.books[0].id;
     if (state.bookId && !state.lists.length) loadLists();
@@ -59,6 +66,7 @@ async function init() {
     applyTheme(b.settings.theme);
     populateBookSelect();
     populateSettings();
+    syncThemeButtons();
     refreshExportSelects();
     switchView(localStorage.getItem('activeView') || 'study');
   } catch (e) {
@@ -159,7 +167,7 @@ function renderCard() {
       <div class="field">
         <span class="label">${k}</span>
         <span class="value">${escapeHtml(v)}</span>
-        ${k === '词性释义' ? '' : `<button class="icon-btn" data-tts="${escapeAttr(k + '：' + v)}" title="朗读">🔊</button>`}
+        ${k === '词性释义' ? '' : `<button class="icon-btn" data-tts="${escapeAttr(k + '：' + v)}" title="朗读">${SPEAKER_ICON}</button>`}
       </div>`)
     .join('');
   document.querySelectorAll('[data-tts]').forEach((b) => {
@@ -188,7 +196,7 @@ async function loadReferences(word) {
         <div class="ref-top">
           <b>${escapeHtml(r.phrase)}</b>
           <span class="ref-mean">${escapeHtml(r.meaning)}</span>
-          <button class="icon-btn" data-ref-tts="${escapeAttr(r.phrase + '. ' + r.example)}" title="朗读">🔊</button>
+          <button class="icon-btn" data-ref-tts="${escapeAttr(r.phrase + '. ' + r.example)}" title="朗读">${SPEAKER_ICON}</button>
         </div>
         <div class="ref-ex">${escapeHtml(r.example)}</div>
       </div>`).join('');
@@ -740,6 +748,31 @@ function syncTtsLabels() {
   if (volume) $('volume-val').textContent = volume.value + '%';
 }
 
+function syncThemeButtons() {
+  const t = (state.settings && state.settings.theme) || 'dark-blue';
+  $('theme-light').classList.toggle('on', t === 'light');
+  $('theme-dark').classList.toggle('on', t === 'dark');
+  $('theme-blue').classList.toggle('on', t === 'dark-blue');
+}
+
+function setTheme(theme) {
+  applyTheme(theme);
+  $('s-theme').value = theme;
+  const s = state.settings || {};
+  api('/api/settings', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key: s.api_key || '', base_url: s.base_url || '', model: s.model || '', vendor: s.vendor || 'ds',
+      tts_provider: s.tts_provider || 'edge-tts', tts_voice_en: s.tts_voice_en || '美音·男', tts_voice_fr: s.tts_voice_fr || '女声',
+      tts_rate: s.tts_rate || '0', tts_pitch: s.tts_pitch || '0', tts_volume: s.tts_volume || '100', theme,
+    }),
+  }).then((r) => { state.settings = r; syncThemeButtons(); }).catch(() => {});
+}
+
+$('theme-light').addEventListener('click', () => setTheme('light'));
+$('theme-dark').addEventListener('click', () => setTheme('dark'));
+$('theme-blue').addEventListener('click', () => setTheme('dark-blue'));
+
 $('btn-save-settings').addEventListener('click', async () => {
   try {
     state.settings = await api('/api/settings', {
@@ -798,8 +831,8 @@ $('btn-check-release').addEventListener('click', async () => {
     const r = await api('/api/update/status');
     let html = '';
     if (r.release) {
-      const cur = (r.current_version || '').replace(/^v/, '').split('.').map(Number);
-      const rel = (r.release.tag_name || '').replace(/^v/, '').split('.').map(Number);
+      const cur = (r.current_version || '').replace(/^v/, '').replace(/[^0-9.]/g, '').split('.').map(Number);
+      const rel = (r.release.tag_name || '').replace(/^v/, '').replace(/[^0-9.]/g, '').split('.').map(Number);
       let isNewer = false;
       for (let i = 0; i < 3; i++) {
         if ((rel[i] || 0) > (cur[i] || 0)) { isNewer = true; break; }
@@ -986,6 +1019,163 @@ $('btn-export-notes').addEventListener('click', async () => {
     toast(e.message);
   }
 });
+
+/* ---------- 杀词 ---------- */
+let chg = { mode: 'word', q: [], i: 0, wrong: [], correct: 0, removed: [], bookId: 0, listNo: 0, mistake: false, active: false };
+
+function refreshChallengeBooks() {
+  ['chg-book', 'chg-mbook'].forEach((id) => {
+    const s = $(id);
+    if (!s) return;
+    s.innerHTML = state.books.map((b) => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
+  });
+  if (state.books.length) {
+    $('chg-book').value = state.books[0].id;
+    $('chg-mbook').value = state.books[0].id;
+    loadChallengeLists();
+    loadMistakeLists();
+  }
+}
+
+async function loadChallengeLists() {
+  const bookId = Number($('chg-book').value);
+  if (!bookId) { $('chg-list').innerHTML = ''; return; }
+  const meta = await api(`/api/books/${bookId}/lists`);
+  $('chg-list').innerHTML = meta.map((l) => `<option value="${l.list_no}">Word List ${l.list_no}</option>`).join('');
+}
+
+async function loadMistakeLists() {
+  const bookId = Number($('chg-mbook').value);
+  const box = $('chg-mlists');
+  if (!bookId) { box.innerHTML = ''; return; }
+  const lists = await api(`/api/mistakes/lists?book_id=${bookId}`);
+  box.innerHTML = lists.length
+    ? lists.map((l) => `<label><input type="checkbox" value="${l.list_no}"> WL${l.list_no}(${l.c})</label>`).join('')
+    : '<span style="color:var(--muted);font-size:13px">暂无错题</span>';
+}
+
+function setChallengeMode(mode) {
+  chg.mode = mode;
+  $('chg-mode-word').classList.toggle('active', mode === 'word');
+  $('chg-mode-mistake').classList.toggle('active', mode === 'mistake');
+  $('chg-word-panel').classList.toggle('hidden', mode !== 'word');
+  $('chg-mistake-panel').classList.toggle('hidden', mode !== 'mistake');
+  $('chg-stage').classList.add('hidden');
+  $('chg-result').classList.add('hidden');
+}
+
+function resetChallengeState() {
+  chg.active = false;
+  chg.q = []; chg.i = 0; chg.wrong = []; chg.correct = 0; chg.removed = [];
+  document.body.classList.remove('chg-focus');
+  $('chg-stage').classList.add('hidden');
+  $('chg-result').classList.add('hidden');
+}
+
+function showChallengeQuestion() {
+  if (chg.i >= chg.q.length) { finishChallenge(); return; }
+  const q = chg.q[chg.i];
+  $('chg-progress').textContent = `${chg.i + 1} / ${chg.q.length}`;
+  $('chg-fill').style.width = (chg.i / chg.q.length * 100) + '%';
+  const opts = q.options.map((o, idx) => `<button class="opt" data-idx="${idx}">${escapeHtml(o)}</button>`).join('');
+  $('chg-question').innerHTML = `<div style="font-size:28px;font-weight:800;margin-bottom:14px">${escapeHtml(q.word)}</div>${opts}`;
+  $('chg-question').querySelectorAll('.opt').forEach((b) => {
+    b.addEventListener('click', () => answerChallenge(q, Number(b.dataset.idx), b));
+  });
+}
+
+function answerChallenge(q, idx, btn) {
+  const correct = idx === q.correct;
+  const btns = $('chg-question').querySelectorAll('.opt');
+  btns.forEach((x) => x.disabled = true);
+  btns[q.correct].classList.add('right');
+  if (correct) {
+    chg.correct++;
+  } else {
+    btn.classList.add('wrong');
+    chg.wrong.push(q.word_id);
+    if (!chg.mistake) {
+      api('/api/mistakes/add', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ word_id: q.word_id }),
+      }).catch(() => {});
+    }
+  }
+  if (chg.mistake && correct) {
+    const bar = document.createElement('div');
+    bar.style.cssText = 'margin-top:12px;display:flex;gap:8px';
+    bar.innerHTML = '<button class="btn" id="chg-keep">保留</button><button class="btn danger" id="chg-remove">移出错题本</button>';
+    btn.parentElement.appendChild(bar);
+    $('chg-remove').addEventListener('click', () => { chg.removed.push(q.word_id); chg.i++; showChallengeQuestion(); });
+    $('chg-keep').addEventListener('click', () => { chg.i++; showChallengeQuestion(); });
+    return;
+  }
+  chg.i++;
+  setTimeout(showChallengeQuestion, correct ? 220 : 340);
+}
+
+async function finishChallenge() {
+  chg.active = false;
+  document.body.classList.remove('chg-focus');
+  $('chg-stage').classList.add('hidden');
+  const res = $('chg-result');
+  res.classList.remove('hidden');
+  if (!chg.mistake) {
+    const r = await api('/api/challenge/result', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ book_id: chg.bookId, list_no: chg.listNo, wrong_ids: chg.wrong, total: chg.q.length, correct: chg.correct }),
+    });
+    res.innerHTML = `<p class="ok">本轮 ${chg.correct} / ${chg.q.length}，历史最高 ${r.best}</p><p style="font-size:13px;color:var(--muted)">答错的词已自动标为「不熟悉」并进入错题本</p>`;
+  } else {
+    await api('/api/mistakes/result', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ removed_ids: chg.removed }),
+    });
+    res.innerHTML = `<p class="ok">本轮答对 ${chg.correct} / ${chg.q.length}，移出错题本 ${chg.removed.length} 个</p>`;
+  }
+  loadMistakeLists();
+}
+
+async function startWordChallenge() {
+  chg.mistake = false;
+  chg.bookId = Number($('chg-book').value);
+  chg.listNo = Number($('chg-list').value);
+  if (!chg.bookId || !chg.listNo) { toast('请选择单词书和 List'); return; }
+  const r = await api(`/api/challenge?book_id=${chg.bookId}&list_no=${chg.listNo}`);
+  if (!r.questions.length) { toast('该 List 没有可闯关的单词'); return; }
+  chg.q = r.questions; chg.i = 0; chg.wrong = []; chg.correct = 0;
+  chg.active = true;
+  document.body.classList.add('chg-focus');
+  $('chg-result').classList.add('hidden');
+  $('chg-stage').classList.remove('hidden');
+  showChallengeQuestion();
+}
+
+async function startMistakeChallenge() {
+  chg.mistake = true;
+  chg.bookId = Number($('chg-mbook').value);
+  const listNos = [...$('chg-mlists').querySelectorAll('input:checked')].map((x) => Number(x.value));
+  if (!listNos.length) { toast('请勾选至少一个 List'); return; }
+  const r = await api('/api/mistakes/start', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ book_id: chg.bookId, list_nos: listNos }),
+  });
+  if (!r.questions.length) { toast('所选 List 没有错题'); return; }
+  chg.q = r.questions; chg.i = 0; chg.wrong = []; chg.correct = 0; chg.removed = [];
+  chg.active = true;
+  document.body.classList.add('chg-focus');
+  $('chg-result').classList.add('hidden');
+  $('chg-stage').classList.remove('hidden');
+  showChallengeQuestion();
+}
+
+$('chg-mode-word').addEventListener('click', () => setChallengeMode('word'));
+$('chg-mode-mistake').addEventListener('click', () => setChallengeMode('mistake'));
+$('chg-book').addEventListener('change', loadChallengeLists);
+$('chg-mbook').addEventListener('change', loadMistakeLists);
+$('chg-start-word').addEventListener('click', startWordChallenge);
+$('chg-start-mistake').addEventListener('click', startMistakeChallenge);
+$('chg-exit').addEventListener('click', () => { resetChallengeState(); setChallengeMode(chg.mode); });
 
 /* ---------- 启动 ---------- */
 init();
