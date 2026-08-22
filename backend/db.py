@@ -70,6 +70,20 @@ def init_db():
                   content TEXT NOT NULL DEFAULT '',
                   updated_at TEXT DEFAULT (datetime('now','localtime'))
                 );
+                CREATE TABLE IF NOT EXISTS mistakes(
+                  word_id INTEGER PRIMARY KEY REFERENCES words(id) ON DELETE CASCADE,
+                  book_id INTEGER NOT NULL,
+                  list_no INTEGER NOT NULL,
+                  created_at TEXT DEFAULT (datetime('now','localtime'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_mistakes_book ON mistakes(book_id, list_no);
+                CREATE TABLE IF NOT EXISTS challenge_scores(
+                  book_id INTEGER NOT NULL,
+                  list_no INTEGER NOT NULL,
+                  best INTEGER NOT NULL DEFAULT 0,
+                  updated_at TEXT DEFAULT (datetime('now','localtime')),
+                  PRIMARY KEY(book_id, list_no)
+                );
                 CREATE TABLE IF NOT EXISTS settings(
                   key TEXT PRIMARY KEY,
                   value TEXT
