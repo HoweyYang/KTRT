@@ -728,7 +728,6 @@ function populateSettings() {
   $('s-rate').value = String(Math.min(150, Math.max(50, ttsNum(s.tts_rate, 0) + 100)));
   $('s-pitch').value = s.tts_pitch || '0';
   $('s-volume').value = s.tts_volume || '100';
-  $('s-window-mode').value = s.window_mode || '1';
   syncTtsLabels();
   ['s-rate', 's-pitch', 's-volume'].forEach((id) => $(id).addEventListener('input', syncTtsLabels));
   $('s-theme').value = s.theme || 'dark-blue';
@@ -766,7 +765,7 @@ function setTheme(theme) {
       api_key: s.api_key || '', base_url: s.base_url || '', model: s.model || '', vendor: s.vendor || 'ds',
       tts_provider: s.tts_provider || 'edge-tts', tts_voice_en: s.tts_voice_en || '美音·男', tts_voice_fr: s.tts_voice_fr || '女声',
       tts_rate: s.tts_rate || '0', tts_pitch: s.tts_pitch || '0', tts_volume: s.tts_volume || '100',
-      window_mode: s.window_mode || '1', theme,
+      theme,
     }),
   }).then((r) => { state.settings = r; syncThemeButtons(); }).catch(() => {});
 }
@@ -791,7 +790,6 @@ $('btn-save-settings').addEventListener('click', async () => {
         tts_rate: String(Number($('s-rate').value) - 100),
         tts_pitch: $('s-pitch').value,
         tts_volume: $('s-volume').value,
-        window_mode: $('s-window-mode').value,
         theme: $('s-theme').value,
       }),
     });
