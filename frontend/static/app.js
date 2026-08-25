@@ -18,7 +18,17 @@ function applyTheme(theme) {
 }
 
 async function api(path, opts = {}) {
-  const res = await fetch(path, opts);
+  const { timeout = 0, ...rest } = opts;
+  const ctrl = timeout ? new AbortController() : null;
+  const timer = timeout ? setTimeout(() => ctrl.abort(), timeout) : null;
+  let res;
+  try {
+    res = await fetch(path, { ...rest, signal: ctrl ? ctrl.signal : undefined });
+  } catch (e) {
+    throw new Error(timeout ? '请求超时，请检查网络后重试' : e.message);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail || data.error || '请求失败');
   return data;
@@ -812,7 +822,7 @@ $('btn-check-patch').addEventListener('click', async () => {
   const box = $('update-msg');
   box.innerHTML = '<p class="ok">检查中…</p>';
   try {
-    const r = await api('/api/update/status');
+    const r = await api('/api/update/status', { timeout: 20000 });
     let html = '';
     if (r.patch) {
       html += `<p>最新补丁：<b>${escapeHtml(r.patch.sha)}</b> · ${escapeHtml(r.patch.message)}<br>
@@ -829,7 +839,7 @@ $('btn-check-release').addEventListener('click', async () => {
   const box = $('update-msg');
   box.innerHTML = '<p class="ok">检查中…</p>';
   try {
-    const r = await api('/api/update/status');
+    const r = await api('/api/update/status', { timeout: 20000 });
     let html = '';
     if (r.release) {
       const cur = (r.current_version || '').replace(/^v/, '').replace(/[^0-9.]/g, '').split('.').map(Number);
