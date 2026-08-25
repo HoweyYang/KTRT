@@ -7,6 +7,7 @@ import sys
 import tempfile
 import urllib.request
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -818,45 +819,87 @@ def save_settings(body: SettingsBody):
 
 @app.get('/api/update/status')
 def update_status():
-    """检查 GitHub 最新补丁（main 最新 commit）与最新 Release（Atom 订阅源，无 API 限流）。"""
+    """检查 GitHub 最新补丁与最新 Release（并发请求，识别系统代理，带超时）。"""
+    def _proxy():
+        # 1) 环境变量（Clash/VPN 等常见设置）
+        for key in ('HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy'):
+            v = os.environ.get(key)
+            if v:
+                return {'http': v, 'https': v}
+        # 2) Windows 系统代理（注册表）
+        try:
+            import winreg
+            with winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER,
+                    r'Software\Microsoft\Windows\CurrentVersion\Internet Settings') as k:
+                enabled, _ = winreg.QueryValueEx(k, 'ProxyEnable')
+                server, _ = winreg.QueryValueEx(k, 'ProxyServer')
+            if not enabled or not server:
+                return None
+            if '=' in server:  # 兼容 http=127.0.0.1:7897;https=127.0.0.1:7897
+                proxies = {}
+                for part in server.split(';'):
+                    scheme, _, addr = part.strip().partition('=')
+                    if scheme in ('http', 'https') and addr:
+                        proxies[scheme] = addr if '://' in addr else 'http://' + addr
+                return proxies or None
+            return {'http': 'http://' + server, 'https': 'http://' + server}
+        except Exception:
+            return None
+
     def feed(url):
+        proxies = _proxy()
+        opener = (urllib.request.build_opener(urllib.request.ProxyHandler(proxies))
+                  if proxies else urllib.request.build_opener())
         req = urllib.request.Request(url, headers={'User-Agent': 'KTRT/' + APP_VERSION})
-        with urllib.request.urlopen(req, timeout=15) as r:
+        with opener.open(req, timeout=8) as r:
             return ET.fromstring(r.read().decode('utf-8', 'replace'))
 
     ns = {'a': 'http://www.w3.org/2005/Atom'}
 
     out = {'ok': True, 'current_version': APP_VERSION, 'patch': None, 'release': None, 'error': ''}
-    try:
+
+    def check_patch():
         root = feed('https://github.com/%s/commits/main.atom' % GITHUB_REPO)
         entries = root.findall('a:entry', ns)
-        if entries:
-            e = entries[0]
-            link = e.find('a:link', ns)
-            href = link.get('href', '') if link is not None else ''
-            sha = href.rstrip('/').split('/')[-1][:7] if href else ''
-            out['patch'] = {
-                'sha': sha,
-                'message': (e.findtext('a:title', '', ns) or '').strip(),
-                'date': e.findtext('a:updated', '', ns),
-                'url': href,
-            }
-    except Exception as e:
-        out['error'] += '补丁检查失败：%s' % e
-    try:
+        if not entries:
+            return None
+        e = entries[0]
+        link = e.find('a:link', ns)
+        href = link.get('href', '') if link is not None else ''
+        sha = href.rstrip('/').split('/')[-1][:7] if href else ''
+        return {
+            'sha': sha,
+            'message': (e.findtext('a:title', '', ns) or '').strip(),
+            'date': e.findtext('a:updated', '', ns),
+            'url': href,
+        }
+
+    def check_release():
         root = feed('https://github.com/%s/releases.atom' % GITHUB_REPO)
         entries = root.findall('a:entry', ns)
-        if entries:
-            e = entries[0]
-            link = e.find('a:link', ns)
-            out['release'] = {
-                'tag_name': (e.findtext('a:title', '', ns) or '').strip(),
-                'name': (e.findtext('a:title', '', ns) or '').strip(),
-                'published_at': e.findtext('a:updated', '', ns),
-                'html_url': link.get('href', '') if link is not None else '',
-            }
-    except Exception as e:
-        out['error'] += ('；' if out['error'] else '') + '版本检查失败：%s' % e
+        if not entries:
+            return None
+        e = entries[0]
+        link = e.find('a:link', ns)
+        return {
+            'tag_name': (e.findtext('a:title', '', ns) or '').strip(),
+            'name': (e.findtext('a:title', '', ns) or '').strip(),
+            'published_at': e.findtext('a:updated', '', ns),
+            'html_url': link.get('href', '') if link is not None else '',
+        }
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_patch = ex.submit(check_patch)
+        f_release = ex.submit(check_release)
+        try:
+            out['patch'] = f_patch.result()
+        except Exception as e:
+            out['error'] += '补丁检查失败：%s' % e
+        try:
+            out['release'] = f_release.result()
+        except Exception as e:
+            out['error'] += ('；' if out['error'] else '') + '版本检查失败：%s' % e
     return out
 
 
