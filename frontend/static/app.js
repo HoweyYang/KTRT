@@ -776,7 +776,6 @@ function syncThemeButtons() {
   $('theme-light').classList.toggle('on', t === 'light');
   $('theme-dark').classList.toggle('on', t === 'dark');
   $('theme-blue').classList.toggle('on', t === 'dark-blue');
-  $('theme-paper').classList.toggle('on', t === 'paper');
 }
 
 function setTheme(theme) {
@@ -797,7 +796,6 @@ function setTheme(theme) {
 $('theme-light').addEventListener('click', () => setTheme('light'));
 $('theme-dark').addEventListener('click', () => setTheme('dark'));
 $('theme-blue').addEventListener('click', () => setTheme('dark-blue'));
-$('theme-paper').addEventListener('click', () => setTheme('paper'));
 
 $('btn-save-settings').addEventListener('click', async () => {
   try {
