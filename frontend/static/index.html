@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>KillTimeRecitationTool</title>
   <link rel="icon" href="/static/logo.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=20260905c">
+  <link rel="stylesheet" href="/static/style.css?v=20260905d">
   <script>try { if (localStorage.getItem('ktrt.side') === '1') document.documentElement.classList.add('side-collapsed'); } catch (e) {}</script>
 </head>
 <body>
@@ -90,15 +90,12 @@
       </div>
       <aside class="note-panel">
       <div class="notes">
-        <h3>笔记本 <span id="note-cur-word" class="note-cur-word"></span></h3>
-        <div class="notes-tabs">
-          <button id="note-tab-code" class="btn active">代码</button>
-          <button id="note-tab-view" class="btn">展示</button>
-          <span class="spacer"></span>
+        <div class="notes-head">
+          <h3>笔记本 <span id="note-cur-word" class="note-cur-word"></span></h3>
           <button id="btn-note-save" class="btn primary">保存</button>
         </div>
-        <textarea id="note-editor" placeholder="Markdown 笔记：## 标题、**加粗**、*斜体*、==高亮==（Ctrl+B / Ctrl+I，选中后右键可高亮）"></textarea>
-        <div id="note-preview" class="note-preview hidden"></div>
+        <div id="note-editor" class="note-md" contenteditable="true" spellcheck="false"
+          data-placeholder="记录想法…：行首输入 # 或 ## 变标题；Ctrl+B 加粗、Ctrl+I 斜体；选中文字右键可高亮"></div>
       </div>
       </aside>
       </div>
@@ -304,6 +301,6 @@
   <div id="toast" class="toast hidden"></div>
   <div id="note-context" class="hidden"></div>
   <div class="watermark" aria-hidden="true">Howey</div>
-  <script src="/static/app.js?v=20260905b"></script>
+  <script src="/static/app.js?v=20260905d"></script>
 </body>
 </html>
