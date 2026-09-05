@@ -60,6 +60,19 @@ function toast(msg) {
 })();
 
 /* ---------- 视图切换 ---------- */
+function saveStudyPos() {
+  if (!state.bookId || !state.listNo) return;
+  try {
+    const m = JSON.parse(localStorage.getItem('ktrt.pos') || '{}');
+    m[state.bookId] = { l: state.listNo, s: state.seq || 1 };
+    localStorage.setItem('ktrt.pos', JSON.stringify(m));
+  } catch (e) { /* 忽略 */ }
+}
+
+function studyPos(bookId) {
+  try { return JSON.parse(localStorage.getItem('ktrt.pos') || '{}')[bookId] || null; } catch (e) { return null; }
+}
+
 function switchView(name) {
   if (chg.active && name !== 'challenge') {
     if (!confirm('闯关进行中，切换页面将丢弃本次进度（已入错题本的词不受影响），确定退出？')) return;
@@ -75,7 +88,11 @@ function switchView(name) {
   } else if (name === 'challenge') {
     refreshChallengeBooks();
   } else if (name === 'study') {
-    if (state.books.length && !state.bookId) state.bookId = state.books[0].id;
+    if (state.books.length && !state.bookId) {
+      state.bookId = state.books[0].id;
+      const p = studyPos(state.bookId);
+      if (p) { state.listNo = p.l; state.seq = p.s; }
+    }
     if (state.bookId && !state.lists.length) loadLists();
   }
 }
@@ -110,8 +127,11 @@ function populateBookSelect() {
     sel.value = state.bookId;
   }
   sel.onchange = async () => {
+    saveStudyPos();
     state.bookId = Number(sel.value);
-    state.seq = 1;
+    const p = studyPos(state.bookId);
+    state.listNo = p ? p.l : null;
+    state.seq = p ? p.s : 1;
     await loadLists();
   };
   // 管理页清空进度用
@@ -149,13 +169,18 @@ async function loadLists() {
   const meta = await api(`/api/books/${state.bookId}/lists`);
   state.lists = meta;
   const sel = $('list-select');
+  if (!meta.some((l) => l.list_no === state.listNo)) {
+    state.listNo = meta.length ? meta[0].list_no : 1;
+    state.seq = 1;
+  }
   sel.innerHTML = meta.map((l) => `<option value="${l.list_no}">Word List ${l.list_no}</option>`).join('');
+  sel.value = state.listNo;
   sel.onchange = () => {
     state.listNo = Number(sel.value);
     state.seq = 1;
+    saveStudyPos();
     loadCard();
   };
-  state.listNo = meta.length ? meta[0].list_no : 1;
   await loadCard();
 }
 
@@ -285,6 +310,7 @@ function go(delta) {
   if (n < 1) n = 1;
   if (n > total) n = total;
   state.seq = n;
+  saveStudyPos();
   loadCard();
 }
 $('btn-next').addEventListener('click', () => go(1));
@@ -441,14 +467,8 @@ async function cdLookup() {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ word: r.word }),
         });
         toast('已添加到「外部单词收藏册」');
-        out.innerHTML = '<span class="ok">已添加到「外部单词收藏册」，可切换到该词书背诵。</span>';
+        out.innerHTML = '<span class="ok">已添加到「外部单词收藏册」，当前背诵进度不受影响；可在书单里随时切换到它。</span>';
         await refreshBooksUI();
-        const fb = state.books.find((b) => b.name === '外部单词收藏册');
-        if (fb) {
-          state.bookId = fb.id;
-          state.seq = 1;
-          await loadLists();
-        }
       } catch (e) {
         out.innerHTML = `<span class="err">${e.message}</span>`;
       } finally {
