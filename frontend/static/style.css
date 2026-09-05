@@ -134,13 +134,13 @@ html.side-collapsed .brand-text { display: none; }
 }
 .tab:hover { background: var(--th); }
 .tab.active { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-weight: 600; }
-main { flex: 1; overflow: auto; max-width: 920px; margin: 0 auto; padding: 26px 24px 80px; }
+main { flex: 1; overflow: auto; max-width: 1180px; margin: 0 auto; padding: 26px 24px 80px; }
 .view { display: none; }
 .view.active { display: block; }
 .study-split { display: flex; align-items: flex-start; gap: 18px; }
 .study-main { flex: 2; min-width: 0; }
 .note-panel { flex: 1; min-width: 0; }
-@media (max-width: 1160px) {
+@media (max-width: 880px) {
   .study-split { flex-direction: column; }
   .note-panel { width: 100%; }
   .note-panel .notes { position: static; max-height: none; }
