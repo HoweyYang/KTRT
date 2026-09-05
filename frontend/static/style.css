@@ -1,4 +1,5 @@
 :root {
+  --font: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
   --bg: #f4f6fb;
   --card: #ffffff;
   --ink: #1f2937;
@@ -49,6 +50,25 @@ body[data-theme="dark"] {
   --red: #f87171;
   --amber: #fbbf24;
 }
+body[data-theme="paper"] {
+  --font: Georgia, "Times New Roman", "Songti SC", "SimSun", serif;
+  --bg: #ece2cb;
+  --card: #f7f1e0;
+  --ink: #3e382c;
+  --muted: #847a64;
+  --line: #d9ccae;
+  --accent: #2e6b49;
+  --accent-dark: #245840;
+  --on-accent: #fdfaf1;
+  --th: #f0e7d3;
+  --code: #f3ecda;
+  --mark: #f1cf74;
+  --track: #ddd0b2;
+  --toast: #3e382c;
+  --green: #467a46;
+  --red: #a23f33;
+  --amber: #9a6a1f;
+}
 body[data-theme="dark-blue"] .tag.on { background: #123c2f; color: #7ee2a8; }
 body[data-theme="dark-blue"] .tag.off { background: #3c1215; color: #fda4af; }
 body[data-theme="dark-blue"] .tag.fav { background: #3a2c06; color: #fcd34d; }
@@ -62,17 +82,19 @@ body[data-theme="dark"] .tag.none { background: #333333; color: #b0b0b0; }
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+  font-family: var(--font);
   background: var(--bg);
   color: var(--ink);
   display: flex;
   min-height: 100vh;
 }
+button { font-family: inherit; }
 a { color: var(--accent); }
 input, select, textarea, option {
   color: var(--ink);
   background: var(--card);
   caret-color: var(--ink);
+  font-family: inherit;
 }
 .side {
   width: 216px; flex-shrink: 0;
