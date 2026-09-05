@@ -42,6 +42,19 @@ function toast(msg) {
   toast._t = setTimeout(() => el.classList.add('hidden'), 2600);
 }
 
+/* ---------- 侧栏收缩 ---------- */
+(function initSidebar() {
+  const root = document.documentElement;
+  $('btn-collapse-side').addEventListener('click', () => {
+    const on = root.classList.toggle('side-collapsed');
+    try { localStorage.setItem('ktrt.side', on ? '1' : '0'); } catch (e) {}
+  });
+  document.querySelectorAll('.side .tab').forEach((b) => {
+    const label = b.querySelector('span');
+    if (label) b.title = label.textContent;
+  });
+})();
+
 /* ---------- 视图切换 ---------- */
 function switchView(name) {
   if (chg.active && name !== 'challenge') {
@@ -873,6 +886,7 @@ function renderNote(md) {
     else html += '<p>' + line + '</p>';
   }
   html = html.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+  html = html.replace(/\*([^*\n]+)\*/g, '<i>$1</i>');
   html = html.replace(/==([^=\n]+)==/g, '<mark>$1</mark>');
   return html;
 }
@@ -889,6 +903,7 @@ async function loadNote(wordId) {
   } catch (e) {
     $('note-editor').value = '';
   }
+  $('note-cur-word').textContent = state.card && state.card.word ? '· ' + state.card.word.word : '';
   renderNotePreview();
 }
 
@@ -954,19 +969,99 @@ $('note-preview').addEventListener('contextmenu', (e) => {
 $('note-tab-code').addEventListener('click', () => setNoteLayer('code'));
 $('note-tab-view').addEventListener('click', () => setNoteLayer('view'));
 $('note-editor').addEventListener('input', () => { state.noteDirty = true; renderNotePreview(); });
-document.querySelectorAll('.notes-toolbar [data-md]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const md = btn.dataset.md;
-    const ta = $('note-editor');
-    const start = ta.selectionStart, end = ta.selectionEnd;
-    const sel = ta.value.slice(start, end) || (md.endsWith(' ') ? '标题' : '文本');
-    const ins = md.endsWith(' ') ? md + sel : md + sel + md;
-    ta.value = ta.value.slice(0, start) + ins + ta.value.slice(end);
-    state.noteDirty = true;
-    renderNotePreview();
-    ta.focus();
-  });
+
+/* 原生 Markdown 快捷键：Ctrl+B 加粗、Ctrl+I 斜体 */
+function wrapNoteSelection(mark) {
+  const ta = $('note-editor');
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const v = ta.value;
+  const sel = v.slice(s, e);
+  let value, ns, ne;
+  if (sel && sel.startsWith(mark) && sel.endsWith(mark) && sel.length >= mark.length * 2) {
+    const inner = sel.slice(mark.length, sel.length - mark.length);
+    value = v.slice(0, s) + inner + v.slice(e);
+    ns = s + mark.length; ne = ns + inner.length;
+  } else {
+    value = v.slice(0, s) + mark + sel + mark + v.slice(e);
+    ns = s + mark.length; ne = ns + sel.length;
+  }
+  ta.value = value;
+  state.noteDirty = true;
+  renderNotePreview();
+  ta.focus();
+  ta.setSelectionRange(ns, ne);
+}
+
+$('note-editor').addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'b') { e.preventDefault(); wrapNoteSelection('**'); }
+  else if (k === 'i') { e.preventDefault(); wrapNoteSelection('*'); }
 });
+
+/* 选中后右键：像 Word / Edge PDF 一样决定是否高亮 */
+function noteHighlightRegion() {
+  const ta = $('note-editor');
+  const v = ta.value;
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const open = v.lastIndexOf('==', s - 1);
+  if (open < 0) return null;
+  const close = v.indexOf('==', open + 2);
+  if (close < 0 || !(open + 2 <= s && e <= close)) return null;
+  return { start: open, end: close + 2, text: v.slice(open + 2, close) };
+}
+
+function showNoteContext(x, y, actions) {
+  const menu = $('note-context');
+  menu.innerHTML = '';
+  actions.forEach((a) => {
+    const b = document.createElement('button');
+    b.textContent = a.label;
+    b.addEventListener('click', () => { closeNoteContext(); a.run(); });
+    menu.appendChild(b);
+  });
+  menu.classList.remove('hidden');
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+  document.addEventListener('click', closeNoteContext, { once: true });
+}
+
+$('note-editor').addEventListener('contextmenu', (ev) => {
+  const ta = $('note-editor');
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const sel = ta.value.slice(s, e);
+  const reg = noteHighlightRegion();
+  if (!sel && !reg) return;
+  ev.preventDefault();
+  const actions = [];
+  if (reg) {
+    const t = reg.text.length > 14 ? reg.text.slice(0, 14) + '…' : reg.text;
+    actions.push({
+      label: '取消高亮「' + t + '」',
+      run: () => {
+        ta.value = ta.value.slice(0, reg.start) + reg.text + ta.value.slice(reg.end);
+        state.noteDirty = true;
+        renderNotePreview();
+        ta.focus();
+        ta.setSelectionRange(reg.start, reg.start + reg.text.length);
+      },
+    });
+  } else if (sel) {
+    const t = sel.length > 14 ? sel.slice(0, 14) + '…' : sel;
+    actions.push({
+      label: '高亮「' + t + '」',
+      run: () => {
+        ta.value = ta.value.slice(0, s) + '==' + sel + '==' + ta.value.slice(e);
+        state.noteDirty = true;
+        renderNotePreview();
+        ta.focus();
+        ta.setSelectionRange(s + 2, s + 2 + sel.length);
+      },
+    });
+  }
+  if (actions.length) showNoteContext(ev.clientX, ev.clientY, actions);
+});
+
 $('btn-note-save').addEventListener('click', async () => {
   if (!state.card || !state.card.word) { toast('还没有单词'); return; }
   try {
