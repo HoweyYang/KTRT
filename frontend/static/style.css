@@ -52,22 +52,39 @@ body[data-theme="dark"] {
 }
 body[data-theme="paper"] {
   --font: Georgia, "Times New Roman", "Songti SC", "SimSun", serif;
-  --bg: #ece2cb;
-  --card: #f7f1e0;
-  --ink: #3e382c;
-  --muted: #847a64;
-  --line: #d9ccae;
-  --accent: #2e6b49;
-  --accent-dark: #245840;
-  --on-accent: #fdfaf1;
-  --th: #f0e7d3;
-  --code: #f3ecda;
-  --mark: #f1cf74;
-  --track: #ddd0b2;
-  --toast: #3e382c;
-  --green: #467a46;
-  --red: #a23f33;
+  --bg: #e5d9ba;
+  --card: #f6eed9;
+  --ink: #463d2c;
+  --muted: #877a5e;
+  --line: #d8c9a6;
+  --accent: #8a5a2b;
+  --accent-dark: #6f4520;
+  --on-accent: #fdf8ec;
+  --th: #efe5cc;
+  --code: #f2e9d4;
+  --mark: #f0cd6f;
+  --track: #ddcfae;
+  --toast: #463d2c;
+  --green: #6a6b33;
+  --red: #a3452f;
   --amber: #9a6a1f;
+  -webkit-font-smoothing: antialiased;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.045'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse at 50% 0%, rgba(255, 252, 240, .55), rgba(255, 252, 240, 0) 60%);
+}
+body[data-theme="paper"] .side,
+body[data-theme="paper"] .card,
+body[data-theme="paper"] .panel,
+body[data-theme="paper"] .note-panel .notes,
+body[data-theme="paper"] #note-context {
+  background-color: #f8f1de;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.04'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)'/%3E%3C/svg%3E");
+  border-color: #d7c7a2;
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8),
+    0 1px 2px rgba(121, 97, 52, .06),
+    0 10px 28px -14px rgba(121, 97, 52, .28);
 }
 body[data-theme="dark-blue"] .tag.on { background: #123c2f; color: #7ee2a8; }
 body[data-theme="dark-blue"] .tag.off { background: #3c1215; color: #fda4af; }
