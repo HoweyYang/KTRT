@@ -81,7 +81,35 @@ input, select, textarea, option {
   display: flex; flex-direction: column;
   padding: 18px 10px;
   height: 100vh; position: sticky; top: 0; overflow: auto;
+  transition: width .16s ease;
 }
+.side-top { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 14px; }
+.side-top .wordmark { padding: 0 12px; }
+.side-toggle {
+  border: 1px solid var(--line); background: transparent; color: var(--muted);
+  width: 28px; height: 28px; border-radius: 8px; cursor: pointer; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.side-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.side-toggle svg { transition: transform .16s ease; }
+html.side-collapsed .side { width: 54px; }
+html.side-collapsed .side-top { justify-content: center; padding: 0 0 12px; }
+html.side-collapsed .side-top .wordmark { display: none; }
+html.side-collapsed .side-toggle svg { transform: rotate(180deg); }
+html.side-collapsed nav { align-items: center; }
+html.side-collapsed .tab { justify-content: center; gap: 0; padding: 10px 0; }
+html.side-collapsed .tab span { display: none; }
+html.side-collapsed .themes { display: none; }
+html.side-collapsed .brand { justify-content: center; padding: 12px 4px; }
+html.side-collapsed .brand-text { display: none; }
+.tab span { flex: 1; }
+.side .tab { overflow: hidden; white-space: nowrap; }
+.side .tab svg { flex-shrink: 0; }
+.side nav, .themes, .brand { min-width: 0; }
+.themes { overflow: hidden; }
+.brand { overflow: hidden; }
+.brand-text { white-space: nowrap; }
+.brand .logo { flex-shrink: 0; }
 .wordmark { font-size: 20px; font-weight: 800; letter-spacing: -.3px; padding: 0 12px 16px; color: var(--ink); }
 .side nav { display: flex; flex-direction: column; gap: 2px; }
 .themes { display: flex; gap: 6px; padding: 14px 12px; border-top: 1px solid var(--line); margin-top: auto; }
@@ -109,6 +137,14 @@ input, select, textarea, option {
 main { flex: 1; overflow: auto; max-width: 920px; margin: 0 auto; padding: 26px 24px 80px; }
 .view { display: none; }
 .view.active { display: block; }
+.study-split { display: flex; align-items: flex-start; gap: 18px; }
+.study-main { flex: 2; min-width: 0; }
+.note-panel { flex: 1; min-width: 0; }
+@media (max-width: 1160px) {
+  .study-split { flex-direction: column; }
+  .note-panel { width: 100%; }
+  .note-panel .notes { position: static; max-height: none; }
+}
 
 .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .toolbar select, .toolbar input {
@@ -258,13 +294,22 @@ th { background: var(--th); font-weight: 700; }
 input[type="range"] { width: 100%; margin-top: 8px; }
 .notice-list { margin: 10px 0 0; padding-left: 20px; line-height: 1.9; color: var(--muted); font-size: 13px; }
 .notice-list code { font-size: 12px; }
-.notes { margin-top: 22px; }
+.note-panel .notes {
+  margin-top: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 18px;
+  position: sticky; top: 0;
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, .04);
+}
+.note-cur-word { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 4px; }
 .notes h3 { font-size: 16px; margin: 0 0 10px; }
 .notes-tabs { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.notes-toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
-.notes-toolbar .btn { padding: 5px 10px; font-size: 13px; }
 #note-editor {
-  width: 100%; min-height: 150px; padding: 10px 12px;
+  width: 100%; min-height: 260px; padding: 10px 12px;
   border: 1px solid var(--line); border-radius: 10px;
   background: var(--card); color: var(--ink);
   font-size: 14px; line-height: 1.6; resize: vertical; font-family: inherit;
@@ -272,7 +317,7 @@ input[type="range"] { width: 100%; margin-top: 8px; }
 .note-preview {
   border: 1px solid var(--line); border-radius: 10px;
   padding: 12px 14px; background: var(--card);
-  min-height: 150px; line-height: 1.6; font-size: 14px; overflow-wrap: break-word;
+  min-height: 260px; line-height: 1.6; font-size: 14px; overflow-wrap: break-word;
 }
 .note-preview h3 { font-size: 17px; margin: 8px 0 4px; }
 .note-preview h4 { font-size: 15px; margin: 8px 0 4px; }
