@@ -876,139 +876,87 @@ $('btn-check-release').addEventListener('click', async () => {
 });
 
 /* ---------- 笔记本 ---------- */
-function renderNote(md) {
-  const esc = escapeHtml(md || '');
-  let html = '';
-  for (const line of esc.split(/\r?\n/)) {
-    if (/^##\s+/.test(line)) html += '<h4>' + line.replace(/^##\s+/, '') + '</h4>';
-    else if (/^#\s+/.test(line)) html += '<h3>' + line.replace(/^#\s+/, '') + '</h3>';
-    else if (line.trim() === '') html += '<p><br></p>';
-    else html += '<p>' + line + '</p>';
-  }
-  html = html.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
-  html = html.replace(/\*([^*\n]+)\*/g, '<i>$1</i>');
-  html = html.replace(/==([^=\n]+)==/g, '<mark>$1</mark>');
-  return html;
+/* ---------- 笔记本（所见即所得：原生 Markdown 输入即渲染） ---------- */
+function noteInlineToHtml(esc) {
+  return esc
+    .replace(/==([^=\n]+)==/g, '<mark>$1</mark>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
+    .replace(/\*([^*\n]+)\*/g, '<i>$1</i>');
 }
 
-function renderNotePreview() {
-  $('note-preview').innerHTML = renderNote($('note-editor').value);
+function noteMdToHtml(md) {
+  const esc = escapeHtml(md || '');
+  if (!esc.trim()) return '';
+  return esc.split(/\r?\n/).map((line) => {
+    if (/^##\s+/.test(line)) return '<h4 data-block>' + noteInlineToHtml(line.replace(/^##\s+/, '')) + '</h4>';
+    if (/^#\s+/.test(line)) return '<h3 data-block>' + noteInlineToHtml(line.replace(/^#\s+/, '')) + '</h3>';
+    if (line.trim() === '') return '<div data-block><br></div>';
+    return '<div data-block>' + noteInlineToHtml(line) + '</div>';
+  }).join('');
+}
+
+function noteInlineToMd(el) {
+  let s = '';
+  el.childNodes.forEach((n) => {
+    if (n.nodeType === 3) { s += n.textContent; return; }
+    if (n.nodeType !== 1) return;
+    const tag = n.tagName;
+    const inner = noteInlineToMd(n);
+    if (tag === 'B' || tag === 'STRONG') s += '**' + inner + '**';
+    else if (tag === 'I' || tag === 'EM') s += '*' + inner + '*';
+    else if (tag === 'MARK') s += '==' + inner + '==';
+    else if (tag === 'SPAN' && /background/i.test((n.style && n.style.cssText) || '')) s += '==' + inner + '==';
+    else if (tag === 'BR') { /* 忽略块内换行 */ }
+    else s += inner;
+  });
+  return s;
+}
+
+function noteToMd() {
+  const box = $('note-editor');
+  const lines = [];
+  Array.from(box.childNodes).forEach((n) => {
+    if (n.nodeType === 3) { if (n.textContent.trim()) lines.push(n.textContent.trim()); return; }
+    if (n.nodeType !== 1) return;
+    if (n.tagName === 'H3') lines.push('# ' + noteInlineToMd(n).trim());
+    else if (n.tagName === 'H4') lines.push('## ' + noteInlineToMd(n).trim());
+    else lines.push(noteInlineToMd(n).replace(/^[ \t]+|[ \t]+$/g, ''));
+  });
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function noteBlockAt() {
+  const sel = window.getSelection();
+  if (!sel || !sel.anchorNode) return null;
+  let el = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+  return el && el.closest ? el.closest('[data-block]') : null;
+}
+
+function noteTextBeforeCaret() {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return '';
+  const r = sel.getRangeAt(0);
+  const b = noteBlockAt();
+  if (!b) return '';
+  const pre = document.createRange();
+  pre.selectNodeContents(b);
+  pre.setEnd(r.startContainer, r.startOffset);
+  return pre.toString();
 }
 
 async function loadNote(wordId) {
   state.noteDirty = false;
+  let content = '';
   try {
     const n = await api('/api/notes/' + wordId);
-    $('note-editor').value = n.content || '';
-  } catch (e) {
-    $('note-editor').value = '';
-  }
+    content = n.content || '';
+  } catch (e) { /* 还没有笔记 */ }
+  $('note-editor').innerHTML = noteMdToHtml(content);
   $('note-cur-word').textContent = state.card && state.card.word ? '· ' + state.card.word.word : '';
-  renderNotePreview();
-}
-
-function setNoteLayer(layer) {
-  const code = layer === 'code';
-  $('note-editor').classList.toggle('hidden', !code);
-  $('note-preview').classList.toggle('hidden', code);
-  $('note-tab-code').classList.toggle('active', code);
-  $('note-tab-view').classList.toggle('active', !code);
-  if (!code) renderNotePreview();
 }
 
 function closeNoteContext() {
   $('note-context').classList.add('hidden');
-}
-
-function applyNoteHighlight(text) {
-  const ta = $('note-editor');
-  const idx = ta.value.indexOf(text);
-  if (idx === -1) { toast('无法定位所选文本'); closeNoteContext(); return; }
-  ta.value = ta.value.slice(0, idx) + '==' + text + '==' + ta.value.slice(idx + text.length);
-  state.noteDirty = true;
-  renderNotePreview();
-  closeNoteContext();
-}
-
-function removeNoteHighlight(text) {
-  const ta = $('note-editor');
-  const idx = ta.value.indexOf('==' + text + '==');
-  if (idx === -1) { toast('未找到高亮'); closeNoteContext(); return; }
-  ta.value = ta.value.slice(0, idx) + text + ta.value.slice(idx + text.length + 4);
-  state.noteDirty = true;
-  renderNotePreview();
-  closeNoteContext();
-}
-
-$('note-preview').addEventListener('contextmenu', (e) => {
-  const selText = (window.getSelection() && window.getSelection().toString().trim()) || '';
-  const markEl = e.target && e.target.closest ? e.target.closest('mark') : null;
-  const markText = markEl ? markEl.textContent.trim() : '';
-  if (!selText && !markText) return;
-  e.preventDefault();
-  const menu = $('note-context');
-  menu.innerHTML = '';
-  if (selText) {
-    const b = document.createElement('button');
-    b.textContent = '高亮「' + (selText.length > 12 ? selText.slice(0, 12) + '…' : selText) + '」';
-    b.addEventListener('click', () => applyNoteHighlight(selText));
-    menu.appendChild(b);
-  }
-  if (markText) {
-    const b = document.createElement('button');
-    b.textContent = '取消高亮';
-    b.addEventListener('click', () => removeNoteHighlight(markText));
-    menu.appendChild(b);
-  }
-  menu.classList.remove('hidden');
-  menu.style.left = e.clientX + 'px';
-  menu.style.top = e.clientY + 'px';
-  document.addEventListener('click', closeNoteContext, { once: true });
-});
-
-$('note-tab-code').addEventListener('click', () => setNoteLayer('code'));
-$('note-tab-view').addEventListener('click', () => setNoteLayer('view'));
-$('note-editor').addEventListener('input', () => { state.noteDirty = true; renderNotePreview(); });
-
-/* 原生 Markdown 快捷键：Ctrl+B 加粗、Ctrl+I 斜体 */
-function wrapNoteSelection(mark) {
-  const ta = $('note-editor');
-  const s = ta.selectionStart, e = ta.selectionEnd;
-  const v = ta.value;
-  const sel = v.slice(s, e);
-  let value, ns, ne;
-  if (sel && sel.startsWith(mark) && sel.endsWith(mark) && sel.length >= mark.length * 2) {
-    const inner = sel.slice(mark.length, sel.length - mark.length);
-    value = v.slice(0, s) + inner + v.slice(e);
-    ns = s + mark.length; ne = ns + inner.length;
-  } else {
-    value = v.slice(0, s) + mark + sel + mark + v.slice(e);
-    ns = s + mark.length; ne = ns + sel.length;
-  }
-  ta.value = value;
-  state.noteDirty = true;
-  renderNotePreview();
-  ta.focus();
-  ta.setSelectionRange(ns, ne);
-}
-
-$('note-editor').addEventListener('keydown', (e) => {
-  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
-  const k = e.key.toLowerCase();
-  if (k === 'b') { e.preventDefault(); wrapNoteSelection('**'); }
-  else if (k === 'i') { e.preventDefault(); wrapNoteSelection('*'); }
-});
-
-/* 选中后右键：像 Word / Edge PDF 一样决定是否高亮 */
-function noteHighlightRegion() {
-  const ta = $('note-editor');
-  const v = ta.value;
-  const s = ta.selectionStart, e = ta.selectionEnd;
-  const open = v.lastIndexOf('==', s - 1);
-  if (open < 0) return null;
-  const close = v.indexOf('==', open + 2);
-  if (close < 0 || !(open + 2 <= s && e <= close)) return null;
-  return { start: open, end: close + 2, text: v.slice(open + 2, close) };
 }
 
 function showNoteContext(x, y, actions) {
@@ -1026,36 +974,100 @@ function showNoteContext(x, y, actions) {
   document.addEventListener('click', closeNoteContext, { once: true });
 }
 
-$('note-editor').addEventListener('contextmenu', (ev) => {
-  const ta = $('note-editor');
-  const s = ta.selectionStart, e = ta.selectionEnd;
-  const sel = ta.value.slice(s, e);
-  const reg = noteHighlightRegion();
-  if (!sel && !reg) return;
+const NE = $('note-editor');
+
+NE.addEventListener('input', () => {
+  state.noteDirty = true;
+  // 行首输入 # 或 ## 自动变成标题
+  const b = noteBlockAt();
+  if (!b || b.tagName !== 'DIV') return;
+  const text = b.textContent;
+  let level = 0;
+  if (/^##\s/.test(text)) level = 2;
+  else if (/^#\s/.test(text)) level = 1;
+  if (!level) return;
+  const prefix = level === 1 ? 2 : 3;
+  if (noteTextBeforeCaret().length < prefix) return;
+  const h = document.createElement(level === 1 ? 'H3' : 'H4');
+  h.setAttribute('data-block', '');
+  const lead = b.firstChild;
+  if (lead && lead.nodeType === 3 && lead.nodeValue) lead.nodeValue = lead.nodeValue.slice(prefix);
+  b.before(h);
+  while (b.firstChild) h.appendChild(b.firstChild);
+  b.remove();
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(h);
+  range.collapse(false);
+  sel.removeAllRanges();
+  sel.addRange(range);
+});
+
+NE.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+    const k = e.key.toLowerCase();
+    if (k === 'b') { e.preventDefault(); document.execCommand('bold'); return; }
+    if (k === 'i') { e.preventDefault(); document.execCommand('italic'); return; }
+  }
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  const b = noteBlockAt();
+  if (!b || (b.tagName !== 'H3' && b.tagName !== 'H4')) return; // 普通段落交给浏览器默认换行
+  e.preventDefault();
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  const range = sel.getRangeAt(0);
+  const tail = document.createRange();
+  tail.setStart(range.startContainer, range.startOffset);
+  tail.setEndAfter(b);
+  const frag = tail.extractContents();
+  const div = document.createElement('div');
+  div.setAttribute('data-block', '');
+  div.appendChild(frag);
+  b.after(div);
+  const r = document.createRange();
+  r.selectNodeContents(div);
+  r.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(r);
+});
+
+NE.addEventListener('paste', (e) => {
+  e.preventDefault();
+  const txt = (e.clipboardData || window.clipboardData).getData('text/plain');
+  document.execCommand('insertText', false, txt);
+});
+
+NE.addEventListener('contextmenu', (ev) => {
+  const sel = window.getSelection();
+  const selText = sel && !sel.isCollapsed ? sel.toString().trim() : '';
+  let hlEl = ev.target && ev.target.closest ? ev.target.closest('mark, span[style*="background"]') : null;
+  if (!selText && !hlEl) return; // 交给浏览器默认菜单
   ev.preventDefault();
+  const saved = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
   const actions = [];
-  if (reg) {
-    const t = reg.text.length > 14 ? reg.text.slice(0, 14) + '…' : reg.text;
-    actions.push({
-      label: '取消高亮「' + t + '」',
-      run: () => {
-        ta.value = ta.value.slice(0, reg.start) + reg.text + ta.value.slice(reg.end);
-        state.noteDirty = true;
-        renderNotePreview();
-        ta.focus();
-        ta.setSelectionRange(reg.start, reg.start + reg.text.length);
-      },
-    });
-  } else if (sel) {
-    const t = sel.length > 14 ? sel.slice(0, 14) + '…' : sel;
+  if (selText && !(hlEl && hlEl.textContent.trim() === selText)) {
+    const t = selText.length > 12 ? selText.slice(0, 12) + '…' : selText;
     actions.push({
       label: '高亮「' + t + '」',
       run: () => {
-        ta.value = ta.value.slice(0, s) + '==' + sel + '==' + ta.value.slice(e);
+        const s = window.getSelection();
+        s.removeAllRanges();
+        s.addRange(saved);
+        document.execCommand('hiliteColor', false, '#ffe14d');
         state.noteDirty = true;
-        renderNotePreview();
-        ta.focus();
-        ta.setSelectionRange(s + 2, s + 2 + sel.length);
+      },
+    });
+  }
+  if (hlEl) {
+    actions.push({
+      label: '取消高亮',
+      run: () => {
+        const p = hlEl.parentNode;
+        if (p) {
+          while (hlEl.firstChild) p.insertBefore(hlEl.firstChild, hlEl);
+          p.removeChild(hlEl);
+        }
+        state.noteDirty = true;
       },
     });
   }
@@ -1068,7 +1080,7 @@ $('btn-note-save').addEventListener('click', async () => {
     await api('/api/notes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ word_id: state.card.word.id, content: $('note-editor').value }),
+      body: JSON.stringify({ word_id: state.card.word.id, content: noteToMd() }),
     });
     state.noteDirty = false;
     toast('笔记已保存');
@@ -1076,7 +1088,6 @@ $('btn-note-save').addEventListener('click', async () => {
     toast('保存失败：' + e.message);
   }
 });
-
 $('btn-clear-notes').addEventListener('click', async () => {
   const bookId = Number($('clear-book').value);
   const listNo = Number($('clear-list').value);

@@ -306,23 +306,21 @@ input[type="range"] { width: 100%; margin-top: 8px; }
   box-shadow: 0 2px 8px rgba(15, 23, 42, .04);
 }
 .note-cur-word { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 4px; }
-.notes h3 { font-size: 16px; margin: 0 0 10px; }
-.notes-tabs { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-#note-editor {
-  width: 100%; min-height: 260px; padding: 10px 12px;
+.notes-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.notes-head h3 { font-size: 16px; margin: 0; }
+.note-md {
+  width: 100%; min-height: 320px; padding: 12px 14px;
   border: 1px solid var(--line); border-radius: 10px;
   background: var(--card); color: var(--ink);
-  font-size: 14px; line-height: 1.6; resize: vertical; font-family: inherit;
+  font-size: 15px; line-height: 1.7; font-family: inherit;
+  overflow-wrap: break-word; outline: none;
+  max-height: calc(100vh - 200px); overflow: auto;
 }
-.note-preview {
-  border: 1px solid var(--line); border-radius: 10px;
-  padding: 12px 14px; background: var(--card);
-  min-height: 260px; line-height: 1.6; font-size: 14px; overflow-wrap: break-word;
-}
-.note-preview h3 { font-size: 17px; margin: 8px 0 4px; }
-.note-preview h4 { font-size: 15px; margin: 8px 0 4px; }
-.note-preview p { margin: 4px 0; }
-.note-preview mark { background: var(--mark); padding: 0 2px; border-radius: 3px; }
+.note-md:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
+.note-md [data-block] { margin: 0; min-height: 1.3em; }
+.note-md h3 { font-size: 19px; font-weight: 700; }
+.note-md h4 { font-size: 16px; font-weight: 700; }
+.note-md mark { background: var(--mark); padding: 0 2px; border-radius: 3px; }
 #note-context {
   position: fixed; z-index: 100; min-width: 150px;
   background: var(--card); border: 1px solid var(--line);
