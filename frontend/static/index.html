@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>KillTimeRecitationTool</title>
   <link rel="icon" href="/static/logo.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=20260905h">
+  <link rel="stylesheet" href="/static/style.css?v=20260905i">
   <script>try { if (localStorage.getItem('ktrt.side') === '1') document.documentElement.classList.add('side-collapsed'); } catch (e) {}</script>
 </head>
 <body>
@@ -202,12 +202,17 @@
     <section id="view-settings" class="view">
       <div class="panel">
         <h2>AI 与语音设置</h2>
-        <label>界面主题
+        <label>页面质感
+          <span class="seg">
+            <button type="button" id="page-normal" class="btn active">普通</button>
+            <button type="button" id="page-paper" class="btn">纸质</button>
+          </span>
+        </label>
+        <label>主题色
           <select id="s-theme">
             <option value="light">浅色</option>
             <option value="dark">深色</option>
             <option value="dark-blue">深蓝 · 高对比</option>
-            <option value="paper">纸质 · 护眼</option>
           </select>
         </label>
         <label>模型厂商
@@ -302,6 +307,6 @@
   <div id="toast" class="toast hidden"></div>
   <div id="note-context" class="hidden"></div>
   <div class="watermark" aria-hidden="true">Howey</div>
-  <script src="/static/app.js?v=20260905g"></script>
+  <script src="/static/app.js?v=20260905i"></script>
 </body>
 </html>

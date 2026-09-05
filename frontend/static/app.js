@@ -14,7 +14,11 @@ const $ = (id) => document.getElementById(id);
 const SPEAKER_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>';
 
 function applyTheme(theme) {
-  document.body.dataset.theme = theme || 'dark-blue';
+  document.body.dataset.theme = theme === 'paper' ? 'light' : (theme || 'dark-blue');
+}
+
+function applyPageMode(mode) {
+  document.body.dataset.page = mode === 'paper' ? 'paper' : 'normal';
 }
 
 async function api(path, opts = {}) {
@@ -85,8 +89,10 @@ async function init() {
     const b = await api('/api/bootstrap');
     state.books = b.books;
     state.presets = b.presets || {};
-    state.settings = b.settings;
-    applyTheme(b.settings.theme);
+    const s = b.settings || {};
+    state.settings = { ...s, theme: s.theme === 'paper' ? 'light' : (s.theme || 'dark-blue'), theme_page: s.theme_page || 'normal' };
+    applyTheme(state.settings.theme);
+    applyPageMode(state.settings.theme_page);
     populateBookSelect();
     populateSettings();
     syncThemeButtons();
@@ -753,7 +759,10 @@ function populateSettings() {
   $('s-volume').value = s.tts_volume || '100';
   syncTtsLabels();
   ['s-rate', 's-pitch', 's-volume'].forEach((id) => $(id).addEventListener('input', syncTtsLabels));
-  $('s-theme').value = s.theme || 'dark-blue';
+  $('s-theme').value = s.theme === 'paper' ? 'light' : (s.theme || 'dark-blue');
+  syncPageButtons();
+  $('page-normal').addEventListener('click', () => setPageMode('normal'));
+  $('page-paper').addEventListener('click', () => setPageMode('paper'));
   sel.onchange = () => {
     const p = state.presets[sel.value];
     if (p) {
@@ -778,9 +787,22 @@ function syncThemeButtons() {
   $('theme-blue').classList.toggle('on', t === 'dark-blue');
 }
 
+function syncPageButtons() {
+  const p = (state.settings && state.settings.theme_page) || 'normal';
+  $('page-normal').classList.toggle('active', p === 'normal');
+  $('page-paper').classList.toggle('active', p === 'paper');
+}
+
+function setPageMode(mode) {
+  applyPageMode(mode);
+  $('page-normal').classList.toggle('active', mode === 'normal');
+  $('page-paper').classList.toggle('active', mode === 'paper');
+}
+
 function setTheme(theme) {
-  applyTheme(theme);
-  $('s-theme').value = theme;
+  const t = theme === 'paper' ? 'light' : theme;
+  applyTheme(t);
+  $('s-theme').value = t;
   const s = state.settings || {};
   api('/api/settings', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -788,7 +810,8 @@ function setTheme(theme) {
       api_key: s.api_key || '', base_url: s.base_url || '', model: s.model || '', vendor: s.vendor || 'ds',
       tts_provider: s.tts_provider || 'edge-tts', tts_voice_en: s.tts_voice_en || '美音·男', tts_voice_fr: s.tts_voice_fr || '女声',
       tts_rate: s.tts_rate || '0', tts_pitch: s.tts_pitch || '0', tts_volume: s.tts_volume || '100',
-      theme,
+      theme: t,
+      theme_page: (s.theme_page || 'normal'),
     }),
   }).then((r) => { state.settings = r; syncThemeButtons(); }).catch(() => {});
 }
@@ -814,8 +837,11 @@ $('btn-save-settings').addEventListener('click', async () => {
         tts_pitch: $('s-pitch').value,
         tts_volume: $('s-volume').value,
         theme: $('s-theme').value,
+        theme_page: $('page-paper').classList.contains('active') ? 'paper' : 'normal',
       }),
     });
+    applyTheme($('s-theme').value);
+    applyPageMode(state.settings.theme_page);
     $('settings-msg').innerHTML = '<p class="ok">设置已保存</p>';
   } catch (e) {
     $('settings-msg').innerHTML = `<p class="err">${e.message}</p>`;

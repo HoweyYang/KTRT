@@ -779,6 +779,7 @@ def _get_settings():
         'tts_pitch': db.get_setting('tts_pitch', '0'),
         'tts_volume': db.get_setting('tts_volume', '100'),
         'theme': db.get_setting('theme', 'dark-blue'),
+        'theme_page': db.get_setting('theme_page', 'normal'),
     }
 
 
@@ -794,6 +795,7 @@ class SettingsBody(BaseModel):
     tts_pitch: str = '0'
     tts_volume: str = '100'
     theme: str = 'dark-blue'
+    theme_page: str = 'normal'
 
 
 @app.get('/api/settings')
@@ -814,6 +816,7 @@ def save_settings(body: SettingsBody):
     db.set_setting('tts_pitch', body.tts_pitch.strip() or '0')
     db.set_setting('tts_volume', body.tts_volume.strip() or '100')
     db.set_setting('theme', body.theme.strip() or 'dark-blue')
+    db.set_setting('theme_page', body.theme_page.strip() or 'normal')
     return _get_settings()
 
 
