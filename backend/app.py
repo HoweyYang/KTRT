@@ -22,7 +22,7 @@ from backend import db, ai, tts, importer
 
 db.init_db()
 
-APP_VERSION = '0.1.4a'
+APP_VERSION = '0.1.5'
 GITHUB_REPO = 'HoweyYang/KTRT'
 FRONTEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'static')
 app = FastAPI(title='KillTimeRecitationTool')
