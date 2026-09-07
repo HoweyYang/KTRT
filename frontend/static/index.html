@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>KillTimeRecitationTool</title>
   <link rel="icon" href="/static/logo.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=20260907b">
+  <link rel="stylesheet" href="/static/style.css?v=20260908b">
   <script>try { if (localStorage.getItem('ktrt.side') === '1') document.documentElement.classList.add('side-collapsed'); } catch (e) {}</script>
 </head>
 <body>
@@ -18,6 +18,7 @@
       <button class="tab active" data-view="study"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>学词</span></button>
       <button class="tab" data-view="challenge"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg><span>杀词</span></button>
       <button class="tab" data-view="manage"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>管理</span></button>
+      <button class="tab" data-view="storm"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>风暴词卡</span></button>
       <button class="tab" data-view="import"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>导入</span></button>
       <button class="tab" data-view="settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg><span>设置</span></button>
       <button class="tab" data-view="guide"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>操作指南</span></button>
@@ -79,12 +80,14 @@
           <div id="cd-result" style="margin-top:12px;font-size:14px;line-height:1.7"></div>
         </div>
       </div>
+      <div id="storm-box" class="dict-box hidden"></div>
 
       <div class="actions">
         <button id="btn-prev" class="btn nav">← 上一个</button>
         <button id="btn-learn" class="btn primary">✔ 背（计入进度）</button>
         <button id="btn-unfamiliar" class="btn">不熟悉</button>
         <button id="btn-favorite" class="btn">☆ 收藏</button>
+        <button id="btn-storm-view" class="btn">⚡ 风暴</button>
         <button id="btn-next" class="btn nav">下一个 →</button>
       </div>
 
@@ -178,6 +181,26 @@
         <button id="btn-export-notes" class="btn">导出笔记</button>
         <span style="color:var(--muted);font-size:12px">先选范围，再选词书 / List</span>
       </div>      <div id="manage-list"></div>
+    </section>
+
+    <!-- ============ 风暴词卡 ============ -->
+    <section id="view-storm" class="view">
+      <div class="panel" style="max-width:860px">
+        <h2>风暴词卡</h2>
+        <p style="color:var(--muted);font-size:13px;line-height:1.7;margin:0 0 12px">输入单词，用“本地词库 + 免费开源在线词源（Wiktionary / Datamuse）+ AI”生成一张更全面的词卡；生成后离线也能看。词条独立于单词书，不覆盖离线释义。</p>
+        <div class="row">
+          <input id="storm-word" type="text" placeholder="输入英文单词，如：phenomenon" style="flex:1">
+          <button id="btn-storm-gen" class="btn primary">生成 / 更新风暴词卡</button>
+        </div>
+        <div id="storm-gen-msg" style="margin-top:10px;font-size:13px;line-height:1.7"></div>
+        <div class="row" style="margin-top:14px">
+          <span style="font-size:13px;color:var(--muted)">导出选中（不选则全部）：</span>
+          <button id="btn-storm-exp-md" class="btn">Markdown</button>
+          <button id="btn-storm-exp-xlsx" class="btn">Excel</button>
+        </div>
+        <div id="storm-list" style="margin-top:14px"></div>
+        <div id="storm-detail" class="storm-detail hidden"></div>
+      </div>
     </section>
 
     <!-- ============ 导入页 ============ -->
@@ -316,6 +339,6 @@
   <div id="toast" class="toast hidden"></div>
   <div id="note-context" class="hidden"></div>
   <div class="watermark" aria-hidden="true">Howey</div>
-  <script src="/static/app.js?v=20260908a"></script>
+  <script src="/static/app.js?v=20260908b"></script>
 </body>
 </html>
