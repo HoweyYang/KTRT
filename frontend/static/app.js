@@ -881,6 +881,8 @@ function renderStormList() {
     : state.storms;
   const checkAll = $('storm-check-all');
   if (checkAll) checkAll.checked = false;
+  const head = $('storm-list-head');
+  if (head) head.style.display = items.length ? 'grid' : 'none';
   if (!items.length) {
     el.innerHTML = '<p style="color:var(--muted);font-size:13px">'
       + (state.storms.length ? '没有匹配的风暴词卡。' : '还没有风暴词卡。输入一个单词点“生成”试试。')
