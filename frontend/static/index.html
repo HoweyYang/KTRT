@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>KillTimeRecitationTool</title>
   <link rel="icon" href="/static/logo.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=20260908f">
+  <link rel="stylesheet" href="/static/style.css?v=20260908g">
   <script>try { if (localStorage.getItem('ktrt.side') === '1') document.documentElement.classList.add('side-collapsed'); } catch (e) {}</script>
 </head>
 <body>
@@ -47,20 +47,6 @@
           <span id="progress-text"></span>
         </div>
         <span class="pos" id="pos-text"></span>
-      </div>
-
-      <div id="customdict-entry" class="customdict-entry">
-        <div id="custom-dict-box" class="dict-box hidden">
-          <div class="row">
-            <input id="cd-word" type="text" placeholder="输入英文单词，如：phenomenon" style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)">
-            <button id="btn-cd-lookup" class="btn primary">查询</button>
-          </div>
-          <div class="row" style="margin-top:8px">
-            <button id="btn-cd-online" class="btn">在线词源（免费开源）</button>
-            <label class="ai-switch"><input type="checkbox" id="cd-ai"> AI 整理词卡</label>
-          </div>
-          <div id="cd-result" style="margin-top:12px;font-size:14px;line-height:1.7"></div>
-        </div>
       </div>
 
       <div class="study-split">
@@ -155,7 +141,7 @@
     <!-- ============ 管理页 ============ -->
     <section id="view-manage" class="view">
       <div class="toolbar">
-        <input id="m-search" type="text" placeholder="搜索单词或音标…" style="min-width:220px">
+        <input id="m-search" type="text" placeholder="搜索单词 / 音标…" style="min-width:180px">
         <select id="m-filter">
           <option value="all">全部</option>
           <option value="unfamiliar">不熟悉</option>
@@ -165,45 +151,40 @@
           <option value="notes">有笔记</option>
         </select>
         <span class="spacer"></span>
-        <span>清空进度：</span>
-        <select id="clear-book"></select>
-        <select id="clear-list"></select>
-        <button id="btn-clear-list" class="btn danger">清空该 List 进度</button>
-        <button id="btn-clear-notes" class="btn danger">清空笔记</button>
-      </div>
-      <div class="toolbar">
-        <span>导出词汇：</span>
-        <button id="btn-export-unfamiliar" class="btn">不熟悉</button>
-        <button id="btn-export-favorite" class="btn">收藏</button>
-        <button id="btn-export-both" class="btn">一并</button>
+        <button id="btn-export-unfamiliar" class="btn" data-tip="导出范围：不熟悉。">不熟悉</button>
+        <button id="btn-export-favorite" class="btn" data-tip="导出范围：收藏。">收藏</button>
+        <button id="btn-export-both" class="btn" data-tip="导出范围：不熟悉 + 收藏。">一并</button>
         <select id="export-book"><option value="">全部词书</option></select>
         <select id="export-list"><option value="">全部 List</option></select>
-        <button id="btn-export-go" class="btn primary">导出</button>
-        <button id="btn-export-notes" class="btn">导出笔记</button>
-        <span style="color:var(--muted);font-size:12px">先选范围，再选词书 / List</span>
-      </div>      <div id="manage-list"></div>
+        <button id="btn-export-go" class="btn primary" data-tip="按当前范围与词书 / List 导出 Excel。">导出</button>
+        <button id="btn-export-notes" class="btn" data-tip="导出词条及其 Markdown 笔记。">导出笔记</button>
+      </div>
+      <div class="toolbar">
+        <span class="mini-label">清空</span>
+        <select id="clear-book"></select>
+        <select id="clear-list"></select>
+        <button id="btn-clear-list" class="btn danger">List 进度</button>
+        <button id="btn-clear-notes" class="btn danger">全部笔记</button>
+        <span class="mini-label">选定词书 / List 后生效</span>
+      </div>
+      <div id="manage-list"></div>
     </section>
 
     <!-- ============ 风暴词卡 ============ -->
     <section id="view-storm" class="view">
-      <div class="panel" style="max-width:860px">
+      <div class="panel storm-panel">
         <h2>风暴词卡</h2>
-        <p style="color:var(--muted);font-size:13px;line-height:1.7;margin:0 0 12px">输入单词，用“本地词库 + 免费开源在线词源（Wiktionary / Datamuse）+ AI”生成一张更全面的词卡；生成后离线也能看。词条独立于单词书，不覆盖离线释义。</p>
         <div class="row">
-          <input id="storm-word" type="text" placeholder="输入英文单词，如：phenomenon" style="flex:1">
-          <button id="btn-storm-gen" class="btn primary">生成 / 更新风暴词卡</button>
+          <input id="storm-word" type="text" placeholder="单词，如 phenomenon…" style="flex:1">
+          <button id="btn-storm-gen" class="btn primary">生成</button>
         </div>
-        <div id="storm-gen-msg" style="margin-top:10px;font-size:13px;line-height:1.7"></div>
-        <div class="row" style="margin-top:14px">
-          <span style="font-size:13px;color:var(--muted)">导出选中（不选则全部）：</span>
-          <button id="btn-storm-exp-md" class="btn">Markdown</button>
-          <button id="btn-storm-exp-xlsx" class="btn">Excel</button>
+        <div class="row" style="margin-top:8px">
+          <input id="storm-search" type="text" placeholder="搜索已生成词卡的单词…" style="flex:1">
+          <button id="btn-storm-exp-md" class="btn" data-tip="把勾选（或全部）风暴词卡导出为 Markdown。">导出 MD</button>
+          <button id="btn-storm-exp-xlsx" class="btn" data-tip="把勾选（或全部）风暴词卡导出为 Excel。">导出 Excel</button>
         </div>
-        <div class="row" style="margin-top:12px">
-          <input id="storm-search" type="text" placeholder="搜索已建风暴词卡的单词…" style="flex:1">
-        </div>
-        <div id="storm-list" style="margin-top:14px"></div>
-        <div id="storm-detail" class="storm-detail hidden"></div>
+        <div id="storm-gen-msg" style="margin-top:8px;font-size:13px;line-height:1.6"></div>
+        <div id="storm-list" style="margin-top:10px"></div>
       </div>
     </section>
 
@@ -211,11 +192,8 @@
     <section id="view-import" class="view">
       <div class="panel">
         <h2>导入单词书</h2>
-        <p>支持 Excel（【】格式）/ CSV / 纯文本；纯单词、法语等无表头文件按下方指定的语言和书名导入。格式细节见设置页「操作指南」。</p>
-        <label>单词书名（留空则用文件名）
-          <input id="import-bookname" type="text" placeholder="例如：法语A1词汇">
-        </label>
-        <label>语言（决定朗读语音）
+        <div class="row">
+          <input id="import-bookname" type="text" placeholder="词书名（留空用文件名）" style="flex:1">
           <select id="import-language">
             <option value="英语">英语</option>
             <option value="法语">法语</option>
@@ -223,9 +201,11 @@
             <option value="日语">日语</option>
             <option value="自定义">自定义</option>
           </select>
-        </label>
-        <input type="file" id="import-file" accept=".xlsx,.xls,.csv,.txt">
-        <button id="btn-import" class="btn primary">导入</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input type="file" id="import-file" accept=".xlsx,.xls,.csv,.txt" style="flex:1">
+          <button id="btn-import" class="btn primary">导入</button>
+        </div>
         <div id="import-result"></div>
         <div class="book-manage">
           <h3>已导入的单词书</h3>
@@ -350,8 +330,25 @@
       <div id="storm-modal-body"></div>
     </div>
   </div>
+  <div id="custom-modal" class="modal hidden">
+    <div class="modal-box slim">
+      <div class="modal-head">
+        <span>自定义查词典</span>
+        <button id="btn-custom-modal-close" class="btn" data-tip="关闭自定义查词典。">关闭</button>
+      </div>
+      <div class="row">
+        <input id="cd-word" type="text" placeholder="输入英文单词，如：phenomenon" style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)">
+        <button id="btn-cd-lookup" class="btn primary">查询</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="btn-cd-online" class="btn">在线词源</button>
+        <label class="ai-switch"><input type="checkbox" id="cd-ai"> AI 整理</label>
+      </div>
+      <div id="cd-result" style="margin-top:12px;font-size:14px;line-height:1.7"></div>
+    </div>
+  </div>
   <div id="note-context" class="hidden"></div>
   <div class="watermark" aria-hidden="true">Howey</div>
-  <script src="/static/app.js?v=20260908f"></script>
+  <script src="/static/app.js?v=20260908g"></script>
 </body>
 </html>
