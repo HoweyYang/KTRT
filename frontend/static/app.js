@@ -870,7 +870,7 @@ function renderStormList() {
   el.innerHTML = items.map((s) => `
     <div class="storm-item">
       <input type="checkbox" class="storm-check" value="${s.id}">
-      <span class="sw">${escapeHtml(s.word)}</span>
+      <span class="sw storm-word" data-open="${s.id}" data-tip="点击查看该词的风暴词卡全文（弹出覆盖层）。">${escapeHtml(s.word)}</span>
       <button class="btn" data-open="${s.id}" data-tip="展开该词的风暴词卡全文；生成后离线也可查看。">查看</button>
       <button class="btn danger" data-del="${s.id}" data-tip="删除这张风暴词卡；不影响任何单词书内容。">删除</button>
     </div>`).join('');

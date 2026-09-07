@@ -310,6 +310,8 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .modal-head span { font-weight: 800; font-size: 16px; }
 .storm-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: var(--card); }
 .storm-item .sw { font-weight: 700; flex: 1; }
+.storm-item .sw.storm-word { cursor: pointer; text-decoration: underline dotted rgba(128,128,128,.5); }
+.storm-item .sw.storm-word:hover { color: var(--accent); }
 .storm-item .meta { color: var(--muted); font-size: 12px; }
 .kttip { position: fixed; z-index: 1000; pointer-events: none; opacity: 0; transform: translateY(3px); transition: opacity .12s ease, transform .12s ease; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, .18); padding: 7px 10px; font-size: 12px; line-height: 1.55; max-width: 300px; }
 .kttip.show { opacity: 1; transform: translateY(0); }
