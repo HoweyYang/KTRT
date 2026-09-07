@@ -304,6 +304,10 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .storm-detail h3 { font-size: 16px; margin: 12px 0 4px; color: var(--accent); }
 .storm-detail ul { margin: 6px 0; padding-left: 20px; }
 .storm-detail blockquote { color: var(--muted); margin: 8px 0 0; }
+.modal { position: fixed; inset: 0; z-index: 900; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .45); }
+.modal-box { width: min(760px, calc(100vw - 48px)); max-height: min(84vh, 860px); overflow: auto; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 16px 48px rgba(0, 0, 0, .28); padding: 18px 20px; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.modal-head span { font-weight: 800; font-size: 16px; }
 .storm-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: var(--card); }
 .storm-item .sw { font-weight: 700; flex: 1; }
 .storm-item .meta { color: var(--muted); font-size: 12px; }

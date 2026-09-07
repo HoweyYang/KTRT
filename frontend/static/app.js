@@ -874,7 +874,7 @@ function renderStormList() {
       <button class="btn" data-open="${s.id}" data-tip="展开该词的风暴词卡全文；生成后离线也可查看。">查看</button>
       <button class="btn danger" data-del="${s.id}" data-tip="删除这张风暴词卡；不影响任何单词书内容。">删除</button>
     </div>`).join('');
-  el.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => openStorm(Number(b.dataset.open), 'storm-detail')));
+  el.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => openStorm(Number(b.dataset.open))));
   el.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
     if (!confirm('删除这张风暴词卡？')) return;
     await api('/api/storm/' + b.dataset.del, { method: 'DELETE' });
@@ -882,18 +882,25 @@ function renderStormList() {
   }));
 }
 
-async function openStorm(id, target) {
+async function openStorm(id) {
   try {
     const s = await api('/api/storm/' + id);
-    const el = $(target);
-    el.classList.remove('hidden');
-    el.innerHTML = `<button class="btn" style="float:right" onclick="document.getElementById('${target}').classList.add('hidden')">关闭</button>`
-      + `<div class="storm-detail">${renderStormHtml(s.markdown)}</div>`;
-    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    $('storm-modal-title').textContent = '风暴词卡 · ' + s.word;
+    $('storm-modal-body').innerHTML = `<div class="storm-detail">${renderStormHtml(s.markdown)}</div>`;
+    $('storm-modal').classList.remove('hidden');
   } catch (e) {
     toast(e.message);
   }
 }
+
+function closeStormModal() {
+  $('storm-modal').classList.add('hidden');
+}
+$('btn-storm-modal-close').addEventListener('click', closeStormModal);
+$('storm-modal').addEventListener('click', (e) => { if (e.target === $('storm-modal')) closeStormModal(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('storm-modal').classList.contains('hidden')) closeStormModal();
+});
 
 async function generateStorm(word, silent) {
   const btn = $('btn-storm-gen');
@@ -909,7 +916,7 @@ async function generateStorm(word, silent) {
       body: JSON.stringify({ word, language: bookLang() }),
     });
     await loadStorms();
-    openStorm(r.id, silent ? 'storm-box' : 'storm-detail');
+    openStorm(r.id);
     if (!silent) msg.innerHTML = '<span class="ok">已生成风暴词卡：' + escapeHtml(r.word) + '</span>';
   } catch (e) {
     if (!silent) msg.innerHTML = `<span class="err">${escapeHtml(e.message)}</span>`;
@@ -939,7 +946,7 @@ $('btn-storm-exp-xlsx').addEventListener('click', () => {
 $('btn-storm-view').addEventListener('click', async () => {
   const w = state.card.word.word;
   const s = state.storms.find((x) => x.word.toLowerCase() === w.toLowerCase());
-  if (s) { openStorm(s.id, 'storm-box'); return; }
+  if (s) { openStorm(s.id); return; }
   if (!confirm('该词还没有风暴词卡，立即生成？')) return;
   await generateStorm(w, true);
 });
