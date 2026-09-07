@@ -261,6 +261,8 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .word-head .icon-btn#btn-bookmark.active svg { fill: var(--accent); }
 .customdict-entry { margin-bottom: 16px; }
 .customdict-entry .dict-btn { margin-top: 0; }
+.ai-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; font-weight: 400; }
+.cd-sug { color: var(--accent); cursor: pointer; text-decoration: underline dotted; margin-right: 8px; }
 .fields { margin-top: 18px; display: grid; gap: 10px; }
 .field { display: grid; grid-template-columns: 74px 1fr auto; gap: 8px; align-items: start; }
 .field .label { font-weight: 700; color: var(--muted); font-size: 13px; padding-top: 2px; }
