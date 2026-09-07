@@ -50,18 +50,56 @@ function toast(msg) {
 
 /* ---------- 功能引导：悬停显示该按钮的作用与效果 ---------- */
 const FEATURE_HINTS = {
-  'btn-learn': '把当前词记为「已背」：本 List 进度 +1；再次点击可取消。',
-  'btn-unfamiliar': '标记 / 取消「不熟悉」：杀词答错也会自动标记；管理页可按此筛选、导出。',
-  'btn-favorite': '收藏 / 取消当前词（只是状态标记，不影响进度）；管理页可按收藏筛选、导出。',
-  'btn-bookmark': '在当前词的位置（书 + List + 序号）留书签；之后点顶部「书签▾」可一键跳回该处。',
-  'btn-prev': '上一个单词（键盘 ←）。',
-  'btn-next': '下一个单词（键盘 →）。',
-  'btn-word-tts': '朗读当前单词（按设置里的语音）。',
-  'btn-dict': '查当前词在本地 ECDICT 离线词典里的释义。',
-  'btn-custom-dict': '查任意词：离线释义 → 自动还原原形 → 拼写纠错 → 在线词源 / AI 整理；不在任何词书时可按原形加入「外部单词收藏册」。',
-  'btn-storm-view': '查看 / 生成该词的风暴词卡：词源、用法、释义、变形、派生词、同反近义、易混词（需要 AI 与联网）。',
-  'btn-make-sentence': '让 AI 用当前词造句并保存（每词最多 3 句，超出自动删最旧）。',
-  'btn-note-save': '保存当前单词的笔记（Markdown 所见即所得）。',
+  'book-select': '选择当前背诵的单词书。',
+  'list-select': '选择当前 List；切换后从该 List 第一个词开始。',
+  'bookmark-select': '跳转到已留书签的位置（可跨词书，选中即直达）。',
+  'btn-learn': '将当前词标记为「已背」并自动进入本 List 的下一个词，进度相应 +1；若当前词已背，点击则取消「已背」，不会自动跳转。',
+  'btn-unfamiliar': '切换当前词的「不熟悉」标记：标记后管理页可按此筛选或导出；杀词答题出错也会自动打上该标记。此标记与「已背」「收藏」相互独立。',
+  'btn-favorite': '切换当前词的「收藏」标记：仅作状态记录，不影响已背进度；管理页可按收藏筛选或导出。',
+  'btn-bookmark': '为当前词所在位置（词书 + List + 序号）创建书签；创建后可用顶部「书签▾」一键跳回，再点此图标则移除。',
+  'bookmark-select': '列出全部已建书签并直达对应词；若词书被改动导致位置失效，会提示并自动刷新列表。',
+  'btn-prev': '前往本 List 的上一个词；已在本 List 开头则停留（键盘 ←）。',
+  'btn-next': '前往本 List 的下一个词；已在本 List 末尾则停留（键盘 →）。',
+  'btn-word-tts': '按设置中的朗读方式与音色朗读当前单词：edge-tts 需联网，浏览器语音可离线。',
+  'btn-dict': '打开本地 ECDICT 词典，展示当前词释义与词形变化（离线可用）。',
+  'btn-cd-lookup': '查询输入词：依次做离线词典速查、变形还原为原形、所在词书与收藏判断；词典与词书都未命中时提供拼写建议。',
+  'btn-cd-online': '在线词源（免费开源）：从 Wiktionary / Datamuse 按原形抓取释义、相关词与形近词；纯查询，不调用 AI。',
+  'btn-custom-dict': '查询任意单词。流程：离线词典 → 变形还原原形 → 判断原形所在词书/收藏 → 拼写纠错；可按需使用在线词源或 AI 整理（AI 需配置 Key）。',
+  'btn-storm-view': '查看或生成当前词的风暴词卡（词源、用法、释义、变形、派生词、同反近义、易混词）；生成需调用 AI 并联网，若尚无词卡会先询问是否生成。',
+  'btn-make-sentence': '用当前词造句：先在输入框写一句中文提示词再点击；AI 返回英文句与中文翻译并高亮目标词，保存后进入造句收藏。每词最多 3 句，超出时自动删除最早一条。',
+  'btn-note-save': '把当前词笔记写入本地（所见即所得 Markdown）。切换单词前请先保存：未保存的编辑内容不会保留。',
+  'chg-mode-word': '记词闯关：以当前 List 为单元，把单词打乱后逐一做“词性释义四选一”。每局乱序；答错自动标为「不熟悉」并即时加入错题本；成绩只保留该 List 的历史最高正确数。',
+  'chg-mode-mistake': '错题闯关：从错题本出题，可多选 List 合并成一个题池；答对后由你决定「移出错题本」或保留，避免误清。',
+  'chg-book': '选择闯关所用的单词书。',
+  'chg-list': '选择以哪个 List 作为本局题源。',
+  'chg-mbook': '选择错题所属的单词书。',
+  'chg-start-word': '开始记词闯关（List 每局乱序）。',
+  'chg-start-mistake': '按已勾选的 List 开始错题闯关。',
+  'chg-exit': '退出闯关：本局进度不保留，但已加入错题本的词不受影响。',
+  'm-search': '在管理范围内检索单词或音标（不区分大小写、子串匹配）。',
+  'm-filter': '按状态筛选：全部 / 不熟悉 / 收藏 / 已背 / 有造句 / 有笔记。',
+  'clear-book': '选择要清空进度的单词书。',
+  'clear-list': '选择要清空进度的 List。',
+  'btn-clear-list': '清空该 List 的「已背」进度；收藏、造句、笔记不受影响（执行前建议先备份数据目录）。',
+  'btn-clear-notes': '删除选定范围内全部单词笔记，不可恢复，请谨慎使用。',
+  'btn-export-unfamiliar': '导出范围选择「不熟悉」词。',
+  'btn-export-favorite': '导出范围选择「收藏」词。',
+  'btn-export-both': '导出范围选择「不熟悉 + 收藏」（去重）。',
+  'export-book': '限定导出到某本词书（默认全部）。',
+  'export-list': '限定导出到某个 List（默认全部）。',
+  'btn-export-go': '按当前范围与过滤条件导出 Excel；每行是该词在词库里的完整字段，可直接再导入。',
+  'btn-export-notes': '导出所选范围内各词及其 Markdown 笔记（词与笔记循环排列）。',
+  'import-bookname': '自定义词书名；留空则使用文件名。',
+  'import-language': '声明词书语言，用于决定朗读音色与后续语言处理。',
+  'import-file': '选择词库文件：Excel（【】格式）/ CSV / 纯文本均可。',
+  'btn-import': '解析并导入所选文件；同词书重复导入会覆盖词条，但保留已背/收藏等个人状态。',
+  'btn-test-ai': '向当前配置的 AI 发送一条探针请求，验证 Key 与网络连通；不修改任何数据。',
+  'btn-save-settings': '保存本页全部设置（AI、语音、主题与页面质感）。',
+  'btn-check-patch': '读取 GitHub main 的最新提交，判断是否有小补丁。',
+  'btn-check-release': '读取 GitHub 最新正式 Release，判断是否有新版本。',
+  's-theme': '主题色：浅色 / 深色 / 深蓝。',
+  'page-normal': '页面质感：普通（素色、无纸纹）。',
+  'page-paper': '页面质感：纸质（暖纸配色、SVG 纸纹、衬线阅读字体）。',
   'theme-light': '配色：浅色。',
   'theme-dark': '配色：深色。',
   'theme-blue': '配色：深蓝 · 高对比（纸质页面质感在设置里选）。',
@@ -80,30 +118,6 @@ function initFeatureHints() {
   const tip = document.createElement('div');
   tip.className = 'kttip';
   document.body.appendChild(tip);
-  let timer = null;
-  function hide() { tip.classList.remove('show'); }
-  function bind(el) {
-    const text = el.getAttribute('data-tip');
-    if (!text) return;
-    el.removeAttribute('title');
-    el.addEventListener('mouseenter', () => {
-      clearTimeout(timer);
-      tip.textContent = text;
-      tip.classList.add('show');
-      requestAnimationFrame(() => {
-        const r = el.getBoundingClientRect();
-        const tw = tip.offsetWidth || 200;
-        const th = tip.offsetHeight || 40;
-        let x = Math.min(Math.max(8, r.left), window.innerWidth - tw - 8);
-        let y = r.bottom + 7;
-        if (y + th > window.innerHeight - 8) y = Math.max(8, r.top - th - 7);
-        tip.style.left = x + 'px';
-        tip.style.top = y + 'px';
-      });
-    });
-    el.addEventListener('mouseleave', () => { clearTimeout(timer); timer = setTimeout(hide, 120); });
-    el.addEventListener('click', hide);
-  }
   Object.entries(FEATURE_HINTS).forEach(([id, text]) => {
     const el = $(id);
     if (el) el.setAttribute('data-tip', text);
@@ -112,7 +126,42 @@ function initFeatureHints() {
     const t = VIEW_TIPS[b.dataset.view];
     if (t) b.setAttribute('data-tip', t);
   });
-  document.querySelectorAll('[data-tip]').forEach(bind);
+  const aiLabel = $('cd-ai') ? $('cd-ai').closest('label') : null;
+  if (aiLabel) aiLabel.setAttribute('data-tip', 'AI 整理开关：勾选后，“在线词源”会额外调用 AI 把原始资料整理成易读词卡；需要 API Key，不勾选则只做纯查询。');
+  document.querySelectorAll('[data-tip]').forEach((el) => el.removeAttribute('title'));
+  let current = null;
+  let timer = null;
+  function hide() { tip.classList.remove('show'); current = null; }
+  function show(el) {
+    const text = el.getAttribute('data-tip');
+    if (!text) return;
+    clearTimeout(timer);
+    current = el;
+    tip.textContent = text;
+    tip.classList.add('show');
+    requestAnimationFrame(() => {
+      const r = el.getBoundingClientRect();
+      const tw = tip.offsetWidth || 200;
+      const th = tip.offsetHeight || 40;
+      let x = Math.min(Math.max(8, r.left), window.innerWidth - tw - 8);
+      let y = r.bottom + 7;
+      if (y + th > window.innerHeight - 8) y = Math.max(8, r.top - th - 7);
+      tip.style.left = x + 'px';
+      tip.style.top = y + 'px';
+    });
+  }
+  document.addEventListener('mouseover', (e) => {
+    const t = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!t) return;
+    if (t === current) { clearTimeout(timer); return; }
+    show(t);
+  });
+  document.addEventListener('mouseout', (e) => {
+    if (!current) return;
+    const t = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (t === current) { clearTimeout(timer); timer = setTimeout(hide, 120); }
+  });
+  document.addEventListener('click', hide);
 }
 
 /* ---------- 侧栏收缩 ---------- */
@@ -818,14 +867,12 @@ function renderStormList() {
       + '</p>';
     return;
   }
-  el.innerHTML = `<p style="color:var(--muted);font-size:12px;margin:0 0 8px">共 ${items.length} 张（列表只显示词条，点「查看」展开风暴内容）</p>`
-    + items.map((s) => `
+  el.innerHTML = items.map((s) => `
     <div class="storm-item">
       <input type="checkbox" class="storm-check" value="${s.id}">
       <span class="sw">${escapeHtml(s.word)}</span>
-      <span class="meta">${escapeHtml(s.sources || '')} · ${escapeHtml((s.in_books || []).join('、') || '不在词书')} · ${escapeHtml((s.updated_at || '').slice(0, 16))}</span>
-      <button class="btn" data-open="${s.id}">查看</button>
-      <button class="btn danger" data-del="${s.id}">删除</button>
+      <button class="btn" data-open="${s.id}" data-tip="展开该词的风暴词卡全文；生成后离线也可查看。">查看</button>
+      <button class="btn danger" data-del="${s.id}" data-tip="删除这张风暴词卡；不影响任何单词书内容。">删除</button>
     </div>`).join('');
   el.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => openStorm(Number(b.dataset.open), 'storm-detail')));
   el.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
