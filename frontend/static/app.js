@@ -322,6 +322,7 @@ async function loadCard() {
     loadNote(state.card.word.id);
     $('sentence-prompt').value = '';
     $('dict-box').classList.add('hidden');
+    $('btn-dict').classList.remove('active');
   } catch (e) {
     toast(e.message);
   }
@@ -638,6 +639,13 @@ $('btn-make-sentence').addEventListener('click', async () => {
 /* ---------- 查词 ---------- */
 $('btn-dict').addEventListener('click', async () => {
   const box = $('dict-box');
+  const btn = $('btn-dict');
+  if (!box.classList.contains('hidden')) {
+    box.classList.add('hidden');
+    btn.classList.remove('active');
+    return;
+  }
+  btn.classList.add('active');
   box.classList.remove('hidden');
   box.textContent = '查询中…';
   try {
