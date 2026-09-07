@@ -334,9 +334,6 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .modal-head span { font-weight: 800; font-size: 16px; }
 .storm-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 5px; background: var(--card); }
 .storm-item .storm-check { justify-self: start; margin: 0; }
-.storm-list-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 4px 10px 2px; }
-.storm-check-all { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; }
-.storm-check-all input { width: 14px; height: 14px; margin: 0; accent-color: var(--accent); }
 .storm-item .sw { font-weight: 700; flex: 1; }
 .storm-item .sw { font-size: 14px; }
 .storm-item .btn { font-size: 12px; padding: 4px 9px; }
