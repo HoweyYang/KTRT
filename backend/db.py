@@ -106,6 +106,16 @@ def init_db():
                   created_at TEXT DEFAULT (datetime('now','localtime')),
                   UNIQUE(book_id, list_no, seq)
                 );
+                CREATE TABLE IF NOT EXISTS storm_entries(
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  word TEXT NOT NULL,
+                  language TEXT NOT NULL DEFAULT '英语',
+                  content TEXT NOT NULL,
+                  markdown TEXT NOT NULL DEFAULT '',
+                  sources TEXT NOT NULL DEFAULT '',
+                  updated_at TEXT DEFAULT (datetime('now','localtime')),
+                  UNIQUE(word, language)
+                );
                 """
             )
 

@@ -9,6 +9,7 @@ const state = {
   settings: null,
   presets: {},
   bookmarks: [],
+  storms: [],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -117,6 +118,7 @@ async function init() {
     refreshExportSelects();
     switchView(localStorage.getItem('activeView') || 'study');
     reloadBookmarks();
+    loadStorms();
     fitNoteHeight();
     if (window.ResizeObserver) new ResizeObserver(fitNoteHeight).observe(document.querySelector('.card'));
   } catch (e) {
@@ -697,6 +699,127 @@ $('btn-cd-online').addEventListener('click', async () => {
   }
 });
 $('cd-word').addEventListener('keydown', (e) => { if (e.key === 'Enter') cdLookup(); });
+
+/* ---------- 风暴词卡 ---------- */
+function renderStormHtml(md) {
+  const esc = escapeHtml(md || '');
+  let html = '';
+  let inList = false;
+  for (const raw of esc.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (/^# /.test(line)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<h2>' + line.replace(/^# /, '') + '</h2>';
+    } else if (/^## /.test(line)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<h3>' + line.replace(/^## /, '') + '</h3>';
+    } else if (/^###+ /.test(line)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<h3>' + line.replace(/^###+ /, '') + '</h3>';
+    } else if (/^- /.test(line)) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += '<li>' + line.slice(2) + '</li>';
+    } else if (/^> /.test(line)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<blockquote>' + line.slice(2) + '</blockquote>';
+    } else if (line === '') {
+      if (inList) { html += '</ul>'; inList = false; }
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<p>' + line + '</p>';
+    }
+  }
+  if (inList) html += '</ul>';
+  return html.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/==([^=\n]+)==/g, '<mark>$1</mark>');
+}
+
+async function loadStorms() {
+  try { state.storms = await api('/api/storm'); } catch (e) { state.storms = []; }
+  renderStormList();
+}
+
+function renderStormList() {
+  const el = $('storm-list');
+  if (!state.storms.length) {
+    el.innerHTML = '<p style="color:var(--muted);font-size:13px">还没有风暴词卡。输入一个单词点“生成”试试。</p>';
+    return;
+  }
+  el.innerHTML = state.storms.map((s) => `
+    <div class="storm-item">
+      <input type="checkbox" class="storm-check" value="${s.id}">
+      <span class="sw">${escapeHtml(s.word)}</span>
+      <span class="meta">${escapeHtml(s.sources || '')} · ${escapeHtml((s.in_books || []).join('、') || '不在词书')} · ${escapeHtml((s.updated_at || '').slice(0, 16))}</span>
+      <button class="btn" data-open="${s.id}">查看</button>
+      <button class="btn danger" data-del="${s.id}">删除</button>
+    </div>`).join('');
+  el.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => openStorm(Number(b.dataset.open), 'storm-detail')));
+  el.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
+    if (!confirm('删除这张风暴词卡？')) return;
+    await api('/api/storm/' + b.dataset.del, { method: 'DELETE' });
+    await loadStorms();
+  }));
+}
+
+async function openStorm(id, target) {
+  try {
+    const s = await api('/api/storm/' + id);
+    const el = $(target);
+    el.classList.remove('hidden');
+    el.innerHTML = `<button class="btn" style="float:right" onclick="document.getElementById('${target}').classList.add('hidden')">关闭</button>`
+      + `<div class="storm-detail">${renderStormHtml(s.markdown)}</div>`;
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function generateStorm(word, silent) {
+  const btn = $('btn-storm-gen');
+  const msg = $('storm-gen-msg');
+  if (!silent) {
+    btn.disabled = true;
+    btn.textContent = '生成中…';
+    msg.textContent = '正在检索本地词库 + 免费开源在线词源，并用 AI 整理（约需几秒）…';
+  }
+  try {
+    const r = await api('/api/storm/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word, language: bookLang() }),
+    });
+    await loadStorms();
+    openStorm(r.id, silent ? 'storm-box' : 'storm-detail');
+    if (!silent) msg.innerHTML = '<span class="ok">已生成风暴词卡：' + escapeHtml(r.word) + '</span>';
+  } catch (e) {
+    if (!silent) msg.innerHTML = `<span class="err">${escapeHtml(e.message)}</span>`;
+    toast(e.message);
+  } finally {
+    if (!silent) { btn.disabled = false; btn.textContent = '生成 / 更新风暴词卡'; }
+  }
+}
+
+function selectedStormIds() {
+  return [...document.querySelectorAll('.storm-check:checked')].map((x) => x.value).join(',');
+}
+
+$('btn-storm-gen').addEventListener('click', () => {
+  const w = $('storm-word').value.trim();
+  if (!w) { toast('请输入单词'); return; }
+  generateStorm(w, false);
+});
+$('storm-word').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-storm-gen').click(); });
+$('btn-storm-exp-md').addEventListener('click', () => {
+  window.location.href = '/api/storm/export?fmt=md&ids=' + encodeURIComponent(selectedStormIds());
+});
+$('btn-storm-exp-xlsx').addEventListener('click', () => {
+  window.location.href = '/api/storm/export?fmt=excel&ids=' + encodeURIComponent(selectedStormIds());
+});
+$('btn-storm-view').addEventListener('click', async () => {
+  const w = state.card.word.word;
+  const s = state.storms.find((x) => x.word.toLowerCase() === w.toLowerCase());
+  if (s) { openStorm(s.id, 'storm-box'); return; }
+  if (!confirm('该词还没有风暴词卡，立即生成？')) return;
+  await generateStorm(w, true);
+});
 
 /* ---------- 朗读 ---------- */
 function ttsClean(text) {
