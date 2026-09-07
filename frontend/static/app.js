@@ -871,6 +871,8 @@ function renderStormList() {
   const items = kw
     ? state.storms.filter((s) => s.word.toLowerCase().includes(kw) || (s.language || '').toLowerCase().includes(kw))
     : state.storms;
+  const checkAll = $('storm-check-all');
+  if (checkAll) checkAll.checked = false;
   if (!items.length) {
     el.innerHTML = '<p style="color:var(--muted);font-size:13px">'
       + (state.storms.length ? '没有匹配的风暴词卡。' : '还没有风暴词卡。输入一个单词点“生成”试试。')
@@ -954,6 +956,9 @@ $('btn-storm-exp-md').addEventListener('click', () => {
 });
 $('btn-storm-exp-xlsx').addEventListener('click', () => {
   window.location.href = '/api/storm/export?fmt=excel&ids=' + encodeURIComponent(selectedStormIds());
+});
+$('storm-check-all').addEventListener('change', (e) => {
+  document.querySelectorAll('.storm-check').forEach((c) => { c.checked = e.target.checked; });
 });
 $('btn-storm-view').addEventListener('click', async () => {
   const w = state.card.word.word;

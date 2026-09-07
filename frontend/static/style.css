@@ -221,6 +221,10 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 
 .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .mini-label { color: var(--muted); font-size: 12px; }
+.manage-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--th); margin-bottom: 8px; }
+.mg-label { color: var(--muted); font-weight: 700; font-size: 12px; min-width: 52px; }
+.manage-group select, .manage-group input { padding: 6px 8px; }
+.manage-group .btn { padding: 5px 10px; font-size: 13px; }
 .toolbar select, .toolbar input {
   padding: 8px 10px;
   border: 1px solid var(--line);
@@ -273,8 +277,8 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .card-actions .mini-btn#btn-unfamiliar.active svg { fill: color-mix(in srgb, var(--red) 14%, transparent); }
 .card-actions .mini-btn#btn-favorite.active-fav { color: var(--amber); border-color: var(--amber); }
 .card-actions .mini-btn#btn-favorite.active-fav svg { fill: var(--amber); }
-.card-actions .mini-btn#btn-storm-view.active { color: var(--amber); border-color: var(--amber); }
-.card-actions .mini-btn#btn-storm-view.active svg { fill: color-mix(in srgb, var(--amber) 28%, transparent); }
+.card-actions .mini-btn#btn-storm-view.active { color: #3b82f6; border-color: #3b82f6; }
+.card-actions .mini-btn#btn-storm-view.active svg { fill: color-mix(in srgb, #3b82f6 25%, transparent); }
 .ai-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; font-weight: 400; }
 .cd-sug { color: var(--accent); cursor: pointer; text-decoration: underline dotted; margin-right: 8px; }
 .fields { margin-top: 18px; display: grid; gap: 10px; }
@@ -326,7 +330,9 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .storm-panel .row input { padding: 7px 10px; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .modal-head span { font-weight: 800; font-size: 16px; }
-.storm-item { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 5px; background: var(--card); }
+.storm-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 5px; background: var(--card); }
+.storm-item .storm-check { justify-self: start; margin: 0; }
+.storm-check-all { white-space: nowrap; }
 .storm-item .sw { font-weight: 700; flex: 1; }
 .storm-item .sw { font-size: 14px; }
 .storm-item .btn { font-size: 12px; padding: 4px 9px; }
