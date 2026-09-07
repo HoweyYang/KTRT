@@ -8,6 +8,7 @@ const state = {
   card: null,
   settings: null,
   presets: {},
+  bookmarks: [],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -115,6 +116,7 @@ async function init() {
     syncThemeButtons();
     refreshExportSelects();
     switchView(localStorage.getItem('activeView') || 'study');
+    reloadBookmarks();
   } catch (e) {
     toast('初始化失败：' + e.message);
   }
@@ -167,6 +169,10 @@ async function refreshBooksUI() {
 
 async function loadLists() {
   const meta = await api(`/api/books/${state.bookId}/lists`);
+  return renderLists(meta);
+}
+
+async function renderLists(meta) {
   state.lists = meta;
   const sel = $('list-select');
   if (!meta.some((l) => l.list_no === state.listNo)) {
@@ -189,6 +195,7 @@ async function loadCard() {
   try {
     state.card = await api(`/api/card?book_id=${state.bookId}&list_no=${state.listNo}&seq=${state.seq}`);
     renderCard();
+    syncBookmarkButton();
     loadNote(state.card.word.id);
     $('sentence-prompt').value = '';
     $('dict-box').classList.add('hidden');
@@ -319,6 +326,102 @@ document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if (e.key === 'ArrowRight') go(1);
   if (e.key === 'ArrowLeft') go(-1);
+});
+
+/* ---------- 书签 ---------- */
+function currentBookmark() {
+  if (!state.card || !state.card.word) return null;
+  return state.bookmarks.find(
+    (b) => b.book_id === state.bookId && b.list_no === state.listNo && b.seq === state.seq,
+  ) || null;
+}
+
+function syncBookmarkButton() {
+  const btn = $('btn-bookmark');
+  const bm = currentBookmark();
+  btn.textContent = bm ? '★ 已留书签' : '☆ 书签';
+  btn.classList.toggle('active', !!bm);
+}
+
+function populateBookmarkSelect() {
+  const sel = $('bookmark-select');
+  const multiBook = new Set(state.bookmarks.map((b) => b.book_id)).size > 1;
+  sel.innerHTML = '<option value="">书签 ▾（' + state.bookmarks.length + '）</option>'
+    + state.bookmarks.map((b) => {
+      const head = multiBook ? b.book_name + ' · ' : '';
+      return `<option value="${b.id}">${escapeHtml(head + 'List ' + b.list_no + ' · ' + b.word + '（#' + b.seq + '）')}</option>`;
+    }).join('');
+}
+
+async function reloadBookmarks() {
+  try {
+    state.bookmarks = await api('/api/bookmarks');
+  } catch (e) {
+    state.bookmarks = [];
+  }
+  populateBookmarkSelect();
+  syncBookmarkButton();
+}
+
+async function jumpToBookmark(id) {
+  const bm = state.bookmarks.find((x) => x.id === id);
+  if (!bm) return;
+  const switchBook = bm.book_id !== state.bookId || !state.lists.length;
+  if (switchBook) saveStudyPos();
+  state.bookId = bm.book_id;
+  state.listNo = bm.list_no;
+  state.seq = bm.seq;
+  try {
+    if (switchBook) {
+      const meta = await api(`/api/books/${state.bookId}/lists`);
+      if (!meta.some((l) => l.list_no === state.listNo)) {
+        toast('书签位置已失效，已刷新书签列表');
+        await reloadBookmarks();
+        return;
+      }
+      await renderLists(meta);
+      $('book-select').value = String(state.bookId);
+    } else {
+      $('list-select').value = String(state.listNo);
+      await loadCard();
+    }
+    saveStudyPos();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+$('btn-bookmark').addEventListener('click', async () => {
+  const w = state.card && state.card.word;
+  if (!w) { toast('还没有单词'); return; }
+  const bm = currentBookmark();
+  try {
+    if (bm) {
+      await api('/api/bookmarks/' + bm.id, { method: 'DELETE' });
+      toast('已移除书签');
+    } else {
+      await api('/api/bookmarks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          book_id: state.bookId,
+          list_no: state.listNo,
+          seq: state.seq,
+          word: w.word,
+        }),
+      });
+      toast('已在此处留下书签');
+    }
+    await reloadBookmarks();
+  } catch (e) {
+    toast(e.message);
+  }
+});
+
+$('bookmark-select').addEventListener('change', () => {
+  const id = Number($('bookmark-select').value);
+  $('bookmark-select').value = '';
+  if (id) jumpToBookmark(id);
 });
 
 /* ---------- 造句 ---------- */
