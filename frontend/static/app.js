@@ -396,7 +396,6 @@ function renderStatus(s) {
   $('btn-learn').classList.toggle('active', !!s.learned);
   $('btn-unfamiliar').classList.toggle('active', !!s.unfamiliar);
   $('btn-favorite').classList.toggle('active-fav', !!s.favorite);
-  $('btn-learn').textContent = s.learned ? '✔ 已背' : '✔ 背（计入进度）';
 }
 
 function escapeHtml(s) {
