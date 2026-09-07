@@ -48,6 +48,73 @@ function toast(msg) {
   toast._t = setTimeout(() => el.classList.add('hidden'), 2600);
 }
 
+/* ---------- 功能引导：悬停显示该按钮的作用与效果 ---------- */
+const FEATURE_HINTS = {
+  'btn-learn': '把当前词记为「已背」：本 List 进度 +1；再次点击可取消。',
+  'btn-unfamiliar': '标记 / 取消「不熟悉」：杀词答错也会自动标记；管理页可按此筛选、导出。',
+  'btn-favorite': '收藏 / 取消当前词（只是状态标记，不影响进度）；管理页可按收藏筛选、导出。',
+  'btn-bookmark': '在当前词的位置（书 + List + 序号）留书签；之后点顶部「书签▾」可一键跳回该处。',
+  'btn-prev': '上一个单词（键盘 ←）。',
+  'btn-next': '下一个单词（键盘 →）。',
+  'btn-word-tts': '朗读当前单词（按设置里的语音）。',
+  'btn-dict': '查当前词在本地 ECDICT 离线词典里的释义。',
+  'btn-custom-dict': '查任意词：离线释义 → 自动还原原形 → 拼写纠错 → 在线词源 / AI 整理；不在任何词书时可按原形加入「外部单词收藏册」。',
+  'btn-storm-view': '查看 / 生成该词的风暴词卡：词源、用法、释义、变形、派生词、同反近义、易混词（需要 AI 与联网）。',
+  'btn-make-sentence': '让 AI 用当前词造句并保存（每词最多 3 句，超出自动删最旧）。',
+  'btn-note-save': '保存当前单词的笔记（Markdown 所见即所得）。',
+  'theme-light': '配色：浅色。',
+  'theme-dark': '配色：深色。',
+  'theme-blue': '配色：深蓝 · 高对比（纸质页面质感在设置里选）。',
+};
+
+function initFeatureHints() {
+  const VIEW_TIPS = {
+    study: '一页一词地背：进度、收藏、笔记、书签与风暴都在这页。',
+    challenge: '四选一闯关：记词闯关 & 错题闯关，答错自动进错题本。',
+    manage: '按 书 → List 管理进度 / 收藏 / 造句 / 笔记，可搜索、筛选、导出。',
+    storm: '浏览与生成「风暴词卡」，可搜索已建词卡的单词并导出。',
+    import: '导入新词书（Excel / CSV / 纯文本），也可删除词书。',
+    settings: '配置 AI Key / 厂商、语音、主题，以及检查软件更新。',
+    guide: '操作指南与文档。',
+  };
+  const tip = document.createElement('div');
+  tip.className = 'kttip';
+  document.body.appendChild(tip);
+  let timer = null;
+  function hide() { tip.classList.remove('show'); }
+  function bind(el) {
+    const text = el.getAttribute('data-tip');
+    if (!text) return;
+    el.removeAttribute('title');
+    el.addEventListener('mouseenter', () => {
+      clearTimeout(timer);
+      tip.textContent = text;
+      tip.classList.add('show');
+      requestAnimationFrame(() => {
+        const r = el.getBoundingClientRect();
+        const tw = tip.offsetWidth || 200;
+        const th = tip.offsetHeight || 40;
+        let x = Math.min(Math.max(8, r.left), window.innerWidth - tw - 8);
+        let y = r.bottom + 7;
+        if (y + th > window.innerHeight - 8) y = Math.max(8, r.top - th - 7);
+        tip.style.left = x + 'px';
+        tip.style.top = y + 'px';
+      });
+    });
+    el.addEventListener('mouseleave', () => { clearTimeout(timer); timer = setTimeout(hide, 120); });
+    el.addEventListener('click', hide);
+  }
+  Object.entries(FEATURE_HINTS).forEach(([id, text]) => {
+    const el = $(id);
+    if (el) el.setAttribute('data-tip', text);
+  });
+  document.querySelectorAll('.tab').forEach((b) => {
+    const t = VIEW_TIPS[b.dataset.view];
+    if (t) b.setAttribute('data-tip', t);
+  });
+  document.querySelectorAll('[data-tip]').forEach(bind);
+}
+
 /* ---------- 侧栏收缩 ---------- */
 (function initSidebar() {
   const root = document.documentElement;
@@ -119,6 +186,7 @@ async function init() {
     switchView(localStorage.getItem('activeView') || 'study');
     reloadBookmarks();
     loadStorms();
+    initFeatureHints();
     fitNoteHeight();
     if (window.ResizeObserver) new ResizeObserver(fitNoteHeight).observe(document.querySelector('.card'));
   } catch (e) {
@@ -740,11 +808,18 @@ async function loadStorms() {
 
 function renderStormList() {
   const el = $('storm-list');
-  if (!state.storms.length) {
-    el.innerHTML = '<p style="color:var(--muted);font-size:13px">还没有风暴词卡。输入一个单词点“生成”试试。</p>';
+  const kw = ($('storm-search').value || '').trim().toLowerCase();
+  const items = kw
+    ? state.storms.filter((s) => s.word.toLowerCase().includes(kw) || (s.language || '').toLowerCase().includes(kw))
+    : state.storms;
+  if (!items.length) {
+    el.innerHTML = '<p style="color:var(--muted);font-size:13px">'
+      + (state.storms.length ? '没有匹配的风暴词卡。' : '还没有风暴词卡。输入一个单词点“生成”试试。')
+      + '</p>';
     return;
   }
-  el.innerHTML = state.storms.map((s) => `
+  el.innerHTML = `<p style="color:var(--muted);font-size:12px;margin:0 0 8px">共 ${items.length} 张（列表只显示词条，点「查看」展开风暴内容）</p>`
+    + items.map((s) => `
     <div class="storm-item">
       <input type="checkbox" class="storm-check" value="${s.id}">
       <span class="sw">${escapeHtml(s.word)}</span>
@@ -807,6 +882,7 @@ $('btn-storm-gen').addEventListener('click', () => {
   generateStorm(w, false);
 });
 $('storm-word').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-storm-gen').click(); });
+$('storm-search').addEventListener('input', renderStormList);
 $('btn-storm-exp-md').addEventListener('click', () => {
   window.location.href = '/api/storm/export?fmt=md&ids=' + encodeURIComponent(selectedStormIds());
 });
