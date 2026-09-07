@@ -256,6 +256,11 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
   align-items: center;
   justify-content: center;
 }
+.word-head .icon-btn#btn-bookmark { padding: 5px 8px; }
+.word-head .icon-btn#btn-bookmark.active { color: var(--accent); border-color: var(--accent); }
+.word-head .icon-btn#btn-bookmark.active svg { fill: var(--accent); }
+.customdict-entry { margin-bottom: 16px; }
+.customdict-entry .dict-btn { margin-top: 0; }
 .fields { margin-top: 18px; display: grid; gap: 10px; }
 .field { display: grid; grid-template-columns: 74px 1fr auto; gap: 8px; align-items: start; }
 .field .label { font-weight: 700; color: var(--muted); font-size: 13px; padding-top: 2px; }
@@ -380,12 +385,13 @@ input[type="range"] { width: 100%; margin-top: 8px; }
   max-height: calc(100vh - 36px);
   overflow: auto;
   box-shadow: 0 2px 8px rgba(15, 23, 42, .04);
+  display: flex; flex-direction: column;
 }
 .note-cur-word { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 4px; }
 .notes-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .notes-head h3 { font-size: 16px; margin: 0; }
 .note-md {
-  width: 100%; min-height: 320px; padding: 12px 14px;
+  width: 100%; min-height: 180px; flex: 1 1 auto; padding: 12px 14px;
   border: 1px solid var(--line); border-radius: 10px;
   background: var(--card); color: var(--ink);
   font-size: 15px; line-height: 1.7; font-family: inherit;
