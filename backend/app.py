@@ -6,6 +6,7 @@ import sqlite3
 import sys
 import tempfile
 import urllib.request
+import urllib.parse
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 
@@ -660,12 +661,232 @@ class CustomDictBody(BaseModel):
     word: str = ''
 
 
+def _morph_candidates(w):
+    """规则兜底：由表面词形生成可能的原形候选（ECDICT 0: 覆盖不到时用）。"""
+    cands = []
+    n = len(w)
+    if w.endswith('ies') and n > 4:
+        cands += [w[:-3] + 'y', w[:-1]]
+    if w.endswith('es') and n > 3:
+        cands += [w[:-2], w[:-1]]
+    elif w.endswith('s') and not w.endswith('ss') and n > 2:
+        cands.append(w[:-1])
+    if w.endswith('ied') and n > 4:
+        cands += [w[:-3] + 'y', w[:-1]]
+    if w.endswith('ed') and n > 3:
+        cands += [w[:-2], w[:-1]]
+        if n > 4 and w[-3] == w[-4]:
+            cands.append(w[:-3])
+    if w.endswith('ing') and n > 4:
+        base = w[:-3]
+        cands += [base, base + 'e']
+        if len(base) >= 3 and base[-2] == base[-1] and base[-1] not in 'aeiou':
+            cands.append(base[:-1])
+    return [c for c in dict.fromkeys(cands) if c and re.match(r"^[a-z]+$", c)]
+
+
+def _canonical_word(raw):
+    """把搜索词归一到原形：先看已导入词书，再看 ECDICT 的 0: 原形字段与规则兜底。"""
+    raw = (raw or '').strip()
+    if not raw:
+        return raw
+    w = raw.lower()
+    with db.get_conn() as conn:
+        if conn.execute('SELECT 1 FROM words WHERE word=? COLLATE NOCASE LIMIT 1', (raw,)).fetchone():
+            return raw  # 输入本身就是词书里的词（大小写原样保留）
+    if not re.match(r"^[a-z][a-z\-']*$", w):
+        return raw
+    cands = []
+    if os.path.exists(db.DICT_DB_PATH):
+        try:
+            dconn = sqlite3.connect(db.DICT_DB_PATH)
+            row = dconn.execute('SELECT * FROM dict WHERE word=? COLLATE NOCASE', (w,)).fetchone()
+            if row:
+                for tok in (row[5] or '').split('/'):
+                    tok = tok.strip()
+                    if tok.startswith('0:'):
+                        lemma = tok[2:].strip()
+                        if lemma and lemma.lower() != w:
+                            cands.append(lemma)
+            for c in _morph_candidates(w):
+                if dconn.execute('SELECT 1 FROM dict WHERE word=? COLLATE NOCASE', (c,)).fetchone():
+                    cands.append(c)
+            dconn.close()
+        except Exception:
+            pass
+    seen = set()
+    with db.get_conn() as conn:
+        for c in cands:
+            key = c.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            if conn.execute('SELECT 1 FROM words WHERE word=? COLLATE NOCASE LIMIT 1', (c,)).fetchone():
+                return c  # 原形在词书里，直接命中
+    return cands[0] if cands else raw
+
+
+def _damerau(a, b):
+    """带换位的编辑距离（小写 ASCII 词足够快）。"""
+    n, m = len(a), len(b)
+    if abs(n - m) > 3:
+        return 99
+    d = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n + 1):
+        d[i][0] = i
+    for j in range(m + 1):
+        d[0][j] = j
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            cost = 0 if a[i - 1] == b[j - 1] else 1
+            d[i][j] = min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost)
+            if i > 1 and j > 1 and a[i - 1] == b[j - 2] and a[i - 2] == b[j - 1]:
+                d[i][j] = min(d[i][j], d[i - 2][j - 2] + 1)
+    return d[n][m]
+
+
+def _suggestions(word, limit=5):
+    """本地“你是不是想搜”：词书词全量 + 词典同长度/同首字母高频词，按编辑距离排序。"""
+    w = word.lower()
+    scored = []
+    seen = set()
+    with db.get_conn() as conn:
+        for r in conn.execute('SELECT DISTINCT lower(word) w FROM words WHERE word <> ? COLLATE NOCASE', (word,)):
+            c = r['w']
+            if c and c not in seen and abs(len(c) - len(w)) <= 2:
+                seen.add(c)
+                d = _damerau(w, c)
+                if d <= 2:
+                    scored.append((d - .5, c))  # 词书里的词优先
+    if os.path.exists(db.DICT_DB_PATH):
+        try:
+            dconn = sqlite3.connect(db.DICT_DB_PATH)
+            first = w[0] if w else 'a'
+            rows = dconn.execute(
+                'SELECT word, COALESCE(bnc,0) b FROM dict '
+                'WHERE word LIKE ? AND length(word) BETWEEN ? AND ? '
+                'ORDER BY b DESC LIMIT 2500',
+                (first + '%', len(w) - 1, len(w) + 1),
+            ).fetchall()
+            dconn.close()
+            for c, b in rows:
+                if c and c.lower() not in seen:
+                    d = _damerau(w, c)
+                    if d <= 2:
+                        seen.add(c.lower())
+                        scored.append((d - (b / 1000000.0), c))
+        except Exception:
+            pass
+    scored.sort(key=lambda x: x[0])
+    return [c for _, c in scored[:limit]]
+
+
+@app.post('/api/custom-dict/suggest')
+def custom_dict_suggest(body: CustomDictBody):
+    word = (body.word or '').strip()
+    if not word:
+        return {'suggestions': []}
+    return {'suggestions': _suggestions(word)}
+
+
+def _http_get_json(url):
+    req = urllib.request.Request(url, headers={'User-Agent': 'KTRT/0.1.6 (local dictionary tool)'})
+    with urllib.request.urlopen(req, timeout=8) as r:
+        return json.loads(r.read().decode('utf-8', 'replace'))
+
+
+@app.post('/api/custom-dict/online')
+def custom_dict_online(body: CustomDictBody):
+    """免费开源在线词源（Wiktionary 释义 + Datamuse 词汇关系），尽量按原形查询。"""
+    word = (body.word or '').strip()
+    if not word:
+        raise HTTPException(400, '请输入单词')
+    canonical = _canonical_word(word)
+    q = canonical or word
+    out = {'word': word, 'canonical': canonical if canonical.lower() != word.lower() else '',
+           'wiktionary': [], 'datamuse': {}, 'error': ''}
+    try:
+        wt = _http_get_json('https://en.wiktionary.org/api/rest_v1/page/definition/' + urllib.parse.quote(q))
+        groups = wt if isinstance(wt, dict) else {}
+        entries = groups.get('en') or groups.get('English') or []
+        if not isinstance(entries, list):
+            entries = []
+        for d in entries:
+                if isinstance(d, str):
+                    d = {'partOfSpeech': '', 'definitions': [d]}
+                pos = d.get('partOfSpeech', '')
+                defs = d.get('definitions', []) or []
+                if isinstance(defs, str):
+                    defs = [defs]
+                clean = []
+                for x in defs[:4]:
+                    txt = x if isinstance(x, str) else (x.get('definition') if isinstance(x, dict) else '')
+                    if txt:
+                        txt = re.sub(r'<[^>]+>', '', str(txt))
+                        txt = txt.replace('&amp;', '&').replace('&#39;', "'").replace('&quot;', '"')
+                        clean.append(txt.strip())
+                item = {'pos': pos, 'definitions': clean}
+                ex = (d.get('examples') or [])[:2]
+                if isinstance(ex, list):
+                    item['examples'] = [
+                        re.sub(r'<[^>]+>', '', e.get('text') if isinstance(e, dict) else str(e))
+                        for e in ex if e
+                    ]
+                if item['definitions']:
+                    out['wiktionary'].append(item)
+        if not out['wiktionary']:
+            out['error'] += 'Wiktionary 未收录；'
+    except Exception as e:
+        out['error'] += 'Wiktionary 获取失败：%s；' % e
+    try:
+        ml = _http_get_json('https://api.datamuse.com/words?ml=' + urllib.parse.quote(q) + '&max=10')
+        sl = _http_get_json('https://api.datamuse.com/words?sl=' + urllib.parse.quote(q) + '&max=8')
+        sp = _http_get_json('https://api.datamuse.com/words?sp=*' + urllib.parse.quote(q) + '*&max=8')
+        out['datamuse'] = {
+            'related': [x.get('word') for x in ml[:10] if x.get('word')],
+            'sounds_like': [x.get('word') for x in sl[:8] if x.get('word')],
+            'spelled_like': [x.get('word') for x in sp[:8] if x.get('word')],
+        }
+    except Exception as e:
+        out['error'] += 'Datamuse 获取失败：%s' % e
+    return out
+
+
+class EnhanceBody(BaseModel):
+    word: str = ''
+    offline: dict = {}
+    online: dict = {}
+
+
+@app.post('/api/custom-dict/enhance')
+def custom_dict_enhance(body: EnhanceBody):
+    """AI 整理：把离线/在线原始资料整理成易读词卡；只整理、不联网编造。"""
+    material = {
+        'word': body.word,
+        'offline': body.offline or {},
+        'online': body.online or {},
+    }
+    prompt = (
+        f'你是英语学习编辑。下面是单词「{body.word}」的原始资料（离线词典、Wiktionary、Datamuse）。\n'
+        f'原始资料：{json.dumps(material, ensure_ascii=False)[:3500]}\n\n'
+        '请把资料整理成一张简洁词卡，只依据资料内容，不要编造新义项或新词汇。格式如下：\n'
+        '【释义】词性+中文+英文简释（每条一行）\n【相关词】同类词/同音词等\n【备注】资料缺口或建议\n'
+        '如果某类资料为空就写“暂无”。'
+    )
+    try:
+        reply = ai.chat([{'role': 'user', 'content': prompt}], max_tokens=900, temperature=0.3)
+        return {'ok': True, 'text': reply.strip()}
+    except Exception as e:
+        return {'ok': False, 'error': 'AI 整理失败（需联网且已配置 API Key）：%s' % e}
+
+
 @app.post('/api/custom-dict/lookup')
 def custom_dict_lookup(body: CustomDictBody):
     """自定义查词典·速查：离线词典定义 + 词是否在已导入词书 + 是否已收藏。"""
     word = (body.word or '').strip()
     if not word:
         raise HTTPException(400, '请输入单词')
+    canonical = _canonical_word(word)
     dict_result = {'found': False, 'phonetic': '', 'translation': '', 'definition': '', 'exchange': ''}
     if os.path.exists(db.DICT_DB_PATH):
         try:
@@ -688,13 +909,14 @@ def custom_dict_lookup(body: CustomDictBody):
         for r in conn.execute(
                 'SELECT w.id, b.id book_id, b.name FROM words w '
                 'JOIN word_books b ON b.id=w.book_id WHERE w.word=? COLLATE NOCASE',
-                (word,)):
+                (canonical,)):
             st = conn.execute('SELECT favorite FROM word_status WHERE word_id=?', (r['id'],)).fetchone()
             if st and st['favorite']:
                 favorite = True
             in_books.append({'book_id': r['book_id'], 'book_name': r['name']})
     return {
         'word': word,
+        'canonical': canonical if canonical.lower() != word.lower() else '',
         'dict': dict_result,
         'in_books': in_books,
         'favorite': favorite,
@@ -708,14 +930,15 @@ def custom_dict_favorite(body: CustomDictBody):
     word = (body.word or '').strip()
     if not word:
         raise HTTPException(400, '请输入单词')
+    canonical = _canonical_word(word)
     with db._lock:
         with db.get_conn() as conn:
-            row = conn.execute('SELECT id FROM words WHERE word=? COLLATE NOCASE LIMIT 1', (word,)).fetchone()
+            row = conn.execute('SELECT id FROM words WHERE word=? COLLATE NOCASE LIMIT 1', (canonical,)).fetchone()
             if row is None:
                 raise HTTPException(404, '该词不在任何已导入单词书中，请先「添加」')
             conn.execute('INSERT OR IGNORE INTO word_status(word_id) VALUES(?)', (row['id'],))
             conn.execute('UPDATE word_status SET favorite=1 WHERE word_id=?', (row['id'],))
-    return {'ok': True}
+    return {'ok': True, 'canonical': canonical}
 
 
 @app.post('/api/custom-dict/add')
@@ -724,10 +947,12 @@ def custom_dict_add(body: CustomDictBody):
     word = (body.word or '').strip()
     if not word or not re.match(r"^[A-Za-z][A-Za-z\-']*$", word):
         raise HTTPException(400, '请输入合法的英文单词')
+    canonical = _canonical_word(word)
     with db.get_conn() as conn:
-        exists = conn.execute('SELECT 1 FROM words WHERE word=? COLLATE NOCASE LIMIT 1', (word,)).fetchone()
+        exists = conn.execute('SELECT 1 FROM words WHERE word=? COLLATE NOCASE LIMIT 1', (canonical,)).fetchone()
     if exists:
         raise HTTPException(400, '该词已在已导入单词书中，请改用「收藏」')
+    word = canonical
     prompt = (
         f'为英语单词「{word}」生成词条数据，只输出一个 JSON 对象，不要任何其他文字：'
         '{"phonetic": "国际音标", "meaning": "词性. 中文释义", '

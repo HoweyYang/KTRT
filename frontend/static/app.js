@@ -536,69 +536,166 @@ $('btn-custom-dict').addEventListener('click', () => {
   if (!box.classList.contains('hidden')) $('cd-word').focus();
 });
 
+let cdState = null;
+
+function cdWordForQuery() {
+  return (cdState && cdState.canonical) || (cdState && cdState.typed) || $('cd-word').value.trim();
+}
+
+function cdBasicHtml() {
+  const s = cdState;
+  const d = (s && s.dict) || {};
+  const typed = s ? s.typed : '';
+  let html = `<b>${escapeHtml(typed)}</b>`;
+  if (s && s.canonical) {
+    html += `<div style="color:var(--accent);font-size:13px;margin:2px 0">已自动匹配原形：<b>${escapeHtml(s.canonical)}</b></div>`;
+  }
+  if (d.found) {
+    html += d.phonetic ? ` [${escapeHtml(d.phonetic)}]` : '';
+    if (d.translation) html += `<br>释义：${escapeHtml(d.translation.replace(/;/g, '；'))}`;
+    if (d.definition) html += `<br>定义：${escapeHtml(d.definition)}`;
+    if (d.exchange) html += `<br>词形变化：${escapeHtml(d.exchange)}`;
+  } else {
+    html += '<br><span style="color:var(--muted)">离线词典未收录该拼写</span>';
+  }
+  return html;
+}
+
+function cdWireButtons() {
+  const favBtn = $('cd-fav');
+  if (favBtn) favBtn.addEventListener('click', async () => {
+    try {
+      await api('/api/custom-dict/favorite', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ word: cdWordForQuery() }),
+      });
+      toast('已收藏（按原形处理）');
+      cdState.fav = true;
+      await cdLookup();
+    } catch (e) {
+      toast(e.message);
+    }
+  });
+  const addBtn = $('cd-add');
+  if (addBtn) addBtn.addEventListener('click', async () => {
+    addBtn.disabled = true;
+    addBtn.textContent = '生成中…';
+    try {
+      await api('/api/custom-dict/add', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ word: cdWordForQuery() }),
+      });
+      toast('已按原形添加到「外部单词收藏册」');
+      $('cd-result').innerHTML = '<span class="ok">已按原形添加到「外部单词收藏册」，当前背诵进度不受影响；可在书单里随时切换到它。</span>';
+      await refreshBooksUI();
+    } catch (e) {
+      $('cd-result').innerHTML = `<span class="err">${e.message}</span>`;
+    } finally {
+      addBtn.disabled = false;
+      addBtn.textContent = '＋ 添加到外部单词收藏册';
+    }
+  });
+  document.querySelectorAll('.cd-sug').forEach((el) => el.addEventListener('click', () => {
+    $('cd-word').value = el.dataset.sug;
+    cdLookup();
+  }));
+}
+
 async function cdLookup() {
   const w = $('cd-word').value.trim();
   const out = $('cd-result');
   if (!w) { toast('请输入单词'); return; }
+  cdState = null;
   out.innerHTML = '<span style="color:var(--muted)">查询中…</span>';
   try {
     const r = await api('/api/custom-dict/lookup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ word: w }),
     });
-    const d = r.dict || {};
-    let html = `<b>${escapeHtml(r.word)}</b>`;
-    if (d.found) {
-      html += d.phonetic ? ` [${escapeHtml(d.phonetic)}]` : '';
-      if (d.translation) html += `<br>释义：${escapeHtml(d.translation.replace(/;/g, '；'))}`;
-      if (d.definition) html += `<br>定义：${escapeHtml(d.definition)}`;
-      if (d.exchange) html += `<br>词形变化：${escapeHtml(d.exchange)}`;
-    } else {
-      html += '<br><span style="color:var(--muted)">离线词典未收录（仍可尝试添加到外部单词收藏册）</span>';
-    }
-    const names = (r.in_books || []).map((b) => b.book_name).join('、');
+    cdState = { typed: r.word || w, canonical: r.canonical || '', dict: r.dict || {}, books: r.in_books || [], fav: r.favorite };
+    const names = cdState.books.map((b) => b.book_name).join('、');
+    let html = cdBasicHtml();
     if (names) {
-      html += `<br>所在词书：${escapeHtml(names)}`;
-      html += r.favorite
+      html += `<br>所在词书：${escapeHtml(names)}（按原形判定）`;
+      html += cdState.fav
         ? '<br><span class="ok">已收藏</span>'
         : '<br><button id="cd-fav" class="btn">☆ 收藏</button>';
     } else {
-      html += '<br><span style="color:var(--muted)">不在任何已导入词书中，可在线添加到「外部单词收藏册」</span>'
+      html += '<br><span style="color:var(--muted)">不在任何已导入词书中（会按原形添加到「外部单词收藏册」）</span>'
         + '<br><button id="cd-add" class="btn primary">＋ 添加到外部单词收藏册</button>';
     }
     out.innerHTML = html;
-    const favBtn = $('cd-fav');
-    if (favBtn) favBtn.addEventListener('click', async () => {
-      await api('/api/custom-dict/favorite', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ word: r.word }),
-      });
-      toast('已收藏');
-      cdLookup();
-    });
-    const addBtn = $('cd-add');
-    if (addBtn) addBtn.addEventListener('click', async () => {
-      addBtn.disabled = true;
-      addBtn.textContent = '生成中…';
+    cdWireButtons();
+    // 拼写纠错：词典与词书都没命中时给出建议
+    if (!cdState.dict.found && !names) {
       try {
-        await api('/api/custom-dict/add', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ word: r.word }),
+        const sug = await api('/api/custom-dict/suggest', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word: cdState.typed }),
         });
-        toast('已添加到「外部单词收藏册」');
-        out.innerHTML = '<span class="ok">已添加到「外部单词收藏册」，当前背诵进度不受影响；可在书单里随时切换到它。</span>';
-        await refreshBooksUI();
-      } catch (e) {
-        out.innerHTML = `<span class="err">${e.message}</span>`;
-      } finally {
-        addBtn.disabled = false;
-        addBtn.textContent = '＋ 添加到外部单词收藏册';
-      }
-    });
+        if (sug.suggestions && sug.suggestions.length) {
+          out.innerHTML += '<br><span style="color:var(--muted)">您是不是想搜：</span>'
+            + sug.suggestions.map((s) => `<span class="cd-sug" data-sug="${escapeAttr(s)}">${escapeHtml(s)}</span>`).join('');
+          cdWireButtons();
+        }
+      } catch (e) { /* 建议失败不影响主结果 */ }
+    }
   } catch (e) {
     out.innerHTML = `<span class="err">${e.message}</span>`;
   }
 }
+
 $('btn-cd-lookup').addEventListener('click', cdLookup);
+$('btn-cd-online').addEventListener('click', async () => {
+  const btn = $('btn-cd-online');
+  const out = $('cd-result');
+  if (!cdState) { toast('先查询一个单词'); return; }
+  btn.disabled = true;
+  btn.textContent = '获取中…';
+  try {
+    const onl = await api('/api/custom-dict/online', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word: cdWordForQuery() }),
+    });
+    cdState.online = onl;
+    let html = cdBasicHtml();
+    if (onl.wiktionary && onl.wiktionary.length) {
+      html += '<div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px"><b>在线释义 · Wiktionary（CC BY-SA）</b></div>';
+      onl.wiktionary.forEach((it) => {
+        html += `<div style="margin-top:5px">${escapeHtml(it.pos || '')}：${it.definitions.map((x) => escapeHtml(x)).join('；')}</div>`;
+      });
+    }
+    const dm = onl.datamuse || {};
+    if (dm.related && dm.related.length || dm.sounds_like && dm.sounds_like.length || dm.spelled_like && dm.spelled_like.length) {
+      html += '<div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px"><b>词汇关系 · Datamuse</b></div>';
+      if (dm.related && dm.related.length) html += `<br>相关：${dm.related.slice(0, 8).map((x) => escapeHtml(x)).join('、')}`;
+      if (dm.sounds_like && dm.sounds_like.length) html += `<br>同音/近音：${dm.sounds_like.slice(0, 6).map((x) => escapeHtml(x)).join('、')}`;
+      if (dm.spelled_like && dm.spelled_like.length) html += `<br>形似：${dm.spelled_like.slice(0, 6).map((x) => escapeHtml(x)).join('、')}`;
+    }
+    if (onl.error) html += `<div class="err" style="margin-top:6px">${escapeHtml(onl.error)}</div>`;
+    out.innerHTML = html;
+    cdWireButtons();
+    if ($('cd-ai').checked) {
+      out.innerHTML += '<div style="color:var(--muted)">AI 整理中…</div>';
+      try {
+        const en = await api('/api/custom-dict/enhance', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word: cdWordForQuery(), offline: cdState.dict, online: { wiktionary: onl.wiktionary, datamuse: onl.datamuse } }),
+        });
+        out.innerHTML += en.ok
+          ? `<div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px;white-space:pre-wrap">${escapeHtml(en.text)}</div>`
+          : `<div class="err" style="margin-top:6px">${escapeHtml(en.error || '')}</div>`;
+      } catch (e) {
+        out.innerHTML += `<div class="err" style="margin-top:6px">${escapeHtml(e.message)}</div>`;
+      }
+    }
+  } catch (e) {
+    out.innerHTML += `<div class="err" style="margin-top:6px">${escapeHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '在线词源（免费开源）';
+  }
+});
 $('cd-word').addEventListener('keydown', (e) => { if (e.key === 'Enter') cdLookup(); });
 
 /* ---------- 朗读 ---------- */
