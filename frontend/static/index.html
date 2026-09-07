@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>KillTimeRecitationTool</title>
   <link rel="icon" href="/static/logo.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=20260908h">
+  <link rel="stylesheet" href="/static/style.css?v=20260908i">
   <script>try { if (localStorage.getItem('ktrt.side') === '1') document.documentElement.classList.add('side-collapsed'); } catch (e) {}</script>
 </head>
 <body>
@@ -140,8 +140,9 @@
 
     <!-- ============ 管理页 ============ -->
     <section id="view-manage" class="view">
-      <div class="toolbar">
-        <input id="m-search" type="text" placeholder="搜索单词 / 音标…" style="min-width:180px">
+      <div class="manage-group">
+        <span class="mg-label">检索筛选</span>
+        <input id="m-search" type="text" placeholder="单词 / 音标…" style="min-width:170px">
         <select id="m-filter">
           <option value="all">全部</option>
           <option value="unfamiliar">不熟悉</option>
@@ -150,22 +151,23 @@
           <option value="sentences">有造句</option>
           <option value="notes">有笔记</option>
         </select>
-        <span class="spacer"></span>
-        <button id="btn-export-unfamiliar" class="btn" data-tip="导出范围：不熟悉。">不熟悉</button>
-        <button id="btn-export-favorite" class="btn" data-tip="导出范围：收藏。">收藏</button>
-        <button id="btn-export-both" class="btn" data-tip="导出范围：不熟悉 + 收藏。">一并</button>
+      </div>
+      <div class="manage-group">
+        <span class="mg-label">导出</span>
+        <button id="btn-export-unfamiliar" class="btn" data-tip="导出范围：不熟悉。">?</button>
+        <button id="btn-export-favorite" class="btn" data-tip="导出范围：收藏。">☆</button>
+        <button id="btn-export-both" class="btn" data-tip="导出范围：不熟悉 + 收藏。">?☆</button>
         <select id="export-book"><option value="">全部词书</option></select>
         <select id="export-list"><option value="">全部 List</option></select>
-        <button id="btn-export-go" class="btn primary" data-tip="按当前范围与词书 / List 导出 Excel。">导出</button>
-        <button id="btn-export-notes" class="btn" data-tip="导出词条及其 Markdown 笔记。">导出笔记</button>
+        <button id="btn-export-go" class="btn primary" data-tip="按当前范围与词书 / List 导出 Excel。">Excel</button>
+        <button id="btn-export-notes" class="btn" data-tip="导出词条及其 Markdown 笔记。">笔记</button>
       </div>
-      <div class="toolbar">
-        <span class="mini-label">清空</span>
+      <div class="manage-group">
+        <span class="mg-label">清空</span>
         <select id="clear-book"></select>
         <select id="clear-list"></select>
-        <button id="btn-clear-list" class="btn danger">List 进度</button>
-        <button id="btn-clear-notes" class="btn danger">全部笔记</button>
-        <span class="mini-label">选定词书 / List 后生效</span>
+        <button id="btn-clear-list" class="btn danger" data-tip="清空所选 List 的「已背」进度（收藏/造句/笔记保留）。"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
+        <button id="btn-clear-notes" class="btn danger" data-tip="删除所选范围内全部笔记（不可恢复）。"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></button>
       </div>
       <div id="manage-list"></div>
     </section>
@@ -179,6 +181,7 @@
           <button id="btn-storm-gen" class="btn primary">生成</button>
         </div>
         <div class="row" style="margin-top:8px">
+          <label class="ai-switch storm-check-all"><input type="checkbox" id="storm-check-all"> 全选</label>
           <input id="storm-search" type="text" placeholder="搜索已生成词卡的单词…" style="flex:1">
           <button id="btn-storm-exp-md" class="btn" data-tip="把勾选（或全部）风暴词卡导出为 Markdown。">导出 MD</button>
           <button id="btn-storm-exp-xlsx" class="btn" data-tip="把勾选（或全部）风暴词卡导出为 Excel。">导出 Excel</button>
@@ -193,17 +196,17 @@
       <div class="panel">
         <h2>导入单词书</h2>
         <div class="row">
-          <input id="import-bookname" type="text" placeholder="词书名（留空用文件名）" style="flex:1">
-          <select id="import-language">
+          <input id="import-bookname" type="text" placeholder="词书名（留空用文件名）" style="flex:1;min-width:260px">
+        </div>
+        <div class="row" style="margin-top:8px">
+          <select id="import-language" style="width:auto;padding:8px 10px">
             <option value="英语">英语</option>
             <option value="法语">法语</option>
             <option value="德语">德语</option>
             <option value="日语">日语</option>
             <option value="自定义">自定义</option>
           </select>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <input type="file" id="import-file" accept=".xlsx,.xls,.csv,.txt" style="flex:1">
+          <input type="file" id="import-file" accept=".xlsx,.xls,.csv,.txt" style="flex:1;padding:4px 0">
           <button id="btn-import" class="btn primary">导入</button>
         </div>
         <div id="import-result"></div>
@@ -349,6 +352,6 @@
   </div>
   <div id="note-context" class="hidden"></div>
   <div class="watermark" aria-hidden="true">Howey</div>
-  <script src="/static/app.js?v=20260908h"></script>
+  <script src="/static/app.js?v=20260908i"></script>
 </body>
 </html>
