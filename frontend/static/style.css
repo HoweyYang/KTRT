@@ -259,8 +259,17 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .word-head .icon-btn#btn-bookmark { padding: 5px 8px; }
 .word-head .icon-btn#btn-bookmark.active { color: var(--accent); border-color: var(--accent); }
 .word-head .icon-btn#btn-bookmark.active svg { fill: var(--accent); }
-.customdict-entry { margin-bottom: 16px; }
-.customdict-entry .dict-btn { margin-top: 0; }
+.customdict-entry { margin: 0; }
+.customdict-entry .dict-box { margin-top: 12px; }
+.card-nav-row { display: flex; align-items: center; gap: 8px; }
+.card-nav-row .card { flex: 1; min-width: 0; }
+.nav-arrow { width: 40px; height: 56px; flex-shrink: 0; border-radius: 12px; }
+.card-actions { display: flex; align-items: center; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.card-actions .mini-btn { padding: 6px 9px; }
+.card-actions .mini-btn.active { color: var(--green); border-color: var(--green); }
+.card-actions .mini-btn.active svg { fill: var(--green); }
+.card-actions .mini-btn.active-fav { color: var(--amber); border-color: var(--amber); }
+.card-actions .mini-btn.active-fav svg { fill: var(--amber); }
 .ai-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; font-weight: 400; }
 .cd-sug { color: var(--accent); cursor: pointer; text-decoration: underline dotted; margin-right: 8px; }
 .fields { margin-top: 18px; display: grid; gap: 10px; }
