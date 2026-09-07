@@ -317,6 +317,7 @@ async function loadCard() {
     state.card = await api(`/api/card?book_id=${state.bookId}&list_no=${state.listNo}&seq=${state.seq}`);
     renderCard();
     syncBookmarkButton();
+    syncStormIcon();
     requestAnimationFrame(fitNoteHeight);
     loadNote(state.card.word.id);
     $('sentence-prompt').value = '';
@@ -462,6 +463,13 @@ function syncBookmarkButton() {
   const bm = currentBookmark();
   btn.classList.toggle('active', !!bm);
   btn.title = bm ? '已在此位置留书签（点击移除）' : '书签：记住这个位置';
+}
+
+function syncStormIcon() {
+  const btn = $('btn-storm-view');
+  if (!btn || !state.card) return;
+  const w = state.card.word.word.toLowerCase();
+  btn.classList.toggle('active', state.storms.some((x) => x.word.toLowerCase() === w));
 }
 
 function fitNoteHeight() {
@@ -854,6 +862,7 @@ function renderStormHtml(md) {
 async function loadStorms() {
   try { state.storms = await api('/api/storm'); } catch (e) { state.storms = []; }
   renderStormList();
+  syncStormIcon();
 }
 
 function renderStormList() {
