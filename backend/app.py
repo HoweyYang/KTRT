@@ -308,6 +308,55 @@ def clear_notes(body: NotesClearBody):
     return {'ok': True, 'cleared': cur.rowcount}
 
 
+class BookmarkBody(BaseModel):
+    book_id: int
+    list_no: int
+    seq: int
+    word: str = ''
+
+
+@app.get('/api/bookmarks')
+def list_bookmarks():
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            'SELECT bm.id, bm.book_id, b.name AS book_name, bm.list_no, bm.seq, '
+            'bm.word, bm.created_at FROM bookmarks bm '
+            'JOIN word_books b ON b.id = bm.book_id '
+            'ORDER BY bm.book_id, bm.list_no, bm.seq'
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.post('/api/bookmarks')
+def add_bookmark(body: BookmarkBody):
+    with db._lock:
+        with db.get_conn() as conn:
+            row = conn.execute(
+                'SELECT word FROM words WHERE book_id=? AND list_no=? AND seq=?',
+                (body.book_id, body.list_no, body.seq),
+            ).fetchone()
+            if row is None:
+                raise HTTPException(404, '该位置已不存在，无法添加书签')
+            conn.execute(
+                'INSERT INTO bookmarks(book_id, list_no, seq, word) VALUES(?,?,?,?) '
+                'ON CONFLICT(book_id, list_no, seq) DO UPDATE SET word=excluded.word',
+                (body.book_id, body.list_no, body.seq, row['word']),
+            )
+            rec = conn.execute(
+                'SELECT id FROM bookmarks WHERE book_id=? AND list_no=? AND seq=?',
+                (body.book_id, body.list_no, body.seq),
+            ).fetchone()
+    return {'ok': True, 'id': rec['id']}
+
+
+@app.delete('/api/bookmarks/{bookmark_id}')
+def delete_bookmark(bookmark_id: int):
+    with db._lock:
+        with db.get_conn() as conn:
+            conn.execute('DELETE FROM bookmarks WHERE id=?', (bookmark_id,))
+    return {'ok': True}
+
+
 def _challenge_options(conn, book_id, word_ids):
     """给一组 word_id 生成四选一题目：1 正确 + 3 错误（错误项来自本书其他词的中文释义）。"""
     meanings = [r['meaning'] for r in conn.execute(

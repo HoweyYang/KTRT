@@ -97,6 +97,15 @@ def init_db():
                   created_at TEXT DEFAULT (datetime('now','localtime'))
                 );
                 CREATE INDEX IF NOT EXISTS idx_ref_phrase ON reference_phrases(phrase);
+                CREATE TABLE IF NOT EXISTS bookmarks(
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  book_id INTEGER NOT NULL REFERENCES word_books(id) ON DELETE CASCADE,
+                  list_no INTEGER NOT NULL,
+                  seq INTEGER NOT NULL,
+                  word TEXT NOT NULL,
+                  created_at TEXT DEFAULT (datetime('now','localtime')),
+                  UNIQUE(book_id, list_no, seq)
+                );
                 """
             )
 

@@ -39,6 +39,7 @@
       <div class="toolbar">
         <select id="book-select"></select>
         <select id="list-select"></select>
+        <select id="bookmark-select" title="跳转到已留书签的位置"><option value="">书签 ▾</option></select>
         <div class="progress-wrap">
           <div class="progress-bar"><div id="progress-fill"></div></div>
           <span id="progress-text"></span>
@@ -76,6 +77,7 @@
         <button id="btn-learn" class="btn primary">✔ 背（计入进度）</button>
         <button id="btn-unfamiliar" class="btn">不熟悉</button>
         <button id="btn-favorite" class="btn">☆ 收藏</button>
+        <button id="btn-bookmark" class="btn">☆ 书签</button>
         <button id="btn-next" class="btn nav">下一个 →</button>
       </div>
 
@@ -307,6 +309,6 @@
   <div id="toast" class="toast hidden"></div>
   <div id="note-context" class="hidden"></div>
   <div class="watermark" aria-hidden="true">Howey</div>
-  <script src="/static/app.js?v=20260905j"></script>
+  <script src="/static/app.js?v=20260907a"></script>
 </body>
 </html>
