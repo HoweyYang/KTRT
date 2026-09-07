@@ -649,10 +649,12 @@ $('btn-dict').addEventListener('click', async () => {
 
 /* ---------- 自定义查词典 ---------- */
 $('btn-custom-dict').addEventListener('click', () => {
-  const box = $('custom-dict-box');
-  box.classList.toggle('hidden');
-  if (!box.classList.contains('hidden')) $('cd-word').focus();
+  $('custom-modal').classList.remove('hidden');
+  requestAnimationFrame(() => $('cd-word').focus());
 });
+function closeCustomModal() { $('custom-modal').classList.add('hidden'); }
+$('btn-custom-modal-close').addEventListener('click', closeCustomModal);
+$('custom-modal').addEventListener('click', (e) => { if (e.target === $('custom-modal')) closeCustomModal(); });
 
 let cdState = null;
 
@@ -898,7 +900,9 @@ function closeStormModal() {
 $('btn-storm-modal-close').addEventListener('click', closeStormModal);
 $('storm-modal').addEventListener('click', (e) => { if (e.target === $('storm-modal')) closeStormModal(); });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !$('storm-modal').classList.contains('hidden')) closeStormModal();
+  if (e.key !== 'Escape') return;
+  if (!$('storm-modal').classList.contains('hidden')) closeStormModal();
+  if (!$('custom-modal').classList.contains('hidden')) closeCustomModal();
 });
 
 async function generateStorm(word, silent) {
