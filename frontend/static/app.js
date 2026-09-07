@@ -524,7 +524,7 @@ $('btn-dict').addEventListener('click', async () => {
       `${d.word}${d.phonetic ? ' [' + d.phonetic + ']' : ''}\n` +
       (d.translation ? `释义：${d.translation.replace(/;/g, '；')}` : '') +
       (d.definition ? `\n定义：${d.definition}` : '') +
-      (d.exchange ? `\n词形变化：${d.exchange}` : '')
+      (d.exchange_text || d.exchange ? `\n词形变化：${d.exchange_text || d.exchange}` : '')
     );
   } catch (e) {
     box.textContent = '查询失败：' + e.message;
@@ -554,9 +554,9 @@ function cdBasicHtml() {
   }
   if (d.found) {
     html += d.phonetic ? ` [${escapeHtml(d.phonetic)}]` : '';
-    if (d.translation) html += `<br>释义：${escapeHtml(d.translation.replace(/;/g, '；'))}`;
-    if (d.definition) html += `<br>定义：${escapeHtml(d.definition)}`;
-    if (d.exchange) html += `<br>词形变化：${escapeHtml(d.exchange)}`;
+    if (d.translation) html += `<br>释义：${escapeHtml(d.translation.replace(/;/g, '；').replace(/\n/g, '<br>'))}`;
+    if (d.definition) html += `<br>定义：${escapeHtml(d.definition.replace(/\n/g, '<br>'))}`;
+    if (d.exchange_text || d.exchange) html += `<br>词形变化：${escapeHtml(d.exchange_text || d.exchange)}`;
   } else {
     html += '<br><span style="color:var(--muted)">离线词典未收录该拼写</span>';
   }

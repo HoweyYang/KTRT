@@ -650,6 +650,7 @@ def lookup(word: str):
         'translation': row[3] or '',
         'pos': row[4] or '',
         'exchange': row[5] or '',
+        'exchange_text': _exchange_pretty(row[5] or ''),
         'collins': row[6] or '',
         'oxford': row[7] or '',
         'tag': row[8] or '',
@@ -725,6 +726,25 @@ def _canonical_word(raw):
             if conn.execute('SELECT 1 FROM words WHERE word=? COLLATE NOCASE LIMIT 1', (c,)).fetchone():
                 return c  # 原形在词书里，直接命中
     return cands[0] if cands else raw
+
+
+def _exchange_pretty(ex):
+    """把 ECDICT exchange 代码翻译成自然语言。"""
+    labels = {'p': '过去式', 'd': '过去分词', 'i': '现在分词', '3': '第三人称单数',
+              'r': '比较级', 't': '最高级', 's': '复数'}
+    parts = []
+    for tok in (ex or '').split('/'):
+        tok = tok.strip()
+        if ':' not in tok:
+            continue
+        k, _, v = tok.partition(':')
+        k = k.strip()
+        v = v.strip()
+        if k in labels and v:
+            parts.append(labels[k] + ' ' + v)
+        elif k == '0' and v:
+            parts.append('原形 ' + v)
+    return '；'.join(parts)
 
 
 def _damerau(a, b):
@@ -883,8 +903,9 @@ def custom_dict_enhance(body: EnhanceBody):
 
 def _storm_fetch_online(q):
     out = {'wiktionary': [], 'datamuse': {}, 'error': ''}
-    try:
-        wt = _http_get_json('https://en.wiktionary.org/api/rest_v1/page/definition/' + urllib.parse.quote(q))
+    def grab_wiktionary(cand):
+        got = []
+        wt = _http_get_json('https://en.wiktionary.org/api/rest_v1/page/definition/' + urllib.parse.quote(cand))
         groups = wt if isinstance(wt, dict) else {}
         entries = groups.get('en') or groups.get('English') or []
         if not isinstance(entries, list):
@@ -904,17 +925,27 @@ def _storm_fetch_online(q):
                     txt = txt.replace('&amp;', '&').replace('&#39;', "'").replace('&quot;', '"')
                     clean.append(txt.strip())
             if clean:
-                out['wiktionary'].append({'pos': pos, 'definitions': clean})
+                got.append({'pos': pos, 'definitions': clean})
+        return got
+    try:
+        cands = [q.capitalize(), q] if (q and q.islower()) else [q]
+        for cand in dict.fromkeys(cands):
+            got = grab_wiktionary(cand)
+            if got:
+                out['wiktionary'] = got
+                break
+        if not out['wiktionary']:
+            out['error'] += 'Wiktionary 未收录；'
     except Exception as e:
         out['error'] += 'Wiktionary 获取失败：%s；' % e
     try:
         ml = _http_get_json('https://api.datamuse.com/words?ml=' + urllib.parse.quote(q) + '&max=12')
-        sl = _http_get_json('https://api.datamuse.com/words?sl=' + urllib.parse.quote(q) + '&max=10')
-        sp = _http_get_json('https://api.datamuse.com/words?sp=*' + urllib.parse.quote(q) + '*&max=10')
+        sl = _http_get_json('https://api.datamuse.com/words?sl=' + urllib.parse.quote(q) + '&max=15')
+        sp = _http_get_json('https://api.datamuse.com/words?sp=*' + urllib.parse.quote(q) + '*&max=15')
         out['datamuse'] = {
             'related': [x.get('word') for x in ml[:12] if x.get('word')],
-            'sounds_like': [x.get('word') for x in sl[:10] if x.get('word')],
-            'spelled_like': [x.get('word') for x in sp[:10] if x.get('word')],
+            'sounds_like': [x.get('word') for x in sl[:15] if x.get('word')],
+            'spelled_like': [x.get('word') for x in sp[:15] if x.get('word')],
         }
     except Exception as e:
         out['error'] += 'Datamuse 获取失败：%s' % e
@@ -935,6 +966,7 @@ def _storm_raw_material(word, q):
                     'definition': row[2] or '',
                     'pos': row[4] or '',
                     'exchange': row[5] or '',
+                    'exchange_text': _exchange_pretty(row[5] or ''),
                     'oxford': row[7] or '',
                     'collins': row[6] or '',
                 }
@@ -952,9 +984,42 @@ def _storm_raw_material(word, q):
         'query': q,
         'ecdict': ecdict,
         'books': books,
+        'reference_phrases': _storm_reference_phrases(q),
         'online': _storm_fetch_online(q),
-        'confusable_candidates': _suggestions(word, 10),
+        'confusable_candidates': _suggestions(word, 20),
     }
+
+
+def _storm_reference_phrases(q):
+    """从本地动词短语素材里取与目标词相关的短语/介词搭配（用户上传的《动词短语词典》）。"""
+    try:
+        with db.get_conn() as conn:
+            rows = conn.execute(
+                'SELECT phrase, meaning, example FROM reference_phrases '
+                'WHERE phrase LIKE ? OR phrase LIKE ? OR phrase LIKE ? LIMIT 20',
+                (q + ' %', '% ' + q + ' %', '% ' + q),
+            ).fetchall()
+        return [{'phrase': r['phrase'], 'meaning': r['meaning'], 'example': r['example']} for r in rows]
+    except Exception:
+        return []
+
+
+def _storm_display_word(raw, q):
+    """取权威词形：优先词书/ECDICT 里的实际大小写（如 rome→Rome），用于展示与存储。"""
+    with db.get_conn() as conn:
+        row = conn.execute('SELECT word FROM words WHERE word=? COLLATE NOCASE LIMIT 1', (raw,)).fetchone()
+        if row and row['word']:
+            return row['word']
+    if os.path.exists(db.DICT_DB_PATH):
+        try:
+            dconn = sqlite3.connect(db.DICT_DB_PATH)
+            r = dconn.execute('SELECT word FROM dict WHERE word=? COLLATE NOCASE LIMIT 1', (q,)).fetchone()
+            dconn.close()
+            if r and r[0] and r[0].lower() == raw.lower():
+                return r[0]
+        except Exception:
+            pass
+    return raw
 
 
 def _storm_markdown(word, c):
@@ -962,6 +1027,14 @@ def _storm_markdown(word, c):
     if c.get('phonetic'):
         md.append('音标：' + c.get('phonetic'))
     md.append('')
+    if c.get('etymology'):
+        md.append('## 百科 · 词源')
+        md.append(c.get('etymology'))
+        md.append('')
+    if c.get('usage'):
+        md.append('## 使用场景')
+        md.append(c.get('usage'))
+        md.append('')
     senses = c.get('senses') or []
     if senses:
         md.append('## 释义')
@@ -978,8 +1051,13 @@ def _storm_markdown(word, c):
         md.append('')
     coll = c.get('collocations') or []
     if coll:
-        md.append('## 搭配与用法')
+        md.append('## 搭配')
         md += ['- ' + x for x in coll]
+        md.append('')
+    prep = c.get('prepositions') or []
+    if prep:
+        md.append('## 介词搭配（词性专属）')
+        md += ['- ' + x for x in prep]
         md.append('')
     phr = c.get('phrases') or []
     if phr:
@@ -991,16 +1069,16 @@ def _storm_markdown(word, c):
         md.append('## 俚语 / 习语')
         md += ['- ' + x for x in idiom]
         md.append('')
-    roots = c.get('root_words') or []
-    if roots:
-        md.append('## 同根词')
-        md.append('、'.join(roots))
+    family = c.get('word_family') or c.get('root_words') or []
+    if family:
+        md.append('## 衍生词（各类词性）')
+        md += ['- ' + x for x in family]
         md.append('')
-    for key, title in (('synonyms', '同义词'), ('antonyms', '反义词'), ('near_synonyms', '近义词')):
+    for key, title in (('synonyms', '同义词（含区别）'), ('antonyms', '反义词'), ('near_synonyms', '近义词（含区别）')):
         items = c.get(key) or []
         if items:
             md.append('## ' + title)
-            md.append('、'.join(items))
+            md += ['- ' + x for x in items]
             md.append('')
     conf = c.get('confusables') or []
     if conf:
@@ -1010,6 +1088,43 @@ def _storm_markdown(word, c):
     if c.get('sources'):
         md.append('> 来源：' + c.get('sources'))
     return '\n'.join(md).strip() + '\n'
+
+
+def _storm_list_str(items, drop_codes=False):
+    out = []
+    for x in items or []:
+        if isinstance(x, str):
+            s = x.strip()
+        elif isinstance(x, dict):
+            s = ' '.join(str(x.get(k, '')) for k in ('zh', 'en', 'word', 'definition', 'meaning', 'text') if x.get(k)).strip()
+        else:
+            continue
+        if not s:
+            continue
+        if drop_codes and re.match(r'^[0-9spdi3]+:', s):
+            continue
+        out.append(s)
+    return out
+
+
+def _storm_normalize(content):
+    """把 AI 可能返回的对象/字符串混杂结果规整成稳定的字符串列表，避免 markdown 拼接崩溃。"""
+    for k in ('forms', 'collocations', 'prepositions', 'phrases', 'idioms', 'word_family',
+              'synonyms', 'antonyms', 'near_synonyms', 'confusables'):
+        content[k] = _storm_list_str(content.get(k), drop_codes=(k == 'forms'))
+    senses = content.get('senses')
+    if not isinstance(senses, list):
+        senses = []
+    norm = []
+    for s in senses:
+        if isinstance(s, dict):
+            norm.append({'pos': str(s.get('pos', '') or '').strip(),
+                         'zh': str(s.get('zh', '') or '').strip(),
+                         'en': str(s.get('en', '') or '').strip()})
+        elif isinstance(s, str):
+            norm.append({'pos': '', 'zh': s.strip(), 'en': ''})
+    content['senses'] = norm
+    return content
 
 
 class StormGenBody(BaseModel):
@@ -1049,21 +1164,22 @@ def storm_export(fmt: str = 'md', ids: str = ''):
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = '风暴词卡'
-        cols = ['单词', '语言', '释义', '词形变化', '搭配', '短语', '俚语习语', '同根词', '同义词', '反义词', '近义词', '形似易混淆', '来源', '更新时间']
+        cols = ['单词', '语言', '词源百科', '使用场景', '释义', '词形变化', '搭配', '介词搭配', '短语', '俚语习语', '衍生词', '同义词', '反义词', '近义词', '形似易混淆', '来源', '更新时间']
         ws.append(cols)
         for r in rows:
             c = json.loads(r['content']) if r['content'] else {}
             senses = '；'.join(f"{s.get('pos','')} {s.get('zh','')}" for s in (c.get('senses') or []))
             ws.append([
-                r['word'], r['language'], senses,
+                r['word'], r['language'], c.get('etymology', ''), c.get('usage', ''), senses,
                 '；'.join(c.get('forms') or []),
                 '；'.join(c.get('collocations') or []),
+                '；'.join(c.get('prepositions') or []),
                 '；'.join(c.get('phrases') or []),
                 '；'.join(c.get('idioms') or []),
-                '、'.join(c.get('root_words') or []),
-                '、'.join(c.get('synonyms') or []),
-                '、'.join(c.get('antonyms') or []),
-                '、'.join(c.get('near_synonyms') or []),
+                '；'.join(c.get('word_family') or c.get('root_words') or []),
+                '；'.join(c.get('synonyms') or []),
+                '；'.join(c.get('antonyms') or []),
+                '；'.join(c.get('near_synonyms') or []),
                 '；'.join(c.get('confusables') or []),
                 r['sources'], r['updated_at'],
             ])
@@ -1101,30 +1217,62 @@ def get_storm(sid: int):
 
 @app.post('/api/storm/generate')
 def storm_generate(body: StormGenBody):
-    word = (body.word or '').strip()
-    if not word:
+    raw_word = (body.word or '').strip()
+    if not raw_word:
         raise HTTPException(400, '请输入单词')
     language = body.language.strip() or '英语'
-    q = _canonical_word(word)
+    q = _canonical_word(raw_word)
+    word = _storm_display_word(raw_word, q)
     raw = _storm_raw_material(word, q)
     prompt = (
-        f'你是英语词汇编辑。为单词「{word}」生成一张“风暴词卡”结构化 JSON。'
-        f'只依据下面原始资料，不要编造新义项或虚构词汇；缺项的字段用空数组。\n'
+        f'你是严谨的英语词典编辑。为单词「{word}」生成一张“风暴词卡”结构化 JSON。'
+        f'只依据下面原始资料，不要编造义项或词汇；缺失项用空数组或空字符串。\n'
+        f'专有名词要写规范大小写（如 rome 应输出 Rome）。\n'
         f'原始资料：{json.dumps(raw, ensure_ascii=False)[:4000]}\n\n'
-        '严格输出一个 JSON 对象，键如下：'
-        '{"phonetic":"音标或空","senses":[{"pos":"词性","zh":"中文释义","en":"英文简释"}],'
-        '"forms":["词形变化，如 复数/过去式/过去分词 等"],'
-        '"collocations":["英文搭配 中文"],"phrases":["英文短语 中文"],'
-        '"idioms":["英文习语 中文（无则空数组）"],"root_words":["同根词"],'
-        '"synonyms":["同义词"],"antonyms":["反义词"],"near_synonyms":["近义词"],'
-        '"confusables":["形似/易混淆词 + 一句区分提示"]}。'
+        '严格输出一个 JSON 对象，键与要求如下：\n'
+        '{"word":"规范大小写后的单词（如 rome→Rome、paris→Paris）",\n'
+        '"phonetic":"音标或空字符串",\n'
+        '"etymology":"词源与百科背景（1-3 句，中文，无资料则空字符串）",\n'
+        '"usage":"使用场景/语域/搭配语境（1-3 句，中文，无则空字符串）",\n'
+        '"senses":[{"pos":"词性","zh":"中文释义","en":"英文简释"}],\n'
+        '"forms":["词形变化，只写自然语言，如 过去式 abated、复数 phenomena；'
+        '绝对不要出现 0:/1:/s: 等原始词形代码"],\n'
+        '"collocations":["英文固定搭配 中文翻译"],\n'
+        '"prepositions":["该词性专属的介词/小品词搭配 中文翻译，如 abide by 遵守；无则空数组"],\n'
+        '"phrases":["普通短语 中文翻译（不要把习语放这里）"],\n'
+        '"idioms":["英文习语/俚语 中文翻译（只放真正的习语俚语，无则空数组）"],\n'
+        '"word_family":["衍生词 词性. 中文翻译（不同词性，如 Roman n./adj. 罗马人/罗马的）"],\n'
+        '"synonyms":["同义词 中文翻译；与靶词的语义区别（每词都写区别）"],\n'
+        '"antonyms":["反义词 中文翻译"],\n'
+        '"near_synonyms":["近义词 中文翻译；与靶词的语义区别（每词都写区别）"],\n'
+        '"confusables":["形似/易混淆词 中文翻译；一句最关键的区分提示"]}\n\n'
+        '分类规则：习语/俚语只能进 idioms；普通短语进 phrases；固定搭配进 collocations；'
+        '词性专属的介词/小品词搭配进 prepositions；不得互相重复或串类。\n'
+        'confusables 由你主动判断“该词需要多少个易混词”：'
+        '只保留真正容易混淆的（拼写/读音极近且都是高频常见词，或经典易混对），'
+        '普通一字之差但语义无关的词（如 come/home）一律省略；'
+        '判断依据是“这个词本身容不容易被拼错/混用”，不要按固定词类/类别套：'
+        '无论名词、动词、形容词、副词，还是地名、物品、现象、人物、活动等，'
+        '只要不易混就给 0-3 个最易错的即可；确实容易混就给足数量，不设上限；无则空数组。\n'
+        '所有同根/同义/反义/近义/衍生词都要给具体中文翻译，近义词和同义词务必写出语义区别。'
     )
-    try:
-        reply = ai.chat([{'role': 'user', 'content': prompt}], max_tokens=1800, temperature=0.3)
-        data = _extract_json(reply)
-    except Exception as e:
-        raise HTTPException(502, f'AI 生成失败（需联网且已配置 API Key）：{e}')
+    data = None
+    last_err = None
+    for _ in range(2):
+        try:
+            reply = ai.chat([{'role': 'user', 'content': prompt}], max_tokens=1800, temperature=0.3)
+            data = _extract_json(reply)
+            break
+        except Exception as e:
+            last_err = e
+            time.sleep(1.5)
+    if data is None:
+        raise HTTPException(502, f'AI 生成失败（需联网且已配置 API Key）：{last_err}')
+    canonical = str(data.get('word') or '').strip()
+    if canonical and re.match(r"^[A-Za-z][A-Za-z\-']*$", canonical):
+        word = canonical
     content = dict(data)
+    content = _storm_normalize(content)
     content['word'] = word
     content['query'] = q
     content['generated_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
@@ -1141,6 +1289,10 @@ def storm_generate(body: StormGenBody):
     markdown = _storm_markdown(word, content)
     with db._lock:
         with db.get_conn() as conn:
+            conn.execute(
+                'DELETE FROM storm_entries WHERE lower(word)=lower(?) AND word<>?',
+                (word, word),
+            )
             conn.execute(
                 'INSERT INTO storm_entries(word, language, content, markdown, sources, updated_at) '
                 'VALUES(?,?,?,?,?,datetime(\'now\',\'localtime\')) '
@@ -1180,6 +1332,7 @@ def custom_dict_lookup(body: CustomDictBody):
                     'translation': row[3] or '',
                     'definition': row[2] or '',
                     'exchange': row[5] or '',
+                    'exchange_text': _exchange_pretty(row[5] or ''),
                 }
         except Exception:
             pass
