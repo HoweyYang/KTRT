@@ -271,8 +271,8 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .nav-arrow { width: 40px; height: 56px; flex-shrink: 0; border-radius: 12px; }
 .card-actions { display: flex; align-items: center; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--line); }
 .card-actions .mini-btn { padding: 6px 9px; }
-.card-actions .mini-btn#btn-dict.active { color: var(--accent); border-color: var(--accent); }
-.card-actions .mini-btn#btn-dict.active svg { fill: color-mix(in srgb, var(--accent) 28%, transparent); }
+.card-actions .mini-btn#btn-dict.active { color: #a9b4c0; border-color: #a9b4c0; }
+.card-actions .mini-btn#btn-dict.active svg { fill: color-mix(in srgb, #a9b4c0 30%, transparent); }
 .card-actions .mini-btn#btn-learn.active { color: var(--green); border-color: var(--green); }
 .card-actions .mini-btn#btn-learn.active svg { fill: color-mix(in srgb, var(--green) 22%, transparent); }
 .card-actions .mini-btn#btn-unfamiliar.active { color: var(--red); border-color: var(--red); }
