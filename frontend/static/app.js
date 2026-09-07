@@ -117,6 +117,8 @@ async function init() {
     refreshExportSelects();
     switchView(localStorage.getItem('activeView') || 'study');
     reloadBookmarks();
+    fitNoteHeight();
+    if (window.ResizeObserver) new ResizeObserver(fitNoteHeight).observe(document.querySelector('.card'));
   } catch (e) {
     toast('初始化失败：' + e.message);
   }
@@ -196,6 +198,7 @@ async function loadCard() {
     state.card = await api(`/api/card?book_id=${state.bookId}&list_no=${state.listNo}&seq=${state.seq}`);
     renderCard();
     syncBookmarkButton();
+    requestAnimationFrame(fitNoteHeight);
     loadNote(state.card.word.id);
     $('sentence-prompt').value = '';
     $('dict-box').classList.add('hidden');
@@ -339,8 +342,20 @@ function currentBookmark() {
 function syncBookmarkButton() {
   const btn = $('btn-bookmark');
   const bm = currentBookmark();
-  btn.textContent = bm ? '★ 已留书签' : '☆ 书签';
   btn.classList.toggle('active', !!bm);
+  btn.title = bm ? '已在此位置留书签（点击移除）' : '书签：记住这个位置';
+}
+
+function fitNoteHeight() {
+  const card = document.querySelector('.card');
+  const notes = document.querySelector('.note-panel .notes');
+  if (!card || !notes) return;
+  const split = document.querySelector('.study-split');
+  if (split && getComputedStyle(split).flexDirection !== 'row') {
+    notes.style.height = '';
+    return;
+  }
+  notes.style.height = Math.max(card.offsetHeight, 320) + 'px';
 }
 
 function populateBookmarkSelect() {
