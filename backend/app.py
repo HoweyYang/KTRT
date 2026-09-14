@@ -702,6 +702,8 @@ def _canonical_word(raw):
     raw = (raw or '').strip()
     if not raw:
         return raw
+    if ' ' in raw:
+        return raw  # 多词短语不做单词变形归一
     w = raw.lower()
     with db.get_conn() as conn:
         if conn.execute('SELECT 1 FROM words WHERE word=? COLLATE NOCASE LIMIT 1', (raw,)).fetchone():
@@ -755,6 +757,43 @@ def _exchange_pretty(ex):
         elif k == '0' and v:
             parts.append('原形 ' + v)
     return '；'.join(parts)
+
+
+def _is_phrase(s):
+    return ' ' in (s or '').strip()
+
+
+def _split_phrase(word):
+    toks = [t.strip(".,;:!?\"'") for t in (word or '').split()]
+    return [t for t in toks if re.match(r"^[A-Za-z][A-Za-z\-']*$", t)]
+
+
+def _phrase_components(word):
+    """把短语拆成组成词，逐个取离线释义与所在词书，供前端展示 / AI 翻译。"""
+    out = []
+    dconn = None
+    if os.path.exists(db.DICT_DB_PATH):
+        dconn = sqlite3.connect(db.DICT_DB_PATH)
+    for tok in _split_phrase(word)[:8]:
+        row = None
+        if dconn is not None:
+            try:
+                row = dconn.execute('SELECT word, phonetic, translation FROM dict WHERE word=? COLLATE NOCASE', (tok.lower(),)).fetchone()
+            except Exception:
+                row = None
+        with db.get_conn() as conn:
+            books = [r['name'] for r in conn.execute(
+                'SELECT DISTINCT b.name FROM words w JOIN word_books b ON b.id=w.book_id '
+                'WHERE w.word=? COLLATE NOCASE', (tok,))]
+        out.append({
+            'word': (row[0] if row else tok),
+            'phonetic': (row[1] or '') if row else '',
+            'translation': ((row[2] or '').replace('\n', '；') if row else ''),
+            'in_books': books,
+        })
+    if dconn is not None:
+        dconn.close()
+    return out
 
 
 def _damerau(a, b):
@@ -815,7 +854,7 @@ def _suggestions(word, limit=5):
 @app.post('/api/custom-dict/suggest')
 def custom_dict_suggest(body: CustomDictBody):
     word = (body.word or '').strip()
-    if not word:
+    if not word or _is_phrase(word):
         return {'suggestions': []}
     return {'suggestions': _suggestions(word)}
 
@@ -891,18 +930,24 @@ class EnhanceBody(BaseModel):
 
 @app.post('/api/custom-dict/enhance')
 def custom_dict_enhance(body: EnhanceBody):
-    """AI 整理：把离线/在线原始资料整理成易读词卡；只整理、不联网编造。"""
+    """AI 整理 / 翻译：资料足够时整理排版，资料不足（尤其短语）时用 AI 翻译能力补齐。"""
+    word = (body.word or '').strip()
     material = {
-        'word': body.word,
+        'word': word,
         'offline': body.offline or {},
         'online': body.online or {},
     }
+    if _is_phrase(word):
+        material['components'] = _phrase_components(word)
     prompt = (
-        f'你是英语学习编辑。下面是单词「{body.word}」的原始资料（离线词典、Wiktionary、Datamuse）。\n'
+        f'你是英语词典编辑兼翻译。目标词条：「{word}」（可能是单词，也可能是短语）。\n'
         f'原始资料：{json.dumps(material, ensure_ascii=False)[:3500]}\n\n'
-        '请把资料整理成一张简洁词卡，只依据资料内容，不要编造新义项或新词汇。格式如下：\n'
-        '【释义】词性+中文+英文简释（每条一行）\n【相关词】同类词/同音词等\n【备注】资料缺口或建议\n'
-        '如果某类资料为空就写“暂无”。'
+        '要求：\n'
+        '1. 资料足够时，整理成简洁词卡；资料不足（尤其是短语）时，不要回避：'
+        '直接用你的翻译能力给出准确、自然的中文翻译，并标注“AI 翻译”。\n'
+        '2. 短语要拆解组成词的含义，说明整体含义、常见用法与语域；可给 1-2 个英文例句及中文翻译。\n'
+        '3. 不要编造典故、出处或不存在的事实；不确定的地方标注“不确定”。\n'
+        '格式：【释义】/【组成词】/【用法】/【例句】/【备注】，每节一行一条。'
     )
     try:
         reply = ai.chat([{'role': 'user', 'content': prompt}], max_tokens=900, temperature=0.3)
@@ -944,6 +989,11 @@ def _storm_fetch_online(q):
             if got:
                 out['wiktionary'] = got
                 break
+        if not out['wiktionary'] and _is_phrase(q):
+            for tok in _split_phrase(q)[:4]:
+                for g in grab_wiktionary(tok):
+                    g['pos'] = '[' + tok + '] ' + (g.get('pos') or '')
+                    out['wiktionary'].append(g)
         if not out['wiktionary']:
             out['error'] += 'Wiktionary 未收录；'
     except Exception as e:
@@ -1357,9 +1407,12 @@ def custom_dict_lookup(body: CustomDictBody):
             if st and st['favorite']:
                 favorite = True
             in_books.append({'book_id': r['book_id'], 'book_name': r['name']})
+    components = _phrase_components(word) if _is_phrase(word) else []
     return {
         'word': word,
         'canonical': canonical if canonical.lower() != word.lower() else '',
+        'is_phrase': _is_phrase(word),
+        'components': components,
         'dict': dict_result,
         'in_books': in_books,
         'favorite': favorite,
@@ -1388,24 +1441,46 @@ def custom_dict_favorite(body: CustomDictBody):
 def custom_dict_add(body: CustomDictBody):
     """自定义查词典·添加：词不在任何已导入词书时，AI 生成词条入默认书。"""
     word = (body.word or '').strip()
-    if not word or not re.match(r"^[A-Za-z][A-Za-z\-']*$", word):
-        raise HTTPException(400, '请输入合法的英文单词')
-    canonical = _canonical_word(word)
+    phrase = _is_phrase(word)
+    if not word or len(word) > 80:
+        raise HTTPException(400, '请输入单词或短语')
+    if phrase:
+        if len(_split_phrase(word)) > 6 or not re.match(r"^[A-Za-z][A-Za-z\-' ]*$", word):
+            raise HTTPException(400, '短语格式不支持：最多 6 个英文单词')
+        canonical = word
+    else:
+        if not re.match(r"^[A-Za-z][A-Za-z\-']*$", word):
+            raise HTTPException(400, '请输入合法的英文单词')
+        canonical = _canonical_word(word)
     with db.get_conn() as conn:
         exists = conn.execute('SELECT 1 FROM words WHERE word=? COLLATE NOCASE LIMIT 1', (canonical,)).fetchone()
     if exists:
         raise HTTPException(400, '该词已在已导入单词书中，请改用「收藏」')
     word = canonical
-    prompt = (
-        f'为英语单词「{word}」生成词条数据，只输出一个 JSON 对象，不要任何其他文字：'
-        '{"phonetic": "国际音标", "meaning": "词性. 中文释义", '
-        '"collocations": "两个常见搭配（英文短语，用分号分隔）", '
-        '"phrases": "两个常见短语（英文短语，用分号分隔）", '
-        '"synonyms": "2-3 个同义词（英文，用分号分隔）", '
-        '"antonyms": "1-2 个反义词（英文，用分号分隔）", '
-        '"root_words": "2-3 个同根词（英文，用分号分隔）"}。'
-        '要求：字段齐全、内容真实准确、不要编造。'
-    )
+    if phrase:
+        comps = '；'.join(f"{c['word']} {c['translation'] or '（本地未收录）'}" for c in _phrase_components(word))
+        prompt = (
+            f'为英语短语「{word}」生成词条数据，只输出一个 JSON 对象，不要任何其他文字：'
+            '{"phonetic": "", "meaning": "短语整体中文翻译（可含 1-3 个义项，用分号分隔）", '
+            '"collocations": "该短语的常见搭配/使用说明（中文，用分号分隔）", '
+            '"phrases": "2 个英文例句 + 中文翻译（用分号分隔）", '
+            '"synonyms": "近义表达（英文 + 中文，用分号分隔）", '
+            '"antonyms": "反义表达（无则空字符串）", '
+            '"root_words": "组成词拆解（如 official 官方的；transcript 成绩单/文字记录）"}。'
+            f'参考组成词释义：{comps}。'
+            '要求：作为翻译准确自然，不编造典故或出处。'
+        )
+    else:
+        prompt = (
+            f'为英语单词「{word}」生成词条数据，只输出一个 JSON 对象，不要任何其他文字：'
+            '{"phonetic": "国际音标", "meaning": "词性. 中文释义", '
+            '"collocations": "两个常见搭配（英文短语，用分号分隔）", '
+            '"phrases": "两个常见短语（英文短语，用分号分隔）", '
+            '"synonyms": "2-3 个同义词（英文，用分号分隔）", '
+            '"antonyms": "1-2 个反义词（英文，用分号分隔）", '
+            '"root_words": "2-3 个同根词（英文，用分号分隔）"}。'
+            '要求：字段齐全、内容真实准确、不要编造。'
+        )
     try:
         raw = ai.chat([{'role': 'user', 'content': prompt}], max_tokens=800, temperature=0.3)
         data = _extract_json(raw)
@@ -1441,7 +1516,7 @@ def custom_dict_add(body: CustomDictBody):
                 (book_id, list_no, seq, word, phon, meaning, colloc, phras, syns, ants, roots),
             )
             conn.execute('INSERT OR IGNORE INTO word_status(word_id) VALUES(?)', (cur.lastrowid,))
-    return {'ok': True, 'book_name': '外部单词收藏册', 'list_no': list_no, 'seq': seq}
+    return {'ok': True, 'word': word, 'is_phrase': phrase, 'book_name': '外部单词收藏册', 'list_no': list_no, 'seq': seq}
 
 
 @app.get('/api/references')

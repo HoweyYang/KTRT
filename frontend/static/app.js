@@ -714,21 +714,23 @@ function cdWireButtons() {
   });
   const addBtn = $('cd-add');
   if (addBtn) addBtn.addEventListener('click', async () => {
+    const phrase = !!(cdState && cdState.isPhrase);
+    const idleLabel = phrase ? '＋ AI 翻译并加入收藏册' : '＋ 添加到外部单词收藏册';
     addBtn.disabled = true;
     addBtn.textContent = '生成中…';
     try {
-      await api('/api/custom-dict/add', {
+      const res = await api('/api/custom-dict/add', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ word: cdWordForQuery() }),
       });
-      toast('已按原形添加到「外部单词收藏册」');
-      $('cd-result').innerHTML = '<span class="ok">已按原形添加到「外部单词收藏册」，当前背诵进度不受影响；可在书单里随时切换到它。</span>';
+      toast(phrase ? '已用 AI 翻译并加入收藏册' : '已按原形添加到「外部单词收藏册」');
+      $('cd-result').innerHTML = `<span class="ok">已加入「外部单词收藏册」：<b>${escapeHtml(res.word || cdWordForQuery())}</b>（${phrase ? 'AI 翻译' : '按原形'}）；当前背诵进度不受影响，可在书单里随时切换到它。</span>`;
       await refreshBooksUI();
     } catch (e) {
       $('cd-result').innerHTML = `<span class="err">${e.message}</span>`;
     } finally {
       addBtn.disabled = false;
-      addBtn.textContent = '＋ 添加到外部单词收藏册';
+      addBtn.textContent = idleLabel;
     }
   });
   document.querySelectorAll('.cd-sug').forEach((el) => el.addEventListener('click', () => {
@@ -748,17 +750,37 @@ async function cdLookup() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ word: w }),
     });
-    cdState = { typed: r.word || w, canonical: r.canonical || '', dict: r.dict || {}, books: r.in_books || [], fav: r.favorite };
+    cdState = {
+      typed: r.word || w,
+      canonical: r.canonical || '',
+      isPhrase: !!r.is_phrase,
+      components: r.components || [],
+      dict: r.dict || {},
+      books: r.in_books || [],
+      fav: r.favorite,
+    };
     const names = cdState.books.map((b) => b.book_name).join('、');
     let html = cdBasicHtml();
+    if (cdState.components.length) {
+      html += '<div style="margin-top:6px;color:var(--muted)">组成词：'
+        + cdState.components.map((c) => escapeHtml(
+          c.word + (c.translation ? ' ' + c.translation.replace(/\n/g, '；') : '（本地未收录）')
+          + (c.in_books && c.in_books.length ? '（' + c.in_books.join('、') + '）' : ''),
+        )).join('；')
+        + '</div>';
+    }
     if (names) {
       html += `<br>所在词书：${escapeHtml(names)}（按原形判定）`;
       html += cdState.fav
         ? '<br><span class="ok">已收藏</span>'
         : '<br><button id="cd-fav" class="btn">☆ 收藏</button>';
     } else {
-      html += '<br><span style="color:var(--muted)">不在任何已导入词书中（会按原形添加到「外部单词收藏册」）</span>'
-        + '<br><button id="cd-add" class="btn primary">＋ 添加到外部单词收藏册</button>';
+      html += '<br><span style="color:var(--muted)">'
+        + (cdState.isPhrase
+          ? '词书未收录该短语；可用 AI 按组成词翻译并加入「外部单词收藏册」'
+          : '不在任何已导入词书中（会按原形添加到「外部单词收藏册」）')
+        + '</span>'
+        + `<br><button id="cd-add" class="btn primary">${cdState.isPhrase ? '＋ AI 翻译并加入收藏册' : '＋ 添加到外部单词收藏册'}</button>`;
     }
     out.innerHTML = html;
     cdWireButtons();
