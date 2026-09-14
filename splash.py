@@ -49,7 +49,7 @@ def run_splash(host, port, asset_dir):
     # 标题（抽象字体）+ 宣传语 + 副标
     tk.Label(root, text='KillTimeRecitationTool', font=_pick_font(root, 22),
              fg='#17202a', bg='#ffffff').pack(pady=(16, 0))
-    tk.Label(root, text='更加人性化及知识更齐全的本地CRUSH VOCAB软件',
+    tk.Label(root, text='溯源词斩 · 直击词源的本地单词学习软件',
              font=('Microsoft YaHei UI', 10), fg='#4a5a6e', bg='#ffffff').pack(pady=(3, 0))
     tk.Label(root, text='by HoweyYueng', font=('Segoe UI', 9, 'italic'),
              fg='#7f8c9b', bg='#ffffff').pack(pady=(2, 4))

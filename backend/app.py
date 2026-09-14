@@ -27,7 +27,7 @@ db.init_db()
 APP_VERSION = '0.1.6'
 GITHUB_REPO = 'HoweyYang/KTRT'
 FRONTEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'static')
-app = FastAPI(title='KillTimeRecitationTool')
+app = FastAPI(title='溯源词斩 KTRT')
 app.add_middleware(
     CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'],
 )
