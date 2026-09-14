@@ -803,6 +803,30 @@ async function cdLookup() {
   }
 }
 
+function cdAppendSaveAiButton(text) {
+  const out = $('cd-result');
+  if (!cdState || !text || (cdState.books && cdState.books.length)) return;
+  out.innerHTML += '<div style="margin-top:8px"><button id="cd-save-ai" class="btn primary" data-tip="把这份 AI 整理结果作为词条写入「外部单词收藏册」，完整文本同时存入该词笔记。">＋ 把这份 AI 释义加入外部收藏册</button><span id="cd-save-ai-msg" style="margin-left:8px;font-size:13px"></span></div>';
+  $('cd-save-ai').addEventListener('click', async () => {
+    const b = $('cd-save-ai');
+    b.disabled = true;
+    b.textContent = '保存中…';
+    try {
+      const r = await api('/api/custom-dict/save-ai', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ word: cdWordForQuery(), ai_text: text }),
+      });
+      $('cd-save-ai-msg').innerHTML = `<span class="ok">已加入：${escapeHtml(r.word)}（${escapeHtml(r.book_name)} · List ${r.list_no}）</span>`;
+      b.remove();
+      await refreshBooksUI();
+    } catch (e) {
+      $('cd-save-ai-msg').innerHTML = `<span class="err">${escapeHtml(e.message)}</span>`;
+      b.disabled = false;
+      b.textContent = '＋ 把这份 AI 释义加入外部收藏册';
+    }
+  });
+}
+
 $('btn-cd-lookup').addEventListener('click', cdLookup);
 $('btn-cd-online').addEventListener('click', async () => {
   const btn = $('btn-cd-online');
@@ -840,9 +864,12 @@ $('btn-cd-online').addEventListener('click', async () => {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ word: cdWordForQuery(), offline: cdState.dict, online: { wiktionary: onl.wiktionary, datamuse: onl.datamuse } }),
         });
-        out.innerHTML += en.ok
-          ? `<div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px;white-space:pre-wrap">${escapeHtml(en.text)}</div>`
-          : `<div class="err" style="margin-top:6px">${escapeHtml(en.error || '')}</div>`;
+        if (en.ok) {
+          out.innerHTML += `<div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px;white-space:pre-wrap">${escapeHtml(en.text)}</div>`;
+          cdAppendSaveAiButton(en.text);
+        } else {
+          out.innerHTML += `<div class="err" style="margin-top:6px">${escapeHtml(en.error || '')}</div>`;
+        }
       } catch (e) {
         out.innerHTML += `<div class="err" style="margin-top:6px">${escapeHtml(e.message)}</div>`;
       }

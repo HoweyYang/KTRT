@@ -1437,6 +1437,92 @@ def custom_dict_favorite(body: CustomDictBody):
     return {'ok': True, 'canonical': canonical}
 
 
+def _insert_external_word(word, phon, meaning, colloc, phras, syns, ants, roots, note_text=''):
+    """把词条写入「外部单词收藏册」：每 50 词一个 List；可选把完整 AI 文本存入笔记。"""
+    with db._lock:
+        with db.get_conn() as conn:
+            book = conn.execute("SELECT id FROM word_books WHERE name='外部单词收藏册'").fetchone()
+            if book is None:
+                cur = conn.execute("INSERT INTO word_books(name, language, source) VALUES('外部单词收藏册','英语','')")
+                book_id = cur.lastrowid
+            else:
+                book_id = book['id']
+            row = conn.execute(
+                'SELECT list_no, COUNT(*) c FROM words WHERE book_id=? GROUP BY list_no '
+                'ORDER BY list_no DESC LIMIT 1', (book_id,)).fetchone()
+            if row and row['c'] >= 50:
+                list_no, seq = row['list_no'] + 1, 1
+            elif row:
+                list_no, seq = row['list_no'], row['c'] + 1
+            else:
+                list_no, seq = 1, 1
+            cur = conn.execute(
+                'INSERT INTO words(book_id, list_no, seq, word, phonetic, meaning, collocations, '
+                'phrases, synonyms, antonyms, root_words) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                (book_id, list_no, seq, word, phon, meaning, colloc, phras, syns, ants, roots),
+            )
+            wid = cur.lastrowid
+            conn.execute('INSERT OR IGNORE INTO word_status(word_id) VALUES(?)', (wid,))
+            if note_text:
+                conn.execute(
+                    'INSERT INTO notes(word_id, content, updated_at) VALUES(?,?,datetime(\'now\',\'localtime\')) '
+                    'ON CONFLICT(word_id) DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at',
+                    (wid, note_text),
+                )
+    return {'book_name': '外部单词收藏册', 'list_no': list_no, 'seq': seq, 'word_id': wid}
+
+
+class SaveAiBody(BaseModel):
+    word: str = ''
+    ai_text: str = ''
+
+
+def _parse_ai_sections(text):
+    def grab(tag):
+        m = re.search(r'【' + tag + r'】\s*(.*?)(?=\n?【|$)', text or '', re.S)
+        return (m.group(1).strip() if m else '')
+    def flat(s):
+        return re.sub(r'\s*\n+\s*', '；', s).strip('； ')
+    return {
+        'meaning': flat(grab('释义')),
+        'usage': flat(grab('用法')),
+        'examples': flat(grab('例句')),
+        'components': flat(grab('组成词')),
+        'remark': flat(grab('备注')),
+    }
+
+
+@app.post('/api/custom-dict/save-ai')
+def custom_dict_save_ai(body: SaveAiBody):
+    """把 AI 整理/翻译的结果直接存入「外部单词收藏册」，不重复调用 AI。"""
+    word = (body.word or '').strip()
+    text = (body.ai_text or '').strip()
+    if not word or len(word) > 80:
+        raise HTTPException(400, '请输入单词或短语')
+    if not text:
+        raise HTTPException(400, '没有可保存的 AI 释义')
+    phrase = _is_phrase(word)
+    if phrase:
+        if len(_split_phrase(word)) > 6 or not re.match(r"^[A-Za-z][A-Za-z\-' ]*$", word):
+            raise HTTPException(400, '短语格式不支持：最多 6 个英文单词')
+        canonical = word
+    else:
+        if not re.match(r"^[A-Za-z][A-Za-z\-']*$", word):
+            raise HTTPException(400, '请输入合法的英文单词')
+        canonical = _canonical_word(word)
+    with db.get_conn() as conn:
+        if conn.execute('SELECT 1 FROM words WHERE word=? COLLATE NOCASE LIMIT 1', (canonical,)).fetchone():
+            raise HTTPException(400, '该词已在已导入单词书中，请改用「收藏」')
+    sec = _parse_ai_sections(text)
+    meaning = sec['meaning'] or text[:300]
+    colloc = '；'.join(x for x in (sec['usage'], sec['remark']) if x)
+    roots = sec['components']
+    if not roots and phrase:
+        roots = '；'.join(f"{c['word']} {c['translation']}" for c in _phrase_components(canonical))
+    res = _insert_external_word(canonical, '', meaning, colloc, sec['examples'], '', '', roots, note_text=text)
+    return {'ok': True, 'word': canonical, 'is_phrase': phrase, **res}
+
+
 @app.post('/api/custom-dict/add')
 def custom_dict_add(body: CustomDictBody):
     """自定义查词典·添加：词不在任何已导入词书时，AI 生成词条入默认书。"""
@@ -1493,30 +1579,8 @@ def custom_dict_add(body: CustomDictBody):
     syns = str(data.get('synonyms') or '').strip()
     ants = str(data.get('antonyms') or '').strip()
     roots = str(data.get('root_words') or '').strip()
-    with db._lock:
-        with db.get_conn() as conn:
-            book = conn.execute("SELECT id FROM word_books WHERE name='外部单词收藏册'").fetchone()
-            if book is None:
-                cur = conn.execute("INSERT INTO word_books(name, language, source) VALUES('外部单词收藏册','英语','')")
-                book_id = cur.lastrowid
-            else:
-                book_id = book['id']
-            row = conn.execute(
-                'SELECT list_no, COUNT(*) c FROM words WHERE book_id=? GROUP BY list_no '
-                'ORDER BY list_no DESC LIMIT 1', (book_id,)).fetchone()
-            if row and row['c'] >= 50:
-                list_no, seq = row['list_no'] + 1, 1
-            elif row:
-                list_no, seq = row['list_no'], row['c'] + 1
-            else:
-                list_no, seq = 1, 1
-            cur = conn.execute(
-                'INSERT INTO words(book_id, list_no, seq, word, phonetic, meaning, collocations, '
-                'phrases, synonyms, antonyms, root_words) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
-                (book_id, list_no, seq, word, phon, meaning, colloc, phras, syns, ants, roots),
-            )
-            conn.execute('INSERT OR IGNORE INTO word_status(word_id) VALUES(?)', (cur.lastrowid,))
-    return {'ok': True, 'word': word, 'is_phrase': phrase, 'book_name': '外部单词收藏册', 'list_no': list_no, 'seq': seq}
+    res = _insert_external_word(word, phon, meaning, colloc, phras, syns, ants, roots)
+    return {'ok': True, 'word': word, 'is_phrase': phrase, **res}
 
 
 @app.get('/api/references')
