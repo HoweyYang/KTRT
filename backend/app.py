@@ -947,7 +947,8 @@ def custom_dict_enhance(body: EnhanceBody):
         '直接用你的翻译能力给出准确、自然的中文翻译，并标注“AI 翻译”。\n'
         '2. 短语要拆解组成词的含义，说明整体含义、常见用法与语域；可给 1-2 个英文例句及中文翻译。\n'
         '3. 不要编造典故、出处或不存在的事实；不确定的地方标注“不确定”。\n'
-        '格式：【释义】/【组成词】/【用法】/【例句】/【备注】，每节一行一条。'
+        '格式：【释义】/【用法】/【例句】/【同义】/【反义】/【同根】/【组成词】/【备注】，每节一行一条；'
+        '短语/短句/习语/俚语可能没有同根词或词形变化，缺失的节直接不写，条目结构与普通单词词条保持一致。'
     )
     try:
         reply = ai.chat([{'role': 'user', 'content': prompt}], max_tokens=900, temperature=0.3)
@@ -1488,6 +1489,9 @@ def _parse_ai_sections(text):
         'usage': flat(grab('用法')),
         'examples': flat(grab('例句')),
         'components': flat(grab('组成词')),
+        'synonyms': flat(grab('同义')),
+        'antonyms': flat(grab('反义')),
+        'roots': flat(grab('同根')),
         'remark': flat(grab('备注')),
     }
 
@@ -1497,14 +1501,14 @@ def custom_dict_save_ai(body: SaveAiBody):
     """把 AI 整理/翻译的结果直接存入「外部单词收藏册」，不重复调用 AI。"""
     word = (body.word or '').strip()
     text = (body.ai_text or '').strip()
-    if not word or len(word) > 80:
+    if not word or len(word) > 200:
         raise HTTPException(400, '请输入单词或短语')
     if not text:
         raise HTTPException(400, '没有可保存的 AI 释义')
     phrase = _is_phrase(word)
     if phrase:
-        if len(_split_phrase(word)) > 6 or not re.match(r"^[A-Za-z][A-Za-z\-' ]*$", word):
-            raise HTTPException(400, '短语格式不支持：最多 6 个英文单词')
+        if not re.match(r"^[A-Za-z][A-Za-z\-' ,.;:!?]*$", word):
+            raise HTTPException(400, '短语/短句格式不支持（仅限英文字母、空格与常用标点）')
         canonical = word
     else:
         if not re.match(r"^[A-Za-z][A-Za-z\-']*$", word):
@@ -1516,10 +1520,9 @@ def custom_dict_save_ai(body: SaveAiBody):
     sec = _parse_ai_sections(text)
     meaning = sec['meaning'] or text[:300]
     colloc = '；'.join(x for x in (sec['usage'], sec['remark']) if x)
-    roots = sec['components']
-    if not roots and phrase:
-        roots = '；'.join(f"{c['word']} {c['translation']}" for c in _phrase_components(canonical))
-    res = _insert_external_word(canonical, '', meaning, colloc, sec['examples'], '', '', roots, note_text=text)
+    res = _insert_external_word(
+        canonical, '', meaning, colloc, sec['examples'],
+        sec['synonyms'], sec['antonyms'], sec['roots'], note_text=text)
     return {'ok': True, 'word': canonical, 'is_phrase': phrase, **res}
 
 
@@ -1528,11 +1531,11 @@ def custom_dict_add(body: CustomDictBody):
     """自定义查词典·添加：词不在任何已导入词书时，AI 生成词条入默认书。"""
     word = (body.word or '').strip()
     phrase = _is_phrase(word)
-    if not word or len(word) > 80:
+    if not word or len(word) > 200:
         raise HTTPException(400, '请输入单词或短语')
     if phrase:
-        if len(_split_phrase(word)) > 6 or not re.match(r"^[A-Za-z][A-Za-z\-' ]*$", word):
-            raise HTTPException(400, '短语格式不支持：最多 6 个英文单词')
+        if not re.match(r"^[A-Za-z][A-Za-z\-' ,.;:!?]*$", word):
+            raise HTTPException(400, '短语/短句格式不支持（仅限英文字母、空格与常用标点）')
         canonical = word
     else:
         if not re.match(r"^[A-Za-z][A-Za-z\-']*$", word):
@@ -1546,15 +1549,15 @@ def custom_dict_add(body: CustomDictBody):
     if phrase:
         comps = '；'.join(f"{c['word']} {c['translation'] or '（本地未收录）'}" for c in _phrase_components(word))
         prompt = (
-            f'为英语短语「{word}」生成词条数据，只输出一个 JSON 对象，不要任何其他文字：'
-            '{"phonetic": "", "meaning": "短语整体中文翻译（可含 1-3 个义项，用分号分隔）", '
+            f'为英语短语/短句/习语/俚语「{word}」生成词条数据，只输出一个 JSON 对象，不要任何其他文字：'
+            '{"phonetic": "", "meaning": "整体中文翻译（可含 1-3 个义项，用分号分隔）", '
             '"collocations": "该短语的常见搭配/使用说明（中文，用分号分隔）", '
             '"phrases": "2 个英文例句 + 中文翻译（用分号分隔）", '
-            '"synonyms": "近义表达（英文 + 中文，用分号分隔）", '
-            '"antonyms": "反义表达（无则空字符串）", '
-            '"root_words": "组成词拆解（如 official 官方的；transcript 成绩单/文字记录）"}。'
+            '"synonyms": "同义/近义替换表达（英文 + 中文，用分号分隔；无则空字符串）", '
+            '"antonyms": "反义表达（英文 + 中文；无则空字符串）", '
+            '"root_words": "同根词/变形（短语通常没有，无则空字符串；确有则给出）"}。'
             f'参考组成词释义：{comps}。'
-            '要求：作为翻译准确自然，不编造典故或出处。'
+            '要求：作为翻译准确自然；字段与普通单词词条保持一致，缺失项一律留空，不要编造。'
         )
     else:
         prompt = (
