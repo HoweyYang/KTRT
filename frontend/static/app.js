@@ -62,6 +62,7 @@ const FEATURE_HINTS = {
   'btn-next': '前往本 List 的下一个词；已在本 List 末尾则停留（键盘 →）。',
   'btn-word-tts': '按设置中的朗读方式与音色朗读当前单词：edge-tts 需联网，浏览器语音可离线。',
   'btn-dict': '打开本地 ECDICT 词典，展示当前词释义与词形变化（离线可用）。',
+  'btn-edit': '编辑：在卡片内直接修改当前这一条（单词、音标、释义、搭配、短语、同反义词、同根词），保存后同步本地库并回写所属词书 Excel；原文件失效时自动改用本地托管副本。',
   'btn-cd-lookup': '查询输入词：依次做离线词典速查、变形还原为原形、所在词书与收藏判断；词典与词书都未命中时提供拼写建议。',
   'btn-cd-online': '在线词源（免费开源）：从 Wiktionary / Datamuse 按原形抓取释义、相关词与形近词；纯查询，不调用 AI。',
   'btn-custom-dict': '查询任意单词。流程：离线词典 → 变形还原原形 → 判断原形所在词书/收藏 → 拼写纠错；可按需使用在线词源或 AI 整理（AI 需配置 Key）。',
@@ -323,6 +324,8 @@ async function loadCard() {
     $('sentence-prompt').value = '';
     $('dict-box').classList.add('hidden');
     $('btn-dict').classList.remove('active');
+    $('edit-box').classList.add('hidden');
+    $('btn-edit').classList.remove('active');
   } catch (e) {
     toast(e.message);
   }
@@ -662,6 +665,85 @@ $('btn-dict').addEventListener('click', async () => {
     box.textContent = '查询失败：' + e.message;
   }
 });
+
+/* ---------- 词条编辑 ---------- */
+const EDIT_FORM_FIELDS = [
+  ['word', '单词', 'input'],
+  ['phonetic', '音标', 'input'],
+  ['meaning', '词性释义', 'textarea'],
+  ['collocations', '搭配', 'textarea'],
+  ['phrases', '短语', 'textarea'],
+  ['synonyms', '同义词', 'textarea'],
+  ['antonyms', '反义词', 'textarea'],
+  ['root_words', '同根词', 'textarea'],
+];
+
+function renderEditBox() {
+  const w = state.card.word;
+  const rows = EDIT_FORM_FIELDS.map(([k, label, kind]) => {
+    const val = w[k] || '';
+    const input = kind === 'input'
+      ? `<input class="edit-input" data-edit="${k}" value="${escapeAttr(val)}">`
+      : `<textarea class="edit-input" data-edit="${k}" rows="2">${escapeHtml(val)}</textarea>`;
+    return `<label class="edit-row"><span class="edit-label">${label}</span>${input}</label>`;
+  }).join('');
+  $('edit-box').innerHTML = `
+    <div class="edit-head">
+      <b>编辑：${escapeHtml(w.word)}</b>
+      <span class="edit-meta">List ${w.list_no} · 第 ${w.seq} 个 · 保存后同步本地库与词书 Excel</span>
+    </div>
+    <div class="edit-grid">${rows}</div>
+    <div class="edit-actions">
+      <button class="btn primary" id="btn-edit-save">保存并回写词书</button>
+      <button class="btn" id="btn-edit-cancel">取消</button>
+    </div>`;
+  $('btn-edit-save').addEventListener('click', saveEdit);
+  $('btn-edit-cancel').addEventListener('click', () => toggleEditBox(false));
+}
+
+function toggleEditBox(force) {
+  const box = $('edit-box');
+  const btn = $('btn-edit');
+  const show = force === undefined ? box.classList.contains('hidden') : force;
+  if (show) {
+    renderEditBox();
+    box.classList.remove('hidden');
+    btn.classList.add('active');
+  } else {
+    box.classList.add('hidden');
+    btn.classList.remove('active');
+  }
+}
+
+async function saveEdit() {
+  const payload = {};
+  document.querySelectorAll('[data-edit]').forEach((el) => { payload[el.dataset.edit] = el.value; });
+  if (!payload.word.trim()) {
+    toast('单词不能为空');
+    return;
+  }
+  const btn = $('btn-edit-save');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+  try {
+    const r = await api('/api/word/' + state.card.word.id + '/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const ex = r.excel || {};
+    await loadCard();
+    if (ex.updated) toast('已保存，词书 Excel 已更新');
+    else if (ex.message) toast('已存入本地库；' + ex.message);
+    else toast('已存入本地库');
+  } catch (e) {
+    toast('保存失败：' + e.message);
+    btn.disabled = false;
+    btn.textContent = '保存并回写词书';
+  }
+}
+
+$('btn-edit').addEventListener('click', () => toggleEditBox());
 
 /* ---------- 自定义查词典 ---------- */
 $('btn-custom-dict').addEventListener('click', () => {
@@ -1297,6 +1379,40 @@ $('btn-import').addEventListener('click', async () => {
     $('btn-import').disabled = false;
   }
 });
+
+/* ---------- 词书资源 ---------- */
+const BOOK_RESOURCES = [
+  { name: 'GRE 必背（6519 词）', file: 'GRE_Wordbook.xlsx' },
+  { name: '雅思词汇真经（3608 词）', file: 'IELTS_Wordbook.xlsx' },
+  { name: '考研英语词汇词根+联想记忆法（5905 词）', file: 'KAOYAN_Wordbook.xlsx' },
+];
+const REPO_URL = 'https://github.com/HoweyYang/KTRT';
+
+function renderResources() {
+  const box = $('resource-list');
+  if (!box) return;
+  box.innerHTML = BOOK_RESOURCES.map((b) => `
+    <div class="resource-item">
+      <span>${b.name}</span>
+      <a class="btn" href="${REPO_URL}/raw/main/wordbooks/${b.file}">下载</a>
+    </div>`).join('') + `
+    <div class="resource-item">
+      <span>仓库 wordbooks/ 目录（全部词书资源）</span>
+      <a class="btn" href="${REPO_URL}/tree/main/wordbooks" target="_blank" rel="noopener">打开</a>
+    </div>`;
+}
+
+$('btn-copy-prompt').addEventListener('click', async () => {
+  const msg = $('prompt-msg');
+  try {
+    const text = await (await fetch('/static/docs/词书整理提示词.md')).text();
+    await navigator.clipboard.writeText(text);
+    msg.textContent = '已复制，粘贴给本地 AI 就能整理你自己的单词书。';
+  } catch (e) {
+    msg.textContent = '复制失败，点右边「查看提示词全文」可手动复制。';
+  }
+});
+renderResources();
 
 /* ---------- 设置页 ---------- */
 function populateSettings() {

@@ -2,6 +2,7 @@ import json
 import os
 import random
 import re
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -13,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -24,7 +25,7 @@ from backend import db, ai, tts, importer
 
 db.init_db()
 
-APP_VERSION = '0.1.6'
+APP_VERSION = '0.1.6b'
 GITHUB_REPO = 'HoweyYang/KTRT'
 FRONTEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'static')
 app = FastAPI(title='溯源词斩 KTRT')
@@ -602,6 +603,121 @@ def export_notes(book_id: int = Query(None), list_no: int = Query(None)):
     return FileResponse(path, media_type='text/markdown', filename=name)
 
 
+# ---------- 词书本地副本与词条编辑 ----------
+
+EDIT_FIELDS = ('word', 'phonetic', 'meaning', 'collocations', 'phrases',
+               'synonyms', 'antonyms', 'root_words')
+EXCEL_HEADERS = {
+    'word': '【单词】', 'phonetic': '【音标】', 'meaning': '【词性释义】',
+    'collocations': '【搭配】', 'phrases': '【短语】', 'synonyms': '【同义词】',
+    'antonyms': '【反义词】', 'root_words': '【同根词】',
+}
+BOOK_FILES_DIR = os.path.join(db.DATA_DIR, 'wordbooks')
+
+
+def _safe_filename(name):
+    return re.sub(r'[\\/:*?"<>|]', '_', (name or '').strip()) or '词书'
+
+
+def _keep_uploaded_book(src, book_name, suffix):
+    """导入时留一份词书到本地词书目录，并把它记为这本书的来源文件。"""
+    os.makedirs(BOOK_FILES_DIR, exist_ok=True)
+    dest = os.path.join(BOOK_FILES_DIR, _safe_filename(book_name) + suffix)
+    shutil.copyfile(src, dest)
+    with db._lock:
+        with db.get_conn() as conn:
+            conn.execute('UPDATE word_books SET source=? WHERE name=?', (dest, book_name))
+    return dest
+
+
+def _export_book_xlsx(conn, book, path):
+    """按 11 列【】格式把整本书从本地库导出成 xlsx（原文件失效时的兜底副本）。"""
+    from openpyxl import Workbook
+    rows = conn.execute(
+        'SELECT word, phonetic, meaning, collocations, phrases, synonyms, antonyms, '
+        'root_words, list_no FROM words WHERE book_id=? ORDER BY list_no, seq',
+        (book['id'],),
+    ).fetchall()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = _safe_filename(book['name'])[:31]
+    ws.append(['【单词】', '【音标】', '【词性释义】', '【搭配】', '【短语】', '【同义词】',
+               '【反义词】', '【同根词】', '【List】', '【语言】', '【单词书】'])
+    for r in rows:
+        ws.append([r['word'], r['phonetic'], r['meaning'], r['collocations'], r['phrases'],
+                   r['synonyms'], r['antonyms'], r['root_words'], r['list_no'],
+                   book['language'], book['name']])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    wb.save(path)
+    conn.execute('UPDATE word_books SET source=? WHERE id=?', (path, book['id']))
+    return path
+
+
+def _book_excel_path(conn, book):
+    """返回该词书可写的 Excel 路径：优先原文件，失效则落本地托管副本。"""
+    src = (book['source'] or '').strip()
+    if src and os.path.isfile(src):
+        return src, False
+    path = os.path.join(BOOK_FILES_DIR, _safe_filename(book['name']) + '.xlsx')
+    _export_book_xlsx(conn, book, path)
+    return path, True
+
+
+def _write_excel_entry(path, old_word, list_no, changed):
+    """把改动写回词书 Excel 的对应行，返回 (是否写入, 说明)。"""
+    from openpyxl import load_workbook
+    wb = load_workbook(path)
+    ws = wb.active
+
+    header_row, colmap = 1, {}
+    for r in range(1, min(5, ws.max_row) + 1):
+        cand = {}
+        for c in range(1, ws.max_column + 1):
+            v = ws.cell(r, c).value
+            if v is None:
+                continue
+            h = str(v).strip()
+            for field, head in EXCEL_HEADERS.items():
+                if h == head:
+                    cand[field] = c
+        if 'word' in cand:
+            header_row, colmap = r, cand
+            break
+    if 'word' not in colmap:
+        wb.close()
+        return False, '词书缺少【单词】列，已只改本地库'
+
+    list_col = None
+    for c in range(1, ws.max_column + 1):
+        v = ws.cell(header_row, c).value
+        if v is not None and str(v).strip() in ('【List】', 'List'):
+            list_col = c
+            break
+
+    target = None
+    old = (old_word or '').strip().lower()
+    for r in range(header_row + 1, ws.max_row + 1):
+        wv = ws.cell(r, colmap['word']).value
+        if wv is None or str(wv).strip().lower() != old:
+            continue
+        if list_col is not None and list_no is not None:
+            lv = ws.cell(r, list_col).value
+            if lv is not None and str(lv).strip() not in ('', str(list_no)):
+                continue
+        target = r
+        break
+    if target is None:
+        wb.close()
+        return False, '词书 Excel 中未找到「%s」，已只改本地库' % old_word
+
+    for field, val in changed.items():
+        if field in colmap:
+            ws.cell(target, colmap[field]).value = val
+    wb.save(path)
+    wb.close()
+    return True, ''
+
+
 @app.post('/api/import')
 async def import_book(
     file: UploadFile = File(...),
@@ -613,7 +729,12 @@ async def import_book(
         tmp.write(await file.read())
         path = tmp.name
     try:
-        return importer.import_book(path, book_name.strip(), language.strip())
+        result = importer.import_book(path, book_name.strip(), language.strip())
+        try:
+            _keep_uploaded_book(path, result['book_name'], suffix)
+        except Exception:
+            pass  # 留副本失败不影响导入本身
+        return result
     except Exception as e:
         raise HTTPException(400, str(e))
     finally:
@@ -621,6 +742,56 @@ async def import_book(
             os.unlink(path)
         except Exception:
             pass
+
+
+class EditBody(BaseModel):
+    word: str | None = None
+    phonetic: str | None = None
+    meaning: str | None = None
+    collocations: str | None = None
+    phrases: str | None = None
+    synonyms: str | None = None
+    antonyms: str | None = None
+    root_words: str | None = None
+
+
+@app.post('/api/word/{word_id}/edit')
+def edit_word(word_id: int, body: EditBody):
+    """编辑词条：同步本地库，并回写这个词书 Excel 的对应行。"""
+    changed = {}
+    for k in EDIT_FIELDS:
+        v = getattr(body, k)
+        if v is not None:
+            changed[k] = v.strip()
+    if not changed:
+        raise HTTPException(400, '没有要保存的内容')
+    if 'word' in changed and not changed['word']:
+        raise HTTPException(400, '单词不能为空')
+
+    with db._lock:
+        with db.get_conn() as conn:
+            w = conn.execute('SELECT * FROM words WHERE id=?', (word_id,)).fetchone()
+            if w is None:
+                raise HTTPException(404, '词条不存在')
+            book = conn.execute('SELECT * FROM word_books WHERE id=?', (w['book_id'],)).fetchone()
+            conn.execute(
+                'UPDATE words SET ' + ', '.join(f'{k}=?' for k in changed) + ' WHERE id=?',
+                (*changed.values(), word_id),
+            )
+            excel = {'updated': False, 'created': False, 'path': '', 'message': ''}
+            if book is not None and book['name'] != '外部单词收藏册':
+                try:
+                    path, created = _book_excel_path(conn, book)
+                    excel['path'] = path
+                    excel['created'] = created
+                    ok, msg = _write_excel_entry(path, w['word'], w['list_no'], changed)
+                    excel['updated'] = ok
+                    excel['message'] = msg
+                except PermissionError:
+                    excel['message'] = '词书 Excel 正被占用（若已在 Excel 里打开请先关闭），已只改本地库'
+                except Exception as e:
+                    excel['message'] = '回写词书失败：' + str(e)
+    return {'ok': True, 'word_id': word_id, 'changed': sorted(changed), 'excel': excel}
 
 
 @app.delete('/api/books/{book_id}')
@@ -860,7 +1031,7 @@ def custom_dict_suggest(body: CustomDictBody):
 
 
 def _http_get_json(url):
-    req = urllib.request.Request(url, headers={'User-Agent': 'KTRT/0.1.6 (local dictionary tool)'})
+    req = urllib.request.Request(url, headers={'User-Agent': 'KTRT/0.1.6b (local dictionary tool)'})
     with urllib.request.urlopen(req, timeout=8) as r:
         return json.loads(r.read().decode('utf-8', 'replace'))
 
