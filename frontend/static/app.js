@@ -1530,6 +1530,24 @@ $('btn-test-ai').addEventListener('click', async () => {
 });
 
 /* ---------- 软件更新 ---------- */
+/* 版本号比较：数字段逐位比，相同再比后缀字母（0.1.6b > 0.1.6 > 0.1.6a）。 */
+function versionKey(v) {
+  const m = String(v || '').replace(/^v/i, '').trim().match(/^(\d+(?:\.\d+)*)([a-z]*)/i);
+  if (!m) return [0, 0, 0, ''];
+  const nums = m[1].split('.').map(Number);
+  return [nums[0] || 0, nums[1] || 0, nums[2] || 0, (m[2] || '').toLowerCase()];
+}
+
+function versionNewer(rel, cur) {
+  const a = versionKey(rel);
+  const b = versionKey(cur);
+  for (let i = 0; i < 3; i++) {
+    if (a[i] > b[i]) return true;
+    if (a[i] < b[i]) return false;
+  }
+  return a[3] > b[3];
+}
+
 $('btn-check-patch').addEventListener('click', async () => {
   const box = $('update-msg');
   box.innerHTML = '<p class="ok">检查中…</p>';
@@ -1554,13 +1572,7 @@ $('btn-check-release').addEventListener('click', async () => {
     const r = await api('/api/update/status', { timeout: 20000 });
     let html = '';
     if (r.release) {
-      const cur = (r.current_version || '').replace(/^v/, '').replace(/[^0-9.]/g, '').split('.').map(Number);
-      const rel = (r.release.tag_name || '').replace(/^v/, '').replace(/[^0-9.]/g, '').split('.').map(Number);
-      let isNewer = false;
-      for (let i = 0; i < 3; i++) {
-        if ((rel[i] || 0) > (cur[i] || 0)) { isNewer = true; break; }
-        if ((rel[i] || 0) < (cur[i] || 0)) break;
-      }
+      const isNewer = versionNewer(r.release.tag_name, r.current_version);
       html += `<p>当前版本：v${escapeHtml(r.current_version)}<br>
         最新 Release：${escapeHtml(r.release.tag_name)}（${escapeHtml((r.release.published_at || '').slice(0, 10))}）</p>`;
       html += isNewer
