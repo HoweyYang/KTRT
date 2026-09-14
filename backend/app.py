@@ -141,6 +141,11 @@ def set_status(body: StatusBody):
                 'WHERE word_id=?',
                 (1 if body.value else 0, body.word_id),
             )
+            # 已背与不熟悉互斥：点亮其一，自动熄灭另一个
+            if body.field == 'learned' and body.value:
+                conn.execute('UPDATE word_status SET unfamiliar=0 WHERE word_id=?', (body.word_id,))
+            elif body.field == 'unfamiliar' and body.value:
+                conn.execute('UPDATE word_status SET learned=0 WHERE word_id=?', (body.word_id,))
             status = _status(conn, body.word_id)
     return {'status': status}
 
@@ -387,7 +392,9 @@ def _challenge_options(conn, book_id, word_ids):
 def challenge(book_id: int = Query(...), list_no: int = Query(...)):
     with db.get_conn() as conn:
         ids = [r['id'] for r in conn.execute(
-            'SELECT id FROM words WHERE book_id=? AND list_no=? ORDER BY seq', (book_id, list_no)).fetchall()]
+            'SELECT w.id FROM words w LEFT JOIN word_status s ON s.word_id=w.id '
+            'WHERE w.book_id=? AND w.list_no=? AND COALESCE(s.learned,0)=0 ORDER BY w.seq',
+            (book_id, list_no)).fetchall()]
         questions = _challenge_options(conn, book_id, ids)
         best = conn.execute('SELECT best FROM challenge_scores WHERE book_id=? AND list_no=?',
                             (book_id, list_no)).fetchone()
@@ -432,7 +439,7 @@ def mistake_add(body: MistakesAddBody):
             if w is None:
                 raise HTTPException(404, '未找到该词')
             conn.execute('INSERT OR IGNORE INTO word_status(word_id) VALUES(?)', (body.word_id,))
-            conn.execute('UPDATE word_status SET unfamiliar=1 WHERE word_id=?', (body.word_id,))
+            conn.execute('UPDATE word_status SET unfamiliar=1, learned=0 WHERE word_id=?', (body.word_id,))
             conn.execute('INSERT OR IGNORE INTO mistakes(word_id, book_id, list_no) VALUES(?,?,?)',
                          (body.word_id, w['book_id'], w['list_no']))
     return {'ok': True}
@@ -443,7 +450,8 @@ def mistakes(book_id: int = Query(...)):
     with db.get_conn() as conn:
         rows = conn.execute(
             'SELECT m.word_id, m.list_no, w.word, w.meaning FROM mistakes m '
-            'JOIN words w ON w.id=m.word_id WHERE m.book_id=? ORDER BY m.list_no, w.seq', (book_id,)).fetchall()
+            'JOIN words w ON w.id=m.word_id LEFT JOIN word_status s ON s.word_id=m.word_id '
+            'WHERE m.book_id=? AND COALESCE(s.learned,0)=0 ORDER BY m.list_no, w.seq', (book_id,)).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -451,7 +459,8 @@ def mistakes(book_id: int = Query(...)):
 def mistake_lists(book_id: int = Query(...)):
     with db.get_conn() as conn:
         rows = conn.execute(
-            'SELECT list_no, COUNT(*) c FROM mistakes WHERE book_id=? GROUP BY list_no ORDER BY list_no', (book_id,)).fetchall()
+            'SELECT m.list_no, COUNT(*) c FROM mistakes m LEFT JOIN word_status s ON s.word_id=m.word_id '
+            'WHERE m.book_id=? AND COALESCE(s.learned,0)=0 GROUP BY m.list_no ORDER BY m.list_no', (book_id,)).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -467,7 +476,8 @@ def mistakes_start(body: MistakesStartBody):
         ph = ','.join('?' * len(body.list_nos))
         with db.get_conn() as conn:
             ids = [r['word_id'] for r in conn.execute(
-                'SELECT word_id FROM mistakes WHERE book_id=? AND list_no IN (%s)' % ph,
+                'SELECT m.word_id FROM mistakes m LEFT JOIN word_status s ON s.word_id=m.word_id '
+                'WHERE m.book_id=? AND m.list_no IN (%s) AND COALESCE(s.learned,0)=0' % ph,
                 [body.book_id] + body.list_nos).fetchall()]
     with db.get_conn() as conn:
         questions = _challenge_options(conn, body.book_id, ids)
