@@ -25,7 +25,7 @@ from backend import db, ai, tts, importer
 
 db.init_db()
 
-APP_VERSION = '0.1.6b'
+APP_VERSION = '0.2.0'
 GITHUB_REPO = 'HoweyYang/KTRT'
 FRONTEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'static')
 app = FastAPI(title='溯源词斩 KTRT')
@@ -1031,7 +1031,7 @@ def custom_dict_suggest(body: CustomDictBody):
 
 
 def _http_get_json(url):
-    req = urllib.request.Request(url, headers={'User-Agent': 'KTRT/0.1.6b (local dictionary tool)'})
+    req = urllib.request.Request(url, headers={'User-Agent': 'KTRT/0.2.0 (local dictionary tool)'})
     with urllib.request.urlopen(req, timeout=8) as r:
         return json.loads(r.read().decode('utf-8', 'replace'))
 
