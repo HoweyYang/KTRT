@@ -8,6 +8,9 @@ data/*
 !data/README.md
 !data/phrasal_verbs.json
 !data/reference_phrasal_verbs.json
+# 自备品牌图（版权素材不进库，只留说明）
+frontend/static/brand/*
+!frontend/static/brand/README.md
 
 # 数据库
 *.db

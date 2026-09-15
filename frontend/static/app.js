@@ -17,6 +17,7 @@ const SPEAKER_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none
 
 function applyTheme(theme) {
   document.body.dataset.theme = theme === 'paper' ? 'light' : (theme || 'light');
+  syncBrandImage();
 }
 
 /* 页面质感：简约 / 纸质 / 赛博朋克 —— 每套质感各带三种配色，标签随质感变化 */
@@ -36,6 +37,7 @@ function applyPageMode(mode) {
   const m = PAGE_MODES.includes(mode) ? mode : (mode === 'paper' ? 'paper' : 'minimal');
   document.body.dataset.page = m;
   syncThemeLabels();
+  syncBrandImage();
   return m;
 }
 
@@ -53,6 +55,38 @@ function syncThemeLabels() {
       if (opt && labels[key]) opt.textContent = labels[key];
     });
   }
+}
+
+/* 品牌图：可在 frontend/static/brand/ 放自己的 logo（按配色切换），没有就退回文字字标 */
+const BRAND_IMAGES = {
+  'cyber|light': '/static/brand/brand-neon.png',
+  'cyber|dark': '/static/brand/brand-acid.png',
+  'cyber|dark-blue': '/static/brand/brand-matrix.png',
+  'paper|light': '/static/brand/brand-paper.png',
+  'minimal|light': '/static/brand/brand-minimal.png',
+};
+let brandSeq = 0;
+
+function syncBrandImage() {
+  const box = document.querySelector('.wordmark');
+  if (!box) return;
+  const key = currentPageMode() + '|' + (document.body.dataset.theme || 'light');
+  const src = BRAND_IMAGES[key];
+  const seq = ++brandSeq;
+  if (!src) {
+    box.classList.remove('brand-img');
+    return;
+  }
+  const img = new Image();
+  img.onload = () => {
+    if (seq !== brandSeq) return;
+    const el = box.querySelector('.wm-img');
+    if (el) { el.src = src; box.classList.add('brand-img'); }
+  };
+  img.onerror = () => {
+    if (seq === brandSeq) box.classList.remove('brand-img');
+  };
+  img.src = src;
 }
 
 async function api(path, opts = {}) {
