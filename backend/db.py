@@ -46,6 +46,7 @@ def init_db():
                   synonyms TEXT DEFAULT '',
                   antonyms TEXT DEFAULT '',
                   root_words TEXT DEFAULT '',
+                  phrasal_keys TEXT DEFAULT '',
                   UNIQUE(book_id, list_no, seq)
                 );
                 CREATE INDEX IF NOT EXISTS idx_words_book ON words(book_id, list_no, seq);
@@ -123,6 +124,10 @@ def init_db():
                 );
                 """
             )
+            # 旧库补列：命中的动词短语（导入时写入，卡片据此显示「动词短语参考」）
+            cols = {r[1] for r in conn.execute('PRAGMA table_info(words)')}
+            if 'phrasal_keys' not in cols:
+                conn.execute("ALTER TABLE words ADD COLUMN phrasal_keys TEXT DEFAULT ''")
 
 
 def get_setting(key, default=None):

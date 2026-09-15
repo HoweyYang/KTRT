@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.staticfiles import StaticFiles as StarletteStaticFiles
 from pydantic import BaseModel
 
-from backend import db, ai, tts, importer
+from backend import db, ai, tts, importer, phrasal
 
 db.init_db()
 
@@ -60,29 +60,35 @@ def _data_file(name):
 
 
 # ---------- 内置动词短语库（data/phrasal_verbs.json，由 tools/enrich_phrasal_verbs.py 生成） ----------
-PHRASAL_VERBS = {}      # key（小写短语）→ 条目
-PHRASAL_BY_HEAD = {}    # 首词（动词）→ 条目列表
+phrasal.load(_data_file('phrasal_verbs.json'))
 
 
-def _load_phrasal_verbs():
-    global PHRASAL_VERBS, PHRASAL_BY_HEAD
-    path = _data_file('phrasal_verbs.json')
-    if not path:
+def _backfill_phrasal_keys():
+    """老词库补检索：按动词给每条写入命中的短语动词（只跑一次）。"""
+    if not phrasal.BY_HEAD:
         return
     try:
-        data = json.load(open(path, encoding='utf-8'))
-    except Exception:
-        return
-    PHRASAL_VERBS = {g['key']: g for g in data if g.get('key')}
-    idx = {}
-    for key, g in PHRASAL_VERBS.items():
-        idx.setdefault(key.split(' ')[0], []).append(g)
-    for v in idx.values():
-        v.sort(key=lambda e: (len(e['key']), e['key']))
-    PHRASAL_BY_HEAD = idx
+        if db.get_setting('phrasal_backfill') == '1':
+            return
+        with db._lock:
+            with db.get_conn() as conn:
+                hit = 0
+                for r in conn.execute('SELECT id, word, meaning FROM words'):
+                    keys = phrasal.keys_for(r['word'], r['meaning'])
+                    if keys:
+                        conn.execute('UPDATE words SET phrasal_keys=? WHERE id=?',
+                                     (';'.join(keys), r['id']))
+                        hit += 1
+                conn.execute(
+                    "INSERT INTO settings(key, value) VALUES('phrasal_backfill','1') "
+                    "ON CONFLICT(key) DO UPDATE SET value='1'")
+                if hit:
+                    print('[KTRT] 动词短语检索完成：%d 条词条命中' % hit)
+    except Exception as e:
+        print('[KTRT] 动词短语检索失败：%s' % e)
 
 
-_load_phrasal_verbs()
+_backfill_phrasal_keys()
 
 
 def _lists_meta(book_id):
@@ -1896,7 +1902,7 @@ def custom_dict_add(body: CustomDictBody):
 
 
 @app.get('/api/references')
-def references(word: str = Query(''), limit: int = Query(10)):
+def references(word: str = Query(''), limit: int = Query(10), keys: str = Query('')):
     """动词短语参考：按短语首词（动词）匹配，支持原形归一。
 
     有内置短语库（含中文释义/例句中译/语域/学习价值）时返回分义项结构，
@@ -1904,11 +1910,15 @@ def references(word: str = Query(''), limit: int = Query(10)):
     """
     wl = word.strip().lower()
     limit = max(1, min(limit, 20))
-    if PHRASAL_BY_HEAD:
+    if phrasal.BY_KEY:
+        # 优先用导入时写好的命中结果（keys），没有再做实时检索
+        stored = [k.strip() for k in (keys or '').split(';') if k.strip()]
+        if stored:
+            return phrasal.entries_for_keys(stored, limit)
         canonical = wl if ' ' in wl else (_canonical_word(wl) or wl).lower()
-        hits = list(PHRASAL_BY_HEAD.get(wl, []))
+        hits = list(phrasal.BY_HEAD.get(wl, []))
         if canonical != wl:
-            hits += PHRASAL_BY_HEAD.get(canonical, [])
+            hits += phrasal.BY_HEAD.get(canonical, [])
         seen, out = set(), []
         for g in hits:
             if g['key'] in seen:
