@@ -127,8 +127,6 @@ function initFeatureHints() {
     const t = VIEW_TIPS[b.dataset.view];
     if (t) b.setAttribute('data-tip', t);
   });
-  const aiLabel = $('cd-ai') ? $('cd-ai').closest('label') : null;
-  if (aiLabel) aiLabel.setAttribute('data-tip', 'AI 整理开关：勾选后，“在线词源”会额外调用 AI 把原始资料整理成易读词卡；需要 API Key，不勾选则只做纯查询。');
   document.querySelectorAll('[data-tip]').forEach((el) => el.removeAttribute('title'));
   let current = null;
   let timer = null;
@@ -190,6 +188,35 @@ function saveStudyPos() {
 
 function studyPos(bookId) {
   try { return JSON.parse(localStorage.getItem('ktrt.pos') || '{}')[bookId] || null; } catch (e) { return null; }
+}
+
+/* ---------- 定位跳转：从风暴页/查词页跳到某词书的具体位置 ---------- */
+function posChipsHtml(items) {
+  return (items || []).map((p) => `
+    <span class="pos-chip" data-book="${p.book_id}" data-list="${p.list_no || 1}" data-seq="${p.seq || 1}"
+      data-tip="点击跳到《${escapeAttr(p.book_name || '')}》 List ${p.list_no || 1} 第 ${p.seq || 1} 个词">${escapeHtml(p.book_name || '')}</span>`).join('');
+}
+
+function wirePosChips(root) {
+  (root || document).querySelectorAll('.pos-chip[data-book]').forEach((c) => {
+    c.addEventListener('click', (e) => {
+      e.stopPropagation();
+      goToWord(c.dataset.book, c.dataset.list, c.dataset.seq);
+    });
+  });
+}
+
+async function goToWord(bookId, listNo, seq) {
+  if (!bookId) return;
+  state.bookId = Number(bookId);
+  state.listNo = Number(listNo) || 1;
+  state.seq = Number(seq) || 1;
+  const sel = $('book-select');
+  if (sel) sel.value = String(state.bookId);
+  state.lists = [];
+  switchView('study');
+  saveStudyPos();
+  toast('已跳到该词在词书中的位置');
 }
 
 function switchView(name) {
@@ -964,7 +991,7 @@ async function cdLookup() {
         + '</div>';
     }
     if (names) {
-      html += `<br>所在词书：${escapeHtml(names)}（按原形判定）`;
+      html += `<br>所在词书（点击可跳到该位置）：${posChipsHtml(cdState.books)}`;
       html += cdState.fav
         ? '<br><span class="ok">已收藏</span>'
         : '<br><button id="cd-fav" class="btn">☆ 收藏</button>';
@@ -978,6 +1005,7 @@ async function cdLookup() {
     }
     out.innerHTML = html;
     cdWireButtons();
+    wirePosChips(out);
     cdAutoTranslate(w);
     // 拼写纠错：词典与词书都没命中时给出建议
     if (!cdState.dict.found && !names) {
@@ -1052,31 +1080,30 @@ $('btn-cd-online').addEventListener('click', async () => {
     if (onl.error) html += `<div class="err" style="margin-top:6px">${escapeHtml(onl.error)}</div>`;
     out.innerHTML = html;
     cdWireButtons();
-    if ($('cd-ai').checked) {
-      out.innerHTML += '<div style="color:var(--muted)">AI 整理中…</div>';
-      try {
-        const en = await api('/api/custom-dict/enhance', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ word: cdWordForQuery(), offline: cdState.dict, online: { wiktionary: onl.wiktionary, datamuse: onl.datamuse } }),
-        });
-        if (en.ok) {
-          out.innerHTML += `<div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px;white-space:pre-wrap">${escapeHtml(en.text)}</div>`;
-          cdAppendSaveAiButton(en.text);
-        } else {
-          out.innerHTML += `<div class="err" style="margin-top:6px">${escapeHtml(en.error || '')}</div>`;
-        }
-      } catch (e) {
-        out.innerHTML += `<div class="err" style="margin-top:6px">${escapeHtml(e.message)}</div>`;
-      }
-    }
   } catch (e) {
     out.innerHTML += `<div class="err" style="margin-top:6px">${escapeHtml(e.message)}</div>`;
   } finally {
     btn.disabled = false;
-    btn.textContent = '在线词源（免费开源）';
+    btn.textContent = '在线联想';
   }
 });
 $('cd-word').addEventListener('keydown', (e) => { if (e.key === 'Enter') cdLookup(); });
+
+/* 查词页 → 风暴：已有词卡就地预览，没有就跳到风暴页去生成 */
+$('btn-cd-storm').addEventListener('click', () => {
+  const w = (cdWordForQuery() || '').trim();
+  if (!w) { toast('先查询一个单词'); return; }
+  const hit = state.storms.find((s) => (s.word || '').toLowerCase() === w.toLowerCase());
+  if (hit) {
+    openStorm(hit.id);
+    return;
+  }
+  closeCustomModal();
+  switchView('storm');
+  const inp = $('storm-gen-word') || $('storm-search');
+  if (inp) inp.value = w;
+  toast('「' + w + '」还没有风暴词卡，在风暴页点生成即可');
+});
 
 /* ---------- 风暴词卡 ---------- */
 function renderStormHtml(md) {
@@ -1132,11 +1159,15 @@ function renderStormList() {
   el.innerHTML = items.map((s) => `
     <div class="storm-item">
       <input type="checkbox" class="storm-check" value="${s.id}">
-      <span class="sw storm-word" data-open="${s.id}" data-tip="点击查看该词的风暴词卡全文（弹出覆盖层）。">${escapeHtml(s.word)}</span>
+      <span class="storm-name">
+        <span class="sw storm-word" data-open="${s.id}" data-tip="点击查看该词的风暴词卡全文（弹出覆盖层）。">${escapeHtml(s.word)}</span>
+        ${(s.positions && s.positions.length) ? posChipsHtml(s.positions) : '<span class="pos-none">不在词书</span>'}
+      </span>
       <button class="btn" data-open="${s.id}" data-tip="展开该词的风暴词卡全文；生成后离线也可查看。">查看</button>
       <button class="btn danger" data-del="${s.id}" data-tip="删除这张风暴词卡；不影响任何单词书内容。">删除</button>
     </div>`).join('');
   el.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => openStorm(Number(b.dataset.open))));
+  wirePosChips(el);
   el.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
     if (!confirm('删除这张风暴词卡？')) return;
     await api('/api/storm/' + b.dataset.del, { method: 'DELETE' });
@@ -1147,9 +1178,12 @@ function renderStormList() {
 async function openStorm(id) {
   try {
     const s = await api('/api/storm/' + id);
-    $('storm-modal-title').textContent = '风暴词卡 · ' + s.word;
+    const meta = state.storms.find((x) => x.id === id) || {};
+    const chips = (meta.positions && meta.positions.length) ? posChipsHtml(meta.positions) : '';
+    $('storm-modal-title').innerHTML = '风暴词卡 · ' + escapeHtml(s.word) + (chips ? ' ' + chips : '');
     $('storm-modal-body').innerHTML = `<div class="storm-detail">${renderStormHtml(s.markdown)}</div>`;
     $('storm-modal').classList.remove('hidden');
+    wirePosChips($('storm-modal'));
   } catch (e) {
     toast(e.message);
   }
