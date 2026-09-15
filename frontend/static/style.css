@@ -431,7 +431,13 @@ html.side-collapsed .brand-text { display: none; }
 .wordmark.brand-img b,
 .wordmark.brand-img i,
 .wordmark.brand-img u { display: none !important; }
-.wordmark.brand-img .wm-img { display: block !important; height: 30px; }
+.wordmark.brand-img .wm-img {
+  display: block !important;
+  height: 26px;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: left center;
+}
 body[data-page="paper"] .wordmark b {
   font-family: Georgia, "Songti SC", "SimSun", serif;
   font-weight: 600;

@@ -58,35 +58,35 @@ function syncThemeLabels() {
 }
 
 /* 品牌图：可在 frontend/static/brand/ 放自己的 logo（按配色切换），没有就退回文字字标 */
-const BRAND_IMAGES = {
-  'cyber|light': '/static/brand/brand-neon.svg',
-  'cyber|dark': '/static/brand/brand-acid.svg',
-  'cyber|dark-blue': '/static/brand/brand-matrix.svg',
-  'paper|light': '/static/brand/brand-paper.svg',
-  'minimal|light': '/static/brand/brand-minimal.svg',
+const BRAND_FILES = {
+  'cyber|light': ['brand-neon.svg', 'brand-neon.png'],
+  'cyber|dark': ['brand-acid.svg', 'brand-acid.png'],
+  'cyber|dark-blue': ['brand-matrix.svg', 'brand-matrix.png'],
+  'paper|light': ['brand-paper.svg', 'brand-paper.png'],
+  'minimal|light': ['brand-minimal.svg', 'brand-minimal.png'],
 };
 let brandSeq = 0;
 
 function syncBrandImage() {
   const box = document.querySelector('.wordmark');
   if (!box) return;
-  const key = currentPageMode() + '|' + (document.body.dataset.theme || 'light');
-  const src = BRAND_IMAGES[key];
   const seq = ++brandSeq;
-  if (!src) {
-    box.classList.remove('brand-img');
-    return;
-  }
-  const img = new Image();
-  img.onload = () => {
+  const files = BRAND_FILES[currentPageMode() + '|' + (document.body.dataset.theme || 'light')];
+  const fail = () => { if (seq === brandSeq) box.classList.remove('brand-img'); };
+  if (!files || !files.length) { fail(); return; }
+  const tryLoad = (i) => {
     if (seq !== brandSeq) return;
-    const el = box.querySelector('.wm-img');
-    if (el) { el.src = src; box.classList.add('brand-img'); }
+    if (i >= files.length) { fail(); return; }
+    const img = new Image();
+    img.onload = () => {
+      if (seq !== brandSeq) return;
+      const el = box.querySelector('.wm-img');
+      if (el) { el.src = img.src; box.classList.add('brand-img'); }
+    };
+    img.onerror = () => tryLoad(i + 1);   // SVG 没有就试 PNG
+    img.src = '/static/brand/' + files[i];
   };
-  img.onerror = () => {
-    if (seq === brandSeq) box.classList.remove('brand-img');
-  };
-  img.src = src;
+  tryLoad(0);
 }
 
 async function api(path, opts = {}) {
