@@ -423,6 +423,8 @@ async function loadCard() {
     $('btn-dict').classList.remove('active');
     $('edit-box').classList.add('hidden');
     $('btn-edit').classList.remove('active');
+    _ttsStop();                                  // 换词时停掉上一段朗读
+    prefetchTts(state.card.word.word);           // 预取当前词语音，点下去立刻出声
   } catch (e) {
     toast(e.message);
   }
@@ -1339,6 +1341,9 @@ function ttsNum(v, dft) {
 /* ---------- 朗读：带"正在播"反馈，可再次点击停止 ---------- */
 let ttsAudio = null;
 let ttsBtnActive = null;
+let ttsAbort = null;
+let ttsToken = 0;
+const ttsCache = new Map();   // 键 -> blob URL（同一句反复点不重复合成）
 
 function _ttsClear() {
   if (ttsBtnActive) {
@@ -1348,12 +1353,54 @@ function _ttsClear() {
 }
 
 function _ttsStop() {
+  ttsToken += 1;                     // 让在途请求失效，避免连点叠音
+  if (ttsAbort) {
+    try { ttsAbort.abort(); } catch (e) { /* ignore */ }
+    ttsAbort = null;
+  }
   if (ttsAudio) {
-    try { ttsAudio.pause(); } catch (e) { /* ignore */ }
+    try { ttsAudio.pause(); ttsAudio.currentTime = 0; } catch (e) { /* ignore */ }
     ttsAudio = null;
   }
   try { speechSynthesis.cancel(); } catch (e) { /* ignore */ }
   _ttsClear();
+}
+
+function _ttsKey(lang, clean) {
+  const s = state.settings || {};
+  return [lang, s.tts_voice_en || '', s.tts_voice_fr || '', s.tts_rate || '', s.tts_pitch || '',
+          s.tts_volume || '', clean].join('|');
+}
+
+function _ttsCachePut(key, url) {
+  ttsCache.set(key, url);
+  while (ttsCache.size > 8) {
+    const [k0, u0] = ttsCache.entries().next().value;
+    ttsCache.delete(k0);
+    try { URL.revokeObjectURL(u0); } catch (e) { /* ignore */ }
+  }
+}
+
+async function _ttsFetchBlob(lang, clean, signal) {
+  const res = await fetch('/api/tts?text=' + encodeURIComponent(clean) +
+    '&lang=' + encodeURIComponent(lang) + '&t=' + Date.now(), { signal });
+  if (!res.ok) throw new Error('合成失败');
+  return await res.blob();
+}
+
+/* 卡片出现时预取当前词的语音：点下去就能立刻出声 */
+async function prefetchTts(text) {
+  const s = state.settings || {};
+  if ((s.tts_provider || 'edge-tts') === 'browser') return;
+  const clean = ttsClean(text);
+  if (!clean) return;
+  const lang = bookLang();
+  const key = _ttsKey(lang, clean);
+  if (ttsCache.has(key)) return;
+  try {
+    const blob = await _ttsFetchBlob(lang, clean, undefined);
+    if (!ttsCache.has(key)) _ttsCachePut(key, URL.createObjectURL(blob));
+  } catch (e) { /* 预取失败不影响使用 */ }
 }
 
 async function speak(text, btn) {
@@ -1361,7 +1408,8 @@ async function speak(text, btn) {
   const s = state.settings || {};
   const clean = ttsClean(text);
   if (!clean) { toast('没有可朗读的内容'); return; }
-  _ttsStop();
+  _ttsStop();                       // 连点：先停掉上一次（含在途请求）
+  const token = ttsToken;
   if (btn) {
     btn.classList.add('speaking');
     ttsBtnActive = btn;
@@ -1384,26 +1432,39 @@ async function speak(text, btn) {
       if (!v) v = voices.find((x) => x.lang.toLowerCase().startsWith(u.lang));
       if (v) u.voice = v;
     }
-    u.onend = _ttsClear;
-    u.onerror = () => { _ttsClear(); toast('浏览器语音播放失败'); };
+    u.onend = () => { if (token === ttsToken) _ttsClear(); };
+    u.onerror = () => { if (token === ttsToken) { _ttsClear(); toast('浏览器语音播放失败'); } };
     speechSynthesis.speak(u);
     return;
   }
+  const key = _ttsKey(lang, clean);
   try {
-    const res = await fetch('/api/tts?text=' + encodeURIComponent(clean) +
-      '&lang=' + encodeURIComponent(lang) + '&t=' + Date.now());
-    if (!res.ok) throw new Error('合成失败');
-    ttsAudio = new Audio(URL.createObjectURL(await res.blob()));
-    ttsAudio.onended = _ttsClear;
-    ttsAudio.onerror = () => { _ttsClear(); toast('播放失败'); };
+    let url = ttsCache.get(key);
+    if (!url) {
+      const ctrl = new AbortController();
+      ttsAbort = ctrl;
+      const blob = await _ttsFetchBlob(lang, clean, ctrl.signal);
+      if (token !== ttsToken) return;          // 期间又点了别的
+      ttsAbort = null;
+      url = URL.createObjectURL(blob);
+      _ttsCachePut(key, url);
+    }
+    if (token !== ttsToken) return;
+    ttsAudio = new Audio(url);
+    ttsAudio.onended = () => { if (token === ttsToken) _ttsClear(); };
+    ttsAudio.onerror = () => { if (token === ttsToken) { _ttsClear(); toast('播放失败'); } };
     await ttsAudio.play();
   } catch (e) {
+    if (token !== ttsToken) return;            // 被更晚的点击取消了，静默退出
+    ttsAbort = null;
     _ttsClear();
-    toast('语音合成失败：' + (e.message || '需要联网'));
+    if (!e || e.name !== 'AbortError') toast('语音合成失败：' + ((e && e.message) || '需要联网'));
   }
 }
 $('btn-word-tts').addEventListener('click', () => {
-  speak(state.card.word.word);
+  const btn = $('btn-word-tts');
+  if (btn === ttsBtnActive) { _ttsStop(); return; }   // 再点一次＝停止
+  speak(state.card.word.word, btn);
 });
 
 /* ---------- 管理页 ---------- */
