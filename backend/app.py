@@ -1027,6 +1027,23 @@ def _note_key(word):
     return key
 
 
+def _word_positions(conn, word, limit=8):
+    """该词出现在哪些词书里、具体位置（book_id/list_no/seq），供界面点击跳转。"""
+    w = (word or '').strip()
+    if not w:
+        return []
+    key = _note_key(w)
+    rows = conn.execute(
+        'SELECT w.id AS word_id, w.word, w.list_no, w.seq, '
+        'b.id AS book_id, b.name AS book_name, b.language '
+        'FROM words w JOIN word_books b ON b.id=w.book_id '
+        'WHERE lower(w.word)=? OR lower(w.word)=? '
+        'ORDER BY b.id, w.list_no, w.seq LIMIT ?',
+        (key, w.lower(), limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def _migrate_notes_to_keys():
     """一次性迁移：把旧的「按词条存」的笔记搬到「按词存」的 word_notes。"""
     try:
@@ -1514,13 +1531,13 @@ def list_storm():
         rows = conn.execute(
             'SELECT id, word, language, sources, updated_at FROM storm_entries ORDER BY updated_at DESC'
         ).fetchall()
-    out = []
-    with db.get_conn() as conn:
+        out = []
         for r in rows:
-            names = [x['name'] for x in conn.execute(
-                'SELECT DISTINCT b.name FROM words w JOIN word_books b ON b.id=w.book_id '
-                'WHERE w.word=? COLLATE NOCASE', (r['word'],))]
-            out.append(dict(r) | {'in_books': names})
+            pos = _word_positions(conn, r['word'])
+            out.append(dict(r) | {
+                'in_books': [p['book_name'] for p in pos],
+                'positions': pos,
+            })
     return out
 
 
@@ -1716,13 +1733,15 @@ def custom_dict_lookup(body: CustomDictBody):
     favorite = False
     with db.get_conn() as conn:
         for r in conn.execute(
-                'SELECT w.id, b.id book_id, b.name FROM words w '
-                'JOIN word_books b ON b.id=w.book_id WHERE w.word=? COLLATE NOCASE',
+                'SELECT w.id, w.list_no, w.seq, b.id book_id, b.name FROM words w '
+                'JOIN word_books b ON b.id=w.book_id WHERE w.word=? COLLATE NOCASE '
+                'ORDER BY b.id, w.list_no, w.seq',
                 (canonical,)):
             st = conn.execute('SELECT favorite FROM word_status WHERE word_id=?', (r['id'],)).fetchone()
             if st and st['favorite']:
                 favorite = True
-            in_books.append({'book_id': r['book_id'], 'book_name': r['name']})
+            in_books.append({'book_id': r['book_id'], 'book_name': r['name'],
+                             'list_no': r['list_no'], 'seq': r['seq']})
     components = _phrase_components(word) if _is_phrase(word) else []
     return {
         'word': word,
