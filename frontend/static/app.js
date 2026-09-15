@@ -1669,7 +1669,11 @@ function populateSettings() {
       $('s-model').value = p.model;
     }
   };
-  $('s-theme').onchange = () => applyTheme($('s-theme').value);
+  $('s-theme').onchange = () => {
+    applyTheme($('s-theme').value);
+    state.settings = { ...(state.settings || {}), theme: $('s-theme').value };
+    syncThemeButtons();   // 让侧栏三个配色按钮的高亮跟着走
+  };
 }
 
 function syncTtsLabels() {
