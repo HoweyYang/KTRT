@@ -170,77 +170,81 @@ body[data-page="paper"] #note-context {
 
 /* ================= 赛博朋克 cyber：霓虹 / 扫描线 / 单色终端感 ================= */
 body[data-page="cyber"] {
-  --font: "Cascadia Mono", "JetBrains Mono", Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  /* 科技感来自 DIN 系（Bahnschrift）+ 中文雅黑，而不是等宽体堆满全屏 */
+  --font: "Bahnschrift", "Segoe UI Variable Text", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   background-image: repeating-linear-gradient(0deg, rgba(255, 255, 255, .03) 0 1px, transparent 1px 3px);
 }
-/* 电光蓝青粉 */
+/* 霓虹夜景（参考赛博朋克色板：青 #3DB3D0 / 品红 #AA5A9C / 黄 #F7D967 / 红 #C24347 / 深紫蓝 #191338） */
 body[data-page="cyber"][data-theme="light"] {
-  --bg: #04060c;
-  --card: #0a1120;
-  --ink: #d7f4ff;
-  --muted: #7b98ad;
-  --line: #15324a;
-  --accent: #22e0ff;
-  --accent-dark: #7af1ff;
-  --on-accent: #03161c;
-  --th: #0e1a2c;
-  --code: #0e1a2c;
-  --mark: rgba(255, 60, 190, .3);
-  --track: #15324a;
-  --toast: #22e0ff;
-  --green: #39ff88;
-  --red: #ff4d6d;
-  --amber: #ffd166;
-  --accent-2: #ff2bd6;
-  --cyber-glow: 0 0 22px -8px rgba(34, 224, 255, .75);
-  --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(34, 224, 255, .55);
+  --bg: #12102a;
+  --card: #1b1840;
+  --ink: #e9e7ff;
+  --muted: #9d95cb;
+  --line: #332d66;
+  --accent: #3db3d0;
+  --accent-dark: #6fd3ec;
+  --accent-2: #aa5a9c;
+  --on-accent: #0b0a1c;
+  --th: #241f52;
+  --code: #241f52;
+  --mark: rgba(170, 90, 156, .42);
+  --track: #332d66;
+  --toast: #3db3d0;
+  --green: #57d9a3;
+  --red: #c24347;
+  --amber: #f7d967;
+  --aberr: #c24347;
+  --cyber-glow: 0 0 22px -8px rgba(61, 179, 208, .8);
+  --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(61, 179, 208, .6);
   --card-radius: 10px;
 }
-/* 酸亮黄黑 */
+/* 酸黄黑（黄 #F7D967 + 红 #C24347） */
 body[data-page="cyber"][data-theme="dark"] {
-  --bg: #0a0a06;
-  --card: #14140c;
-  --ink: #f4ffd6;
-  --muted: #a3a37a;
-  --line: #2f2f18;
-  --accent: #d9ff2b;
-  --accent-dark: #eaff7a;
-  --on-accent: #101003;
-  --th: #1b1b10;
-  --code: #1b1b10;
-  --mark: rgba(217, 255, 43, .26);
-  --track: #2f2f18;
-  --toast: #d9ff2b;
-  --green: #b6ff3d;
-  --red: #ff5a3c;
-  --amber: #ffc61a;
-  --accent-2: #ff7a1a;
-  --cyber-glow: 0 0 22px -8px rgba(217, 255, 43, .7);
-  --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(217, 255, 43, .5);
+  --bg: #0d0b06;
+  --card: #1b1710;
+  --ink: #ffeec2;
+  --muted: #b39a5e;
+  --line: #3a3220;
+  --accent: #f7d967;
+  --accent-dark: #ffe89a;
+  --accent-2: #c24347;
+  --on-accent: #17130a;
+  --th: #262013;
+  --code: #262013;
+  --mark: rgba(247, 217, 103, .3);
+  --track: #3a3220;
+  --toast: #f7d967;
+  --green: #b9d95e;
+  --red: #c24347;
+  --amber: #f7d967;
+  --aberr: #c24347;
+  --cyber-glow: 0 0 22px -8px rgba(247, 217, 103, .7);
+  --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(247, 217, 103, .5);
   --card-radius: 10px;
 }
-/* 矩阵绿 */
+/* 矩阵：只有绿和黑，不加副色 */
 body[data-page="cyber"][data-theme="dark-blue"] {
-  --bg: #020604;
-  --card: #08140d;
-  --ink: #c9ffdd;
-  --muted: #6fa383;
-  --line: #123a24;
-  --accent: #38ff9c;
-  --accent-dark: #8dffc4;
-  --on-accent: #02170c;
-  --th: #0c1d14;
-  --code: #0c1d14;
-  --mark: rgba(56, 255, 156, .24);
-  --track: #123a24;
-  --toast: #38ff9c;
-  --green: #38ff9c;
+  --bg: #000000;
+  --card: #061209;
+  --ink: #c8ffd9;
+  --muted: #5f9c76;
+  --line: #14361f;
+  --accent: #35ff7a;
+  --accent-dark: #8bffb4;
+  --accent-2: #35ff7a;
+  --on-accent: #001206;
+  --th: #0b1c11;
+  --code: #0b1c11;
+  --mark: rgba(53, 255, 122, .22);
+  --track: #14361f;
+  --toast: #35ff7a;
+  --green: #35ff7a;
   --red: #ff5c5c;
-  --amber: #ffd75e;
-  --accent-2: #22d3ee;
-  --cyber-glow: 0 0 22px -8px rgba(56, 255, 156, .7);
-  --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(56, 255, 156, .5);
+  --amber: #b8ff9a;
+  --aberr: #35ff7a;
+  --cyber-glow: 0 0 22px -8px rgba(53, 255, 122, .75);
+  --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(53, 255, 122, .55);
   --card-radius: 10px;
 }
 body[data-page="cyber"] .side,
@@ -251,15 +255,30 @@ body[data-page="cyber"] #note-context {
   border-radius: var(--card-radius, 10px);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03), var(--card-shadow);
 }
-/* 霓虹是双色的：主色 + 副色（电光=蓝青×粉，酸黄=黄×橙，矩阵=绿×青） */
+/* 霓虹是双色的：主色 + 副色（参考图配色：青 #3DB3D0 × 品红 #AA5A9C / 黄 × 红 / 矩阵纯绿） */
 body[data-page="cyber"] .wordmark b {
-  background: linear-gradient(92deg, var(--accent), var(--accent-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 55%, transparent));
+  /* 参考图那种标题做法：粗斜体 + 青/红色散，而不是渐变填充 */
+  font-family: "Agency FB", "Bahnschrift", "Segoe UI", sans-serif;
+  font-style: italic;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--ink);
+  text-shadow: 2px 0 0 var(--accent), -2px 0 0 var(--aberr, var(--accent));
 }
 body[data-page="cyber"] .wordmark i { color: var(--accent-2); }
+/* 词条大标题：轻微色散，保持可读 */
+body[data-page="cyber"] .word {
+  font-family: "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  font-weight: 600;
+  letter-spacing: .01em;
+  text-shadow: 1px 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
+               -1px 0 0 color-mix(in srgb, var(--aberr, var(--accent)) 50%, transparent);
+}
+/* 音标用等宽体（终端感留在这里就够了） */
+body[data-page="cyber"] .phonetic {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  letter-spacing: .03em;
+}
 body[data-page="cyber"] .btn.primary {
   background: linear-gradient(92deg, var(--accent), var(--accent-2));
   color: var(--on-accent);

@@ -24,7 +24,7 @@ const PAGE_MODES = ['minimal', 'paper', 'cyber'];
 const THEME_LABELS = {
   minimal: { light: '浅色', dark: '深色', 'dark-blue': '石墨' },
   paper: { light: '米白纸', dark: '牛皮纸', 'dark-blue': '靛蓝纸' },
-  cyber: { light: '电光', dark: '酸黄', 'dark-blue': '矩阵' },
+  cyber: { light: '霓虹', dark: '酸黄', 'dark-blue': '矩阵' },
 };
 
 function currentPageMode() {
@@ -132,10 +132,10 @@ const FEATURE_HINTS = {
   's-theme': '主题色：随页面质感变化——简约=浅色/深色/石墨，纸质=米白纸/牛皮纸/靛蓝纸，赛博=电光/酸黄/矩阵。',
   'page-normal': '页面质感：简约（Apple / OpenAI 风格，素色、克制留白、细边框）。',
   'page-paper': '页面质感：纸质（米白纸 / 牛皮纸 / 靛蓝纸，纸纹 + 纤维 + 边缘阴影，衬线阅读字体）。',
-  'page-cyber': '页面质感：赛博朋克（霓虹描边、扫描线、终端等宽字体；三种配色：电光蓝青粉 / 酸亮黄黑 / 矩阵绿）。',
-  'theme-light': '配色一号位：简约=浅色，纸质=米白纸，赛博=电光。',
-  'theme-dark': '配色二号位：简约=深色，纸质=牛皮纸，赛博=酸黄。',
-  'theme-blue': '配色三号位：简约=石墨，纸质=靛蓝纸，赛博=矩阵绿。',
+  'page-cyber': '页面质感：科幻（霓虹夜景配色、扫描线、色散标题、DIN 科技字体；三种配色：霓虹夜景 / 酸黄黑 / 矩阵绿）。',
+  'theme-light': '配色一号位：简约=浅色，纸质=米白纸，科幻=霓虹夜景（青×品红）。',
+  'theme-dark': '配色二号位：简约=深色，纸质=牛皮纸，科幻=酸黄黑。',
+  'theme-blue': '配色三号位：简约=石墨，纸质=靛蓝纸，科幻=矩阵（纯绿黑）。',
 };
 
 function initFeatureHints() {
