@@ -64,7 +64,7 @@ const FEATURE_HINTS = {
   'btn-dict': '打开本地 ECDICT 词典，展示当前词释义与词形变化（离线可用）。',
   'btn-edit': '编辑：在卡片内直接修改当前这一条（单词、音标、释义、搭配、短语、同反义词、同根词），保存后同步本地库并回写所属词书 Excel；原文件失效时自动改用本地托管副本。',
   'btn-cd-lookup': '查询输入词：依次做离线词典速查、变形还原为原形、所在词书与收藏判断；词典与词书都未命中时提供拼写建议。',
-  'btn-cd-online': '在线词源（免费开源）：从 Wiktionary / Datamuse 按原形抓取释义、相关词与形近词；纯查询，不调用 AI。',
+  'btn-cd-online': '在线联想：从 Datamuse 按原形抓取相关词、同音近音与形似词；纯查询，不调用 AI。中文/句子翻译走「查询」时的机翻。',
   'btn-custom-dict': '查询任意单词。流程：离线词典 → 变形还原原形 → 判断原形所在词书/收藏 → 拼写纠错；可按需使用在线词源或 AI 整理（AI 需配置 Key）。',
   'btn-storm-view': '查看或生成当前词的风暴词卡（词源、用法、释义、变形、派生词、同反近义、易混词）；生成需调用 AI 并联网，若尚无词卡会先询问是否生成。',
   'btn-make-sentence': '用当前词造句：先在输入框写一句中文提示词再点击；AI 返回英文句与中文翻译并高亮目标词，保存后进入造句收藏。每词最多 3 句，超出时自动删除最早一条。',
@@ -956,7 +956,10 @@ async function cdAutoTranslate(text) {
     });
   } catch (e) {
     if (seq !== cdMtSeq) return;
-    box.innerHTML = `<span class="err">${escapeHtml(e.message)}</span>`;
+    const msg = /not found/i.test(e.message || '')
+      ? '机翻不可用：程序后端还是旧版本，重启程序后重试'
+      : e.message;
+    box.innerHTML = `<span class="err">${escapeHtml(msg)}</span>`;
   }
 }
 
@@ -1064,12 +1067,6 @@ $('btn-cd-online').addEventListener('click', async () => {
     });
     cdState.online = onl;
     let html = cdBasicHtml();
-    if (onl.wiktionary && onl.wiktionary.length) {
-      html += '<div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px"><b>在线释义 · Wiktionary（CC BY-SA）</b></div>';
-      onl.wiktionary.forEach((it) => {
-        html += `<div style="margin-top:5px">${escapeHtml(it.pos || '')}：${it.definitions.map((x) => escapeHtml(x)).join('；')}</div>`;
-      });
-    }
     const dm = onl.datamuse || {};
     if (dm.related && dm.related.length || dm.sounds_like && dm.sounds_like.length || dm.spelled_like && dm.spelled_like.length) {
       html += '<div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px"><b>词汇关系 · Datamuse</b></div>';
@@ -1161,7 +1158,11 @@ function renderStormList() {
       <input type="checkbox" class="storm-check" value="${s.id}">
       <span class="storm-name">
         <span class="sw storm-word" data-open="${s.id}" data-tip="点击查看该词的风暴词卡全文（弹出覆盖层）。">${escapeHtml(s.word)}</span>
-        ${(s.positions && s.positions.length) ? posChipsHtml(s.positions) : '<span class="pos-none">不在词书</span>'}
+        ${(s.positions && s.positions.length)
+          ? posChipsHtml(s.positions)
+          : ((s.in_books && s.in_books.length)
+            ? s.in_books.map((n) => `<span class="pos-none">${escapeHtml(n)}</span>`).join('')
+            : '<span class="pos-none">不在词书</span>')}
       </span>
       <button class="btn" data-open="${s.id}" data-tip="展开该词的风暴词卡全文；生成后离线也可查看。">查看</button>
       <button class="btn danger" data-del="${s.id}" data-tip="删除这张风暴词卡；不影响任何单词书内容。">删除</button>
