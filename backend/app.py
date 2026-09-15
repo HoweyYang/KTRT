@@ -961,9 +961,12 @@ def _canonical_word(raw):
                         lemma = tok[2:].strip()
                         if lemma and lemma.lower() != w:
                             cands.append(lemma)
-            for c in _morph_candidates(w):
-                if dconn.execute('SELECT 1 FROM dict WHERE word=? COLLATE NOCASE', (c,)).fetchone():
-                    cands.append(c)
+            if row is None:
+                # 词典里没有这个词条时，才用规则兜底猜原形；
+                # 已经有词条（如 bus）说明它本身就是词，绝不能再截尾（bus → bu）。
+                for c in _morph_candidates(w):
+                    if dconn.execute('SELECT 1 FROM dict WHERE word=? COLLATE NOCASE', (c,)).fetchone():
+                        cands.append(c)
             dconn.close()
         except Exception:
             pass
@@ -1211,7 +1214,7 @@ def custom_dict_online(body: CustomDictBody):
     canonical = _canonical_word(word)
     q = canonical or word
     out = {'word': word, 'canonical': canonical if canonical.lower() != word.lower() else '',
-           'wiktionary': [], 'datamuse': {}, 'error': ''}
+           'datamuse': {}, 'error': ''}
     try:
         ml = _http_get_json('https://api.datamuse.com/words?ml=' + urllib.parse.quote(q) + '&max=10')
         sl = _http_get_json('https://api.datamuse.com/words?sl=' + urllib.parse.quote(q) + '&max=8')
@@ -1290,47 +1293,8 @@ def custom_dict_enhance(body: EnhanceBody):
 
 
 def _storm_fetch_online(q):
-    out = {'wiktionary': [], 'datamuse': {}, 'error': ''}
-    def grab_wiktionary(cand):
-        got = []
-        wt = _http_get_json('https://en.wiktionary.org/api/rest_v1/page/definition/' + urllib.parse.quote(cand))
-        groups = wt if isinstance(wt, dict) else {}
-        entries = groups.get('en') or groups.get('English') or []
-        if not isinstance(entries, list):
-            entries = []
-        for d in entries:
-            if isinstance(d, str):
-                d = {'partOfSpeech': '', 'definitions': [d]}
-            pos = d.get('partOfSpeech', '')
-            defs = d.get('definitions', []) or []
-            if isinstance(defs, str):
-                defs = [defs]
-            clean = []
-            for x in defs[:5]:
-                txt = x if isinstance(x, str) else (x.get('definition') if isinstance(x, dict) else '')
-                if txt:
-                    txt = re.sub(r'<[^>]+>', '', str(txt))
-                    txt = txt.replace('&amp;', '&').replace('&#39;', "'").replace('&quot;', '"')
-                    clean.append(txt.strip())
-            if clean:
-                got.append({'pos': pos, 'definitions': clean})
-        return got
-    try:
-        cands = [q.capitalize(), q] if (q and q.islower()) else [q]
-        for cand in dict.fromkeys(cands):
-            got = grab_wiktionary(cand)
-            if got:
-                out['wiktionary'] = got
-                break
-        if not out['wiktionary'] and _is_phrase(q):
-            for tok in _split_phrase(q)[:4]:
-                for g in grab_wiktionary(tok):
-                    g['pos'] = '[' + tok + '] ' + (g.get('pos') or '')
-                    out['wiktionary'].append(g)
-        if not out['wiktionary']:
-            out['error'] += 'Wiktionary 未收录；'
-    except Exception as e:
-        out['error'] += 'Wiktionary 获取失败：%s；' % e
+    """风暴词的在线补充：只取 Datamuse 词汇关系（Wiktionary 已下线：常超时且无中文）。"""
+    out = {'datamuse': {}, 'error': ''}
     try:
         ml = _http_get_json('https://api.datamuse.com/words?ml=' + urllib.parse.quote(q) + '&max=12')
         sl = _http_get_json('https://api.datamuse.com/words?sl=' + urllib.parse.quote(q) + '&max=15')
@@ -1674,8 +1638,6 @@ def storm_generate(body: StormGenBody):
         sources.append('ECDICT')
     if raw['books']:
         sources.append('词书')
-    if raw['online']['wiktionary']:
-        sources.append('Wiktionary')
     if raw['online']['datamuse'].get('related') or raw['online']['datamuse'].get('sounds_like'):
         sources.append('Datamuse')
     sources.append('AI整理')
