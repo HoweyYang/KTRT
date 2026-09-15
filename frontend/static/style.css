@@ -192,6 +192,7 @@ body[data-page="cyber"][data-theme="light"] {
   --green: #39ff88;
   --red: #ff4d6d;
   --amber: #ffd166;
+  --accent-2: #ff2bd6;
   --cyber-glow: 0 0 22px -8px rgba(34, 224, 255, .75);
   --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(34, 224, 255, .55);
   --card-radius: 10px;
@@ -214,6 +215,7 @@ body[data-page="cyber"][data-theme="dark"] {
   --green: #b6ff3d;
   --red: #ff5a3c;
   --amber: #ffc61a;
+  --accent-2: #ff7a1a;
   --cyber-glow: 0 0 22px -8px rgba(217, 255, 43, .7);
   --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(217, 255, 43, .5);
   --card-radius: 10px;
@@ -236,6 +238,7 @@ body[data-page="cyber"][data-theme="dark-blue"] {
   --green: #38ff9c;
   --red: #ff5c5c;
   --amber: #ffd75e;
+  --accent-2: #22d3ee;
   --cyber-glow: 0 0 22px -8px rgba(56, 255, 156, .7);
   --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(56, 255, 156, .5);
   --card-radius: 10px;
@@ -248,16 +251,36 @@ body[data-page="cyber"] #note-context {
   border-radius: var(--card-radius, 10px);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03), var(--card-shadow);
 }
+/* 霓虹是双色的：主色 + 副色（电光=蓝青×粉，酸黄=黄×橙，矩阵=绿×青） */
 body[data-page="cyber"] .wordmark b {
-  text-shadow: 0 0 16px var(--accent), 0 0 3px var(--accent);
+  background: linear-gradient(92deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 55%, transparent));
 }
-body[data-page="cyber"] .btn.primary,
-body[data-page="cyber"] .themes button.on {
+body[data-page="cyber"] .wordmark i { color: var(--accent-2); }
+body[data-page="cyber"] .btn.primary {
+  background: linear-gradient(92deg, var(--accent), var(--accent-2));
+  color: var(--on-accent);
+  border-color: transparent;
   box-shadow: 0 0 18px -6px var(--accent);
 }
-body[data-page="cyber"] .tab.active {
-  box-shadow: inset 0 0 0 1px var(--accent), 0 0 18px -10px var(--accent);
+body[data-page="cyber"] .themes button.on {
+  box-shadow: 0 0 18px -6px var(--accent);
+  border-color: var(--accent);
+  color: var(--accent);
 }
+body[data-page="cyber"] .tab.active {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 18%, transparent), transparent);
+  box-shadow: inset 2px 0 0 var(--accent), 0 0 18px -12px var(--accent);
+}
+body[data-page="cyber"] #progress-fill {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+body[data-page="cyber"] .phrase-list li .head-hit { color: var(--accent-2); }
+body[data-page="cyber"] .pos-chip { color: var(--accent-2); border-color: color-mix(in srgb, var(--accent-2) 45%, transparent); }
+body[data-page="cyber"] a { color: var(--accent-2); }
 /* 等宽字体更宽，字段标签列放宽一点，避免「搭配 / 短语」折行 */
 body[data-page="cyber"] .field { grid-template-columns: 88px minmax(0, 1fr) auto; }
 * { box-sizing: border-box; }
@@ -429,9 +452,19 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .field .value { line-height: 1.55; font-size: 15px; }
 .field .value mark { background: var(--mark); padding: 0 2px; border-radius: 3px; }
 .phrase-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
-.phrase-list li { position: relative; padding-left: 15px; line-height: 1.6; }
+.phrase-list li { position: relative; padding-left: 15px; line-height: 1.6; display: flex; align-items: center; gap: 6px; }
 .phrase-list li::before { content: '·'; position: absolute; left: 4px; color: var(--muted); }
 .phrase-list li .head-hit { color: var(--accent); font-weight: 700; }
+.phrase-list li .ph-text { flex: 1; min-width: 0; }
+.phrase-list li .mini-speak { padding: 1px 5px; border-radius: 7px; opacity: .4; transition: opacity .15s, color .15s; }
+.phrase-list li:hover .mini-speak, .phrase-list li .mini-speak.speaking { opacity: 1; }
+/* 朗读中的反馈：变色 + 呼吸 */
+@keyframes speakPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.icon-btn.speaking {
+  color: var(--accent);
+  border-color: var(--accent);
+  animation: speakPulse .9s ease-in-out infinite;
+}
 .field .value { white-space: pre-wrap; }
 .cd-mt {
   margin-top: 12px;

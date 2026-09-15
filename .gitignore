@@ -6,6 +6,8 @@ __pycache__/
 # 用户数据（含 API Key 与词库，不入库）
 data/*
 !data/README.md
+!data/phrasal_verbs.json
+!data/reference_phrasal_verbs.json
 
 # 数据库
 *.db

@@ -452,9 +452,9 @@ function renderCard() {
       <div class="field">
         <span class="label">搭配 / 短语</span>
         <div class="value"><ul class="phrase-list">${
-          phraseItems.map((s) => `<li>${highlightHead(s, c.word.word)}</li>`).join('')
+          phraseItems.map((s) => `<li><span class="ph-text">${highlightHead(s, c.word.word)}</span>`
+            + `<button class="icon-btn mini-speak" data-tts="${escapeAttr(s)}" title="朗读这一条">${SPEAKER_ICON}</button></li>`).join('')
         }</ul></div>
-        <button class="icon-btn" data-tts="${escapeAttr('搭配与短语：' + phraseItems.join('；'))}" title="朗读">${SPEAKER_ICON}</button>
       </div>`);
   }
   for (const [label, value] of [['同义词', c.word.synonyms], ['反义词', c.word.antonyms], ['同根词', c.word.root_words]]) {
@@ -468,7 +468,10 @@ function renderCard() {
   }
   $('fields').innerHTML = rows.join('');
   document.querySelectorAll('[data-tts]').forEach((b) => {
-    b.addEventListener('click', () => speak(b.dataset.tts));
+    b.addEventListener('click', () => {
+      if (b === ttsBtnActive) { _ttsStop(); return; }
+      speak(b.dataset.tts, b);
+    });
   });
   const p = c.progress;
   $('progress-fill').style.width = p.total ? (p.learned / p.total * 100) + '%' : '0%';
@@ -483,7 +486,9 @@ async function loadReferences(word) {
   const box = $('ref-section');
   const list = $('ref-list');
   try {
-    const hits = await api('/api/references?word=' + encodeURIComponent(word) + '&limit=8');
+    const pk = (state.card && state.card.word && state.card.word.phrasal_keys) || '';
+    const hits = await api('/api/references?word=' + encodeURIComponent(word)
+      + '&limit=8&keys=' + encodeURIComponent(pk));
     if (!hits.length) {
       box.classList.add('hidden');
       return;
@@ -1293,11 +1298,36 @@ function ttsNum(v, dft) {
   const n = Number(v);
   return isFinite(n) ? n : dft;
 }
-function speak(text) {
+/* ---------- 朗读：带"正在播"反馈，可再次点击停止 ---------- */
+let ttsAudio = null;
+let ttsBtnActive = null;
+
+function _ttsClear() {
+  if (ttsBtnActive) {
+    ttsBtnActive.classList.remove('speaking');
+    ttsBtnActive = null;
+  }
+}
+
+function _ttsStop() {
+  if (ttsAudio) {
+    try { ttsAudio.pause(); } catch (e) { /* ignore */ }
+    ttsAudio = null;
+  }
+  try { speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+  _ttsClear();
+}
+
+async function speak(text, btn) {
   const lang = bookLang();
   const s = state.settings || {};
   const clean = ttsClean(text);
   if (!clean) { toast('没有可朗读的内容'); return; }
+  _ttsStop();
+  if (btn) {
+    btn.classList.add('speaking');
+    ttsBtnActive = btn;
+  }
   if (s.tts_provider === 'browser') {
     const u = new SpeechSynthesisUtterance(clean);
     u.rate = Math.min(2, Math.max(0.5, ttsNum(s.tts_rate, 0) / 100 + 1));
@@ -1316,12 +1346,23 @@ function speak(text) {
       if (!v) v = voices.find((x) => x.lang.toLowerCase().startsWith(u.lang));
       if (v) u.voice = v;
     }
-    speechSynthesis.cancel();
+    u.onend = _ttsClear;
+    u.onerror = () => { _ttsClear(); toast('浏览器语音播放失败'); };
     speechSynthesis.speak(u);
     return;
   }
-  const a = new Audio('/api/tts?text=' + encodeURIComponent(clean) + '&lang=' + encodeURIComponent(lang) + '&t=' + Date.now());
-  a.play().catch(() => toast('语音合成失败（需联网）'));
+  try {
+    const res = await fetch('/api/tts?text=' + encodeURIComponent(clean) +
+      '&lang=' + encodeURIComponent(lang) + '&t=' + Date.now());
+    if (!res.ok) throw new Error('合成失败');
+    ttsAudio = new Audio(URL.createObjectURL(await res.blob()));
+    ttsAudio.onended = _ttsClear;
+    ttsAudio.onerror = () => { _ttsClear(); toast('播放失败'); };
+    await ttsAudio.play();
+  } catch (e) {
+    _ttsClear();
+    toast('语音合成失败：' + (e.message || '需要联网'));
+  }
 }
 $('btn-word-tts').addEventListener('click', () => {
   speak(state.card.word.word);
