@@ -286,6 +286,14 @@ body[data-page="cyber"] #note-context {
   border-radius: var(--card-radius, 10px);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03), var(--card-shadow);
 }
+/* 卡片半透明一点，让中心水印透出来 */
+body[data-page="cyber"] .card,
+body[data-page="cyber"] .panel,
+body[data-page="cyber"] .note-panel .notes,
+body[data-page="cyber"] #note-context {
+  background-color: color-mix(in srgb, var(--card) 86%, transparent);
+  backdrop-filter: blur(2px);
+}
 /* 三种科幻配色各配一种片头 logo 风格（都用系统字体，不塞字体文件） */
 /* ① 霓虹 · 银翼杀手：窄体、宽字距、镀铬渐变，标题只用拉丁 */
 body[data-page="cyber"][data-theme="light"] .wordmark b {
@@ -426,18 +434,23 @@ html.side-collapsed .brand-text { display: none; }
 .wordmark b { font-size: 19px; font-weight: 700; letter-spacing: .02em; }
 .wordmark i { font-style: normal; font-size: 10px; letter-spacing: .22em; color: var(--muted); }
 .wordmark u { display: none; text-decoration: none; }
-.wm-img { display: none; height: 30px; width: auto; }
-/* 放了自己的品牌图（frontend/static/brand/）时，用图替换文字字标 */
-.wordmark.brand-img b,
-.wordmark.brand-img i,
-.wordmark.brand-img u { display: none !important; }
-.wordmark.brand-img .wm-img {
-  display: block !important;
-  height: 26px;
-  max-width: 100%;
+/* 品牌图作页面中心水印（不动左上角字标） */
+.brand-mark {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(68vw, 960px);
+  max-height: 44vh;
   object-fit: contain;
-  object-position: left center;
+  opacity: .07;
+  pointer-events: none;
+  display: none;
+  z-index: 0;
 }
+.brand-mark.on { display: block; }
+body[data-page="cyber"] .brand-mark { opacity: .1; }
+body[data-page="paper"] .brand-mark { opacity: .06; }
 body[data-page="paper"] .wordmark b {
   font-family: Georgia, "Songti SC", "SimSun", serif;
   font-weight: 600;
@@ -477,7 +490,7 @@ body[data-page="paper"] .brand-text i { color: var(--accent-dark); }
 }
 .tab:hover { background: var(--th); }
 .tab.active { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-weight: 600; }
-main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px 24px 80px; }
+main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px 24px 80px; position: relative; z-index: 1; }
 .view { display: none; }
 .view.active { display: block; }
 .study-split { display: flex; align-items: flex-start; gap: 18px; }
