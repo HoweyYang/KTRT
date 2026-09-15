@@ -116,6 +116,11 @@ def init_db():
                   updated_at TEXT DEFAULT (datetime('now','localtime')),
                   UNIQUE(word, language)
                 );
+                CREATE TABLE IF NOT EXISTS word_notes(
+                  word_key TEXT PRIMARY KEY,
+                  content TEXT NOT NULL DEFAULT '',
+                  updated_at TEXT DEFAULT (datetime('now','localtime'))
+                );
                 """
             )
 

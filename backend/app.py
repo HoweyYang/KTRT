@@ -6,6 +6,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import threading
 import time
 import urllib.request
 import urllib.parse
@@ -268,8 +269,14 @@ class NotesClearBody(BaseModel):
 @app.get('/api/notes/{word_id}')
 def get_note(word_id: int):
     with db.get_conn() as conn:
-        row = conn.execute('SELECT content, updated_at FROM notes WHERE word_id=?', (word_id,)).fetchone()
-    return {'word_id': word_id, 'content': row['content'] if row else '', 'updated_at': row['updated_at'] if row else ''}
+        w = conn.execute('SELECT word FROM words WHERE id=?', (word_id,)).fetchone()
+        key = _note_key(w['word']) if w else ''
+        row = conn.execute(
+            'SELECT content, updated_at FROM word_notes WHERE word_key=?', (key,)
+        ).fetchone() if key else None
+    return {'word_id': word_id, 'word_key': key,
+            'content': row['content'] if row else '',
+            'updated_at': row['updated_at'] if row else ''}
 
 
 @app.post('/api/notes')
@@ -277,31 +284,36 @@ def save_note(body: NoteBody):
     content = (body.content or '').strip()
     with db._lock:
         with db.get_conn() as conn:
-            if conn.execute('SELECT 1 FROM words WHERE id=?', (body.word_id,)).fetchone() is None:
+            w = conn.execute('SELECT word FROM words WHERE id=?', (body.word_id,)).fetchone()
+            if w is None:
                 raise HTTPException(404, '未找到该词')
+            key = _note_key(w['word'])
             if content:
                 conn.execute(
-                    'INSERT INTO notes(word_id, content, updated_at) '
+                    'INSERT INTO word_notes(word_key, content, updated_at) '
                     'VALUES(?,?,datetime(\'now\',\'localtime\')) '
-                    'ON CONFLICT(word_id) DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at',
-                    (body.word_id, content),
+                    'ON CONFLICT(word_key) DO UPDATE SET content=excluded.content, '
+                    'updated_at=excluded.updated_at',
+                    (key, content),
                 )
             else:
-                conn.execute('DELETE FROM notes WHERE word_id=?', (body.word_id,))
-    return {'ok': True, 'content': content}
+                conn.execute('DELETE FROM word_notes WHERE word_key=?', (key,))
+    return {'ok': True, 'content': content, 'word_key': key}
 
 
 @app.delete('/api/notes/{word_id}')
 def delete_note(word_id: int):
     with db._lock:
         with db.get_conn() as conn:
-            conn.execute('DELETE FROM notes WHERE word_id=?', (word_id,))
+            w = conn.execute('SELECT word FROM words WHERE id=?', (word_id,)).fetchone()
+            if w is not None:
+                conn.execute('DELETE FROM word_notes WHERE word_key=?', (_note_key(w['word']),))
     return {'ok': True}
 
 
 @app.post('/api/notes/clear')
 def clear_notes(body: NotesClearBody):
-    sql = 'DELETE FROM notes WHERE word_id IN (SELECT w.id FROM words w WHERE 1=1'
+    sql = 'SELECT word FROM words w WHERE 1=1'
     params = []
     if body.book_id:
         sql += ' AND w.book_id=?'
@@ -309,11 +321,15 @@ def clear_notes(body: NotesClearBody):
     if body.list_no:
         sql += ' AND w.list_no=?'
         params.append(body.list_no)
-    sql += ')'
     with db._lock:
         with db.get_conn() as conn:
-            cur = conn.execute(sql, params)
-    return {'ok': True, 'cleared': cur.rowcount}
+            keys = {_note_key(r['word']) for r in conn.execute(sql, params)}
+            keys.discard('')
+            cleared = 0
+            for k in keys:
+                cur = conn.execute('DELETE FROM word_notes WHERE word_key=?', (k,))
+                cleared += cur.rowcount or 0
+    return {'ok': True, 'cleared': cleared}
 
 
 class BookmarkBody(BaseModel):
@@ -513,18 +529,25 @@ def manage(filter: str = Query('all')):
     elif filter == 'sentences':
         where = 'WHERE (SELECT COUNT(*) FROM sentences x WHERE x.word_id=w.id)>0'
     elif filter == 'notes':
-        where = 'WHERE EXISTS(SELECT 1 FROM notes n WHERE n.word_id=w.id)'
+        pass  # 笔记按词共享，下面在 Python 侧过滤
     with db.get_conn() as conn:
+        note_keys = {r['word_key'] for r in conn.execute('SELECT word_key FROM word_notes')}
         rows = conn.execute(
             'SELECT w.id, w.word, w.phonetic, w.list_no, w.seq, b.name book_name, b.language, '
             's.familiar, s.unfamiliar, s.favorite, s.learned, '
-            '(SELECT COUNT(*) FROM sentences x WHERE x.word_id=w.id) sent_count, '
-            'EXISTS(SELECT 1 FROM notes n WHERE n.word_id=w.id) has_note '
+            '(SELECT COUNT(*) FROM sentences x WHERE x.word_id=w.id) sent_count '
             f'FROM words w JOIN word_books b ON b.id=w.book_id '
             f'LEFT JOIN word_status s ON s.word_id=w.id {where} ORDER BY b.id, w.list_no, w.seq',
             params,
         ).fetchall()
-    return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        d = dict(r)
+        d['has_note'] = 1 if _note_key(d['word']) in note_keys else 0
+        if filter == 'notes' and not d['has_note']:
+            continue
+        out.append(d)
+    return out
 
 
 @app.get('/api/export')
@@ -582,19 +605,24 @@ def export_notes(book_id: int = Query(None), list_no: int = Query(None)):
         params.append(list_no)
     where = ('WHERE ' + ' AND '.join(conds)) if conds else ''
     with db.get_conn() as conn:
+        notes = {r['word_key']: (r['content'] or '')
+                 for r in conn.execute('SELECT word_key, content FROM word_notes')}
         rows = conn.execute(
-            'SELECT w.word, n.content FROM words w '
-            'JOIN notes n ON n.word_id=w.id '
+            'SELECT w.word FROM words w '
             'JOIN word_books b ON b.id=w.book_id '
             f'{where} ORDER BY b.id, w.list_no, w.seq',
             params,
         ).fetchall()
-    if not rows:
-        raise HTTPException(404, '没有可导出的笔记')
     from datetime import datetime
-    parts = []
+    parts, seen = [], set()
     for r in rows:
-        parts.append('## ' + r['word'] + '\n\n' + (r['content'] or '') + '\n')
+        key = _note_key(r['word'])
+        if not key or key in seen or key not in notes:
+            continue
+        seen.add(key)
+        parts.append('## ' + r['word'] + '\n\n' + notes[key] + '\n')
+    if not parts:
+        raise HTTPException(404, '没有可导出的笔记')
     text = '\n'.join(parts)
     name = f"KTRT_笔记_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
     path = os.path.join(tempfile.gettempdir(), name)
@@ -909,6 +937,84 @@ def _canonical_word(raw):
             if conn.execute('SELECT 1 FROM words WHERE word=? COLLATE NOCASE LIMIT 1', (c,)).fetchone():
                 return c  # 原形在词书里，直接命中
     return cands[0] if cands else raw
+
+
+_note_key_cache = {}
+_dict_ro_conn = None
+_note_key_lock = threading.Lock()
+
+
+def _dict_exchange(word):
+    """查 ECDICT 的 exchange 字段（只读、单连接复用；词表是静态的，结果可缓存）。"""
+    global _dict_ro_conn
+    with _note_key_lock:
+        if _dict_ro_conn is None:
+            if not os.path.exists(db.DICT_DB_PATH):
+                return ''
+            try:
+                _dict_ro_conn = sqlite3.connect(db.DICT_DB_PATH, check_same_thread=False)
+            except Exception:
+                return ''
+        try:
+            row = _dict_ro_conn.execute('SELECT exchange FROM dict WHERE word=?', (word,)).fetchone()
+        except Exception:
+            return ''
+    return (row[0] or '') if row else ''
+
+
+def _note_key(word):
+    """笔记归属键：单词按原形小写（含大小写、复数/变形归一），短语只统一小写与空白。
+
+    同一个词出现在多本词书里时共用同一份笔记；换书、删书都不影响它。
+    """
+    w = (word or '').strip()
+    if not w:
+        return ''
+    if ' ' in w:
+        return re.sub(r'\s+', ' ', w).lower()
+    lw = w.lower()
+    if lw in _note_key_cache:
+        return _note_key_cache[lw]
+    key = lw
+    ex = _dict_exchange(lw)
+    if ex:
+        for tok in ex.split('/'):
+            tok = tok.strip()
+            if tok.startswith('0:') and tok[2:].strip():
+                key = tok[2:].strip().lower()
+                break
+    _note_key_cache[lw] = key
+    return key
+
+
+def _migrate_notes_to_keys():
+    """一次性迁移：把旧的「按词条存」的笔记搬到「按词存」的 word_notes。"""
+    try:
+        with db._lock:
+            with db.get_conn() as conn:
+                if conn.execute('SELECT COUNT(*) c FROM word_notes').fetchone()['c']:
+                    return
+                old = conn.execute(
+                    'SELECT n.word_id, n.content, n.updated_at, w.word FROM notes n '
+                    'JOIN words w ON w.id=n.word_id'
+                ).fetchall()
+                for r in old:
+                    key = _note_key(r['word'])
+                    if not key:
+                        continue
+                    conn.execute(
+                        'INSERT INTO word_notes(word_key, content, updated_at) VALUES(?,?,?) '
+                        'ON CONFLICT(word_key) DO UPDATE SET content=excluded.content, '
+                        'updated_at=excluded.updated_at',
+                        (key, r['content'] or '', r['updated_at']),
+                    )
+                if old:
+                    print('[KTRT] 笔记已按词归并：%d 条' % len(old))
+    except Exception as e:
+        print('[KTRT] 笔记迁移失败：%s' % e)
+
+
+_migrate_notes_to_keys()
 
 
 def _exchange_pretty(ex):
@@ -1637,9 +1743,11 @@ def _insert_external_word(word, phon, meaning, colloc, phras, syns, ants, roots,
             conn.execute('INSERT OR IGNORE INTO word_status(word_id) VALUES(?)', (wid,))
             if note_text:
                 conn.execute(
-                    'INSERT INTO notes(word_id, content, updated_at) VALUES(?,?,datetime(\'now\',\'localtime\')) '
-                    'ON CONFLICT(word_id) DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at',
-                    (wid, note_text),
+                    'INSERT INTO word_notes(word_key, content, updated_at) '
+                    'VALUES(?,?,datetime(\'now\',\'localtime\')) '
+                    'ON CONFLICT(word_key) DO UPDATE SET content=excluded.content, '
+                    'updated_at=excluded.updated_at',
+                    (_note_key(word), note_text),
                 )
     return {'book_name': '外部单词收藏册', 'list_no': list_no, 'seq': seq, 'word_id': wid}
 
