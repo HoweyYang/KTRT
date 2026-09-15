@@ -1759,16 +1759,17 @@ def custom_dict_add(body: CustomDictBody):
 
 @app.get('/api/references')
 def references(word: str = Query(''), limit: int = Query(10)):
-    """动词短语参考素材库；可按当前单词匹配（短语中任意词命中）。"""
+    """动词短语参考：按短语的首个词（动词）匹配当前词条，支持原形归一。"""
     wl = word.strip().lower()
     limit = max(1, min(limit, 50))
     with db.get_conn() as conn:
         if wl:
+            canonical = wl if ' ' in wl else (_canonical_word(wl) or wl).lower()
             rows = conn.execute(
                 "SELECT id, phrase, meaning, example, source FROM reference_phrases "
-                "WHERE ' ' || lower(phrase) || ' ' LIKE '% ' || lower(?) || ' %' "
-                "ORDER BY phrase, id LIMIT ?",
-                (wl, limit),
+                "WHERE lower(substr(phrase, 1, instr(phrase || ' ', ' ') - 1)) IN (?, ?) "
+                "ORDER BY length(phrase), phrase, id LIMIT ?",
+                (wl, canonical, limit),
             ).fetchall()
         else:
             rows = conn.execute(

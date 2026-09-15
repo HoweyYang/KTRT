@@ -336,28 +336,78 @@ function bookLang() {
   return b ? b.language : '英语';
 }
 
+/* ---------- 搭配 / 短语：合并成一栏并规律排布 ---------- */
+function splitPhraseItems(text) {
+  return String(text || '')
+    .split(/[；;\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/* 排序规则（稳定、可解释）：含本词的在前 → 更短的在前 → 字母序兜底。 */
+function mergeCollocations(c) {
+  const head = (c.word.word || '').trim();
+  let re = null;
+  if (head) {
+    const esc = head.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    re = new RegExp('(^|[^A-Za-z])' + esc + '(?![A-Za-z])', 'i');
+  }
+  const seen = new Set();
+  const items = [];
+  for (const s of splitPhraseItems(c.word.collocations).concat(splitPhraseItems(c.word.phrases))) {
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({ s, hit: re && re.test(s) ? 1 : 0 });
+  }
+  return items
+    .sort((a, b) => (b.hit - a.hit) || (a.s.length - b.s.length) || a.s.localeCompare(b.s))
+    .map((x) => x.s);
+}
+
+/* 把条目里的本词标出来（含变形：abatement / abatements） */
+function highlightHead(text, head) {
+  const esc = escapeHtml(text);
+  const h = (head || '').trim();
+  if (!h) return esc;
+  const re = new RegExp('(' + h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\w*)', 'gi');
+  return esc.replace(re, '<b class="head-hit">$1</b>');
+}
+
 function renderCard() {
   const c = state.card;
   if (!c) return;
   $('word').textContent = c.word.word;
   $('phonetic').textContent = c.word.phonetic ? '/' + c.word.phonetic.replace(/\//g, '') + '/' : '';
-  const fields = [
-    ['词性释义', c.word.meaning],
-    ['搭配', c.word.collocations],
-    ['短语', c.word.phrases],
-    ['同义词', c.word.synonyms],
-    ['反义词', c.word.antonyms],
-    ['同根词', c.word.root_words],
-  ];
-  $('fields').innerHTML = fields
-    .filter(([, v]) => v)
-    .map(([k, v]) => `
+  const rows = [];
+  if (c.word.meaning) {
+    rows.push(`
       <div class="field">
-        <span class="label">${k}</span>
-        <span class="value">${escapeHtml(v)}</span>
-        ${k === '词性释义' ? '' : `<button class="icon-btn" data-tts="${escapeAttr(k + '：' + v)}" title="朗读">${SPEAKER_ICON}</button>`}
-      </div>`)
-    .join('');
+        <span class="label">词性释义</span>
+        <span class="value">${escapeHtml(c.word.meaning)}</span>
+      </div>`);
+  }
+  const phraseItems = mergeCollocations(c);
+  if (phraseItems.length) {
+    rows.push(`
+      <div class="field">
+        <span class="label">搭配 / 短语</span>
+        <div class="value"><ul class="phrase-list">${
+          phraseItems.map((s) => `<li>${highlightHead(s, c.word.word)}</li>`).join('')
+        }</ul></div>
+        <button class="icon-btn" data-tts="${escapeAttr('搭配与短语：' + phraseItems.join('；'))}" title="朗读">${SPEAKER_ICON}</button>
+      </div>`);
+  }
+  for (const [label, value] of [['同义词', c.word.synonyms], ['反义词', c.word.antonyms], ['同根词', c.word.root_words]]) {
+    if (!value) continue;
+    rows.push(`
+      <div class="field">
+        <span class="label">${label}</span>
+        <span class="value">${escapeHtml(value)}</span>
+        <button class="icon-btn" data-tts="${escapeAttr(label + '：' + value)}" title="朗读">${SPEAKER_ICON}</button>
+      </div>`);
+  }
+  $('fields').innerHTML = rows.join('');
   document.querySelectorAll('[data-tts]').forEach((b) => {
     b.addEventListener('click', () => speak(b.dataset.tts));
   });
