@@ -16,11 +16,43 @@ const $ = (id) => document.getElementById(id);
 const SPEAKER_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>';
 
 function applyTheme(theme) {
-  document.body.dataset.theme = theme === 'paper' ? 'light' : (theme || 'dark-blue');
+  document.body.dataset.theme = theme === 'paper' ? 'light' : (theme || 'light');
+}
+
+/* 页面质感：简约 / 纸质 / 赛博朋克 —— 每套质感各带三种配色，标签随质感变化 */
+const PAGE_MODES = ['minimal', 'paper', 'cyber'];
+const THEME_LABELS = {
+  minimal: { light: '浅色', dark: '深色', 'dark-blue': '石墨' },
+  paper: { light: '米白纸', dark: '牛皮纸', 'dark-blue': '靛蓝纸' },
+  cyber: { light: '电光', dark: '酸黄', 'dark-blue': '矩阵' },
+};
+
+function currentPageMode() {
+  const m = document.body.dataset.page;
+  return PAGE_MODES.includes(m) ? m : 'minimal';
 }
 
 function applyPageMode(mode) {
-  document.body.dataset.page = mode === 'paper' ? 'paper' : 'normal';
+  const m = PAGE_MODES.includes(mode) ? mode : (mode === 'paper' ? 'paper' : 'minimal');
+  document.body.dataset.page = m;
+  syncThemeLabels();
+  return m;
+}
+
+function syncThemeLabels() {
+  const labels = THEME_LABELS[currentPageMode()] || THEME_LABELS.minimal;
+  const slots = { 'theme-light': 'light', 'theme-dark': 'dark', 'theme-blue': 'dark-blue' };
+  Object.entries(slots).forEach(([id, key]) => {
+    const el = $(id);
+    if (el && labels[key]) el.textContent = labels[key];
+  });
+  const sel = $('s-theme');
+  if (sel) {
+    Object.entries(slots).forEach(([, key]) => {
+      const opt = sel.querySelector(`option[value="${key}"]`);
+      if (opt && labels[key]) opt.textContent = labels[key];
+    });
+  }
 }
 
 async function api(path, opts = {}) {
@@ -97,12 +129,13 @@ const FEATURE_HINTS = {
   'btn-save-settings': '保存本页全部设置（AI、语音、主题与页面质感）。',
   'btn-check-patch': '读取 GitHub main 的最新提交，判断是否有小补丁。',
   'btn-check-release': '读取 GitHub 最新正式 Release，判断是否有新版本。',
-  's-theme': '主题色：浅色 / 深色 / 深蓝。',
-  'page-normal': '页面质感：普通（素色、无纸纹）。',
-  'page-paper': '页面质感：纸质（暖纸配色、SVG 纸纹、衬线阅读字体）。',
-  'theme-light': '配色：浅色。',
-  'theme-dark': '配色：深色。',
-  'theme-blue': '配色：深蓝 · 高对比（纸质页面质感在设置里选）。',
+  's-theme': '主题色：随页面质感变化——简约=浅色/深色/石墨，纸质=米白纸/牛皮纸/靛蓝纸，赛博=电光/酸黄/矩阵。',
+  'page-normal': '页面质感：简约（Apple / OpenAI 风格，素色、克制留白、细边框）。',
+  'page-paper': '页面质感：纸质（米白纸 / 牛皮纸 / 靛蓝纸，纸纹 + 纤维 + 边缘阴影，衬线阅读字体）。',
+  'page-cyber': '页面质感：赛博朋克（霓虹描边、扫描线、终端等宽字体；三种配色：电光蓝青粉 / 酸亮黄黑 / 矩阵绿）。',
+  'theme-light': '配色一号位：简约=浅色，纸质=米白纸，赛博=电光。',
+  'theme-dark': '配色二号位：简约=深色，纸质=牛皮纸，赛博=酸黄。',
+  'theme-blue': '配色三号位：简约=石墨，纸质=靛蓝纸，赛博=矩阵绿。',
 };
 
 function initFeatureHints() {
@@ -252,7 +285,7 @@ async function init() {
     state.books = b.books;
     state.presets = b.presets || {};
     const s = b.settings || {};
-    state.settings = { ...s, theme: s.theme === 'paper' ? 'light' : (s.theme || 'dark-blue'), theme_page: s.theme_page || 'normal' };
+  state.settings = { ...s, theme: s.theme === 'paper' ? 'light' : (s.theme || 'light'), theme_page: s.theme_page || 'minimal' };
     applyTheme(state.settings.theme);
     applyPageMode(state.settings.theme_page);
     populateBookSelect();
@@ -1581,10 +1614,13 @@ function populateSettings() {
   $('s-volume').value = s.tts_volume || '100';
   syncTtsLabels();
   ['s-rate', 's-pitch', 's-volume'].forEach((id) => $(id).addEventListener('input', syncTtsLabels));
-  $('s-theme').value = s.theme === 'paper' ? 'light' : (s.theme || 'dark-blue');
+  $('s-theme').value = s.theme === 'paper' ? 'light' : (s.theme || 'light');
   syncPageButtons();
-  $('page-normal').addEventListener('click', () => setPageMode('normal'));
+  syncThemeLabels();
+  $('page-normal').addEventListener('click', () => setPageMode('minimal'));
   $('page-paper').addEventListener('click', () => setPageMode('paper'));
+  const cyberBtn = $('page-cyber');
+  if (cyberBtn) cyberBtn.addEventListener('click', () => setPageMode('cyber'));
   sel.onchange = () => {
     const p = state.presets[sel.value];
     if (p) {
@@ -1610,15 +1646,20 @@ function syncThemeButtons() {
 }
 
 function syncPageButtons() {
-  const p = (state.settings && state.settings.theme_page) || 'normal';
-  $('page-normal').classList.toggle('active', p === 'normal');
+  const raw = (state.settings && state.settings.theme_page) || 'minimal';
+  const p = PAGE_MODES.includes(raw) ? raw : (raw === 'paper' ? 'paper' : 'minimal');
+  $('page-normal').classList.toggle('active', p === 'minimal');
   $('page-paper').classList.toggle('active', p === 'paper');
+  const cyber = $('page-cyber');
+  if (cyber) cyber.classList.toggle('active', p === 'cyber');
 }
 
 function setPageMode(mode) {
-  applyPageMode(mode);
-  $('page-normal').classList.toggle('active', mode === 'normal');
-  $('page-paper').classList.toggle('active', mode === 'paper');
+  const m = applyPageMode(mode);
+  $('page-normal').classList.toggle('active', m === 'minimal');
+  $('page-paper').classList.toggle('active', m === 'paper');
+  const cyber = $('page-cyber');
+  if (cyber) cyber.classList.toggle('active', m === 'cyber');
 }
 
 function setTheme(theme) {
@@ -1633,7 +1674,7 @@ function setTheme(theme) {
       tts_provider: s.tts_provider || 'edge-tts', tts_voice_en: s.tts_voice_en || '美音·男', tts_voice_fr: s.tts_voice_fr || '女声',
       tts_rate: s.tts_rate || '0', tts_pitch: s.tts_pitch || '0', tts_volume: s.tts_volume || '100',
       theme: t,
-      theme_page: (s.theme_page || 'normal'),
+      theme_page: currentPageMode(),
     }),
   }).then((r) => { state.settings = r; syncThemeButtons(); }).catch(() => {});
 }
@@ -1659,7 +1700,7 @@ $('btn-save-settings').addEventListener('click', async () => {
         tts_pitch: $('s-pitch').value,
         tts_volume: $('s-volume').value,
         theme: $('s-theme').value,
-        theme_page: $('page-paper').classList.contains('active') ? 'paper' : 'normal',
+        theme_page: currentPageMode(),
       }),
     });
     applyTheme($('s-theme').value);
