@@ -68,11 +68,15 @@ const BRAND_FILES = {
 let brandSeq = 0;
 
 function syncBrandImage() {
-  const box = document.querySelector('.wordmark');
-  if (!box) return;
+  const el = document.getElementById('brand-mark');
+  if (!el) return;
   const seq = ++brandSeq;
   const files = BRAND_FILES[currentPageMode() + '|' + (document.body.dataset.theme || 'light')];
-  const fail = () => { if (seq === brandSeq) box.classList.remove('brand-img'); };
+  const fail = () => {
+    if (seq !== brandSeq) return;
+    el.classList.remove('on');
+    el.removeAttribute('src');
+  };
   if (!files || !files.length) { fail(); return; }
   const tryLoad = (i) => {
     if (seq !== brandSeq) return;
@@ -80,8 +84,8 @@ function syncBrandImage() {
     const img = new Image();
     img.onload = () => {
       if (seq !== brandSeq) return;
-      const el = box.querySelector('.wm-img');
-      if (el) { el.src = img.src; box.classList.add('brand-img'); }
+      el.src = img.src;
+      el.classList.add('on');
     };
     img.onerror = () => tryLoad(i + 1);   // SVG 没有就试 PNG
     img.src = '/static/brand/' + files[i];
