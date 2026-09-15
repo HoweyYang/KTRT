@@ -44,6 +44,46 @@ class NoCacheStaticFiles(StarletteStaticFiles):
 
 app.mount('/static', NoCacheStaticFiles(directory=FRONTEND), name='static')
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _data_file(name):
+    """数据文件定位：用户数据目录 → 源码 data/ → 打包解压目录。"""
+    cands = [os.path.join(db.DATA_DIR, name), os.path.join(PROJECT_ROOT, 'data', name)]
+    meipass = getattr(sys, '_MEIPASS', '')
+    if meipass:
+        cands.append(os.path.join(meipass, 'data', name))
+    for p in cands:
+        if p and os.path.exists(p):
+            return p
+    return ''
+
+
+# ---------- 内置动词短语库（data/phrasal_verbs.json，由 tools/enrich_phrasal_verbs.py 生成） ----------
+PHRASAL_VERBS = {}      # key（小写短语）→ 条目
+PHRASAL_BY_HEAD = {}    # 首词（动词）→ 条目列表
+
+
+def _load_phrasal_verbs():
+    global PHRASAL_VERBS, PHRASAL_BY_HEAD
+    path = _data_file('phrasal_verbs.json')
+    if not path:
+        return
+    try:
+        data = json.load(open(path, encoding='utf-8'))
+    except Exception:
+        return
+    PHRASAL_VERBS = {g['key']: g for g in data if g.get('key')}
+    idx = {}
+    for key, g in PHRASAL_VERBS.items():
+        idx.setdefault(key.split(' ')[0], []).append(g)
+    for v in idx.values():
+        v.sort(key=lambda e: (len(e['key']), e['key']))
+    PHRASAL_BY_HEAD = idx
+
+
+_load_phrasal_verbs()
+
 
 def _lists_meta(book_id):
     with db.get_conn() as conn:
@@ -1144,7 +1184,10 @@ def _http_get_json(url):
 
 @app.post('/api/custom-dict/online')
 def custom_dict_online(body: CustomDictBody):
-    """免费开源在线词源（Wiktionary 释义 + Datamuse 词汇关系），尽量按原形查询。"""
+    """在线联想：Datamuse 词汇关系（相关词 / 同音近音 / 形似），按原形查询。
+
+    Wiktionary 已下线：实测经常超时且给出的释义与学习无关，中文机翻改走 /translate。
+    """
     word = (body.word or '').strip()
     if not word:
         raise HTTPException(400, '请输入单词')
@@ -1152,39 +1195,6 @@ def custom_dict_online(body: CustomDictBody):
     q = canonical or word
     out = {'word': word, 'canonical': canonical if canonical.lower() != word.lower() else '',
            'wiktionary': [], 'datamuse': {}, 'error': ''}
-    try:
-        wt = _http_get_json('https://en.wiktionary.org/api/rest_v1/page/definition/' + urllib.parse.quote(q))
-        groups = wt if isinstance(wt, dict) else {}
-        entries = groups.get('en') or groups.get('English') or []
-        if not isinstance(entries, list):
-            entries = []
-        for d in entries:
-                if isinstance(d, str):
-                    d = {'partOfSpeech': '', 'definitions': [d]}
-                pos = d.get('partOfSpeech', '')
-                defs = d.get('definitions', []) or []
-                if isinstance(defs, str):
-                    defs = [defs]
-                clean = []
-                for x in defs[:4]:
-                    txt = x if isinstance(x, str) else (x.get('definition') if isinstance(x, dict) else '')
-                    if txt:
-                        txt = re.sub(r'<[^>]+>', '', str(txt))
-                        txt = txt.replace('&amp;', '&').replace('&#39;', "'").replace('&quot;', '"')
-                        clean.append(txt.strip())
-                item = {'pos': pos, 'definitions': clean}
-                ex = (d.get('examples') or [])[:2]
-                if isinstance(ex, list):
-                    item['examples'] = [
-                        re.sub(r'<[^>]+>', '', e.get('text') if isinstance(e, dict) else str(e))
-                        for e in ex if e
-                    ]
-                if item['definitions']:
-                    out['wiktionary'].append(item)
-        if not out['wiktionary']:
-            out['error'] += 'Wiktionary 未收录；'
-    except Exception as e:
-        out['error'] += 'Wiktionary 获取失败：%s；' % e
     try:
         ml = _http_get_json('https://api.datamuse.com/words?ml=' + urllib.parse.quote(q) + '&max=10')
         sl = _http_get_json('https://api.datamuse.com/words?sl=' + urllib.parse.quote(q) + '&max=8')
@@ -1203,6 +1213,34 @@ class EnhanceBody(BaseModel):
     word: str = ''
     offline: dict = {}
     online: dict = {}
+
+
+class TranslateBody(BaseModel):
+    text: str = ''
+    to: str = ''  # '中文' / '英语'；留空按内容自动判断
+
+
+@app.post('/api/custom-dict/translate')
+def custom_dict_translate(body: TranslateBody):
+    """机翻：中文→英语、英语→中文（自动判断方向，也可指定）。"""
+    text = (body.text or '').strip()
+    if not text:
+        raise HTTPException(400, '请输入要翻译的内容')
+    if len(text) > 2000:
+        raise HTTPException(400, '一次最多翻译 2000 个字符')
+    to = (body.to or '').strip()
+    if to not in ('中文', '英语'):
+        to = '英语' if re.search(r'[\u4e00-\u9fff]', text) else '中文'
+    prompt = (
+        '把下面的内容翻译成%s，只输出译文本身：不要解释、不要加引号、不要罗列词义、'
+        '不要补充原文没有的信息。单词或短语给最常用的对应说法；句子保持原句语气与人称。\n\n%s'
+        % (to, text)
+    )
+    try:
+        out = ai.chat([{'role': 'user', 'content': prompt}], max_tokens=1200, temperature=0.2)
+    except Exception as e:
+        raise HTTPException(502, '翻译失败（需联网且已配置 API Key）：%s' % e)
+    return {'text': text, 'to': to, 'translation': (out or '').strip()}
 
 
 @app.post('/api/custom-dict/enhance')
@@ -1828,15 +1866,13 @@ def custom_dict_add(body: CustomDictBody):
     if phrase:
         comps = '；'.join(f"{c['word']} {c['translation'] or '（本地未收录）'}" for c in _phrase_components(word))
         prompt = (
-            f'为英语短语/短句/习语/俚语「{word}」生成词条数据，只输出一个 JSON 对象，不要任何其他文字：'
-            '{"phonetic": "", "meaning": "整体中文翻译（可含 1-3 个义项，用分号分隔）", '
-            '"collocations": "该短语的常见搭配/使用说明（中文，用分号分隔）", '
-            '"phrases": "2 个英文例句 + 中文翻译（用分号分隔）", '
-            '"synonyms": "同义/近义替换表达（英文 + 中文，用分号分隔；无则空字符串）", '
-            '"antonyms": "反义表达（英文 + 中文；无则空字符串）", '
-            '"root_words": "同根词/变形（短语通常没有，无则空字符串；确有则给出）"}。'
+            f'英语短语/短句/习语/俚语「{word}」：只输出一个 JSON 对象，不要任何其他文字：'
+            '{"type": "类型，只能是 俚语 / 习语 / 固定句式 / 表达 / 短语 之一", '
+            '"translation": "整体中文翻译（1-3 个义项用分号分隔）", '
+            '"usage": "使用场景与语域说明（中文 1-2 句；不确定则空字符串）", '
+            '"breakdown": "拆解：逐词或结构的含义、为什么整体是这个意思（中文，用分号分隔；无则空字符串）"}。'
             f'参考组成词释义：{comps}。'
-            '要求：作为翻译准确自然；字段与普通单词词条保持一致，缺失项一律留空，不要编造。'
+            '要求：翻译准确自然；不确定的内容宁可留空，不要编造典故、出处或事实。'
         )
     else:
         prompt = (
@@ -1854,22 +1890,51 @@ def custom_dict_add(body: CustomDictBody):
         data = _extract_json(raw)
     except Exception as e:
         raise HTTPException(502, f'AI 生成失败（需联网且已配置 API Key）：{e}')
-    phon = str(data.get('phonetic') or '').strip()
-    meaning = str(data.get('meaning') or '').strip()
-    colloc = str(data.get('collocations') or '').strip()
-    phras = str(data.get('phrases') or '').strip()
-    syns = str(data.get('synonyms') or '').strip()
-    ants = str(data.get('antonyms') or '').strip()
-    roots = str(data.get('root_words') or '').strip()
+    if phrase:
+        # 词组/句子只保留释义：类型 + 译文 + 场景 + 拆解，其余列留空
+        lines = []
+        tag = str(data.get('type') or '').strip()
+        if tag:
+            lines.append('【%s】' % tag)
+        for label, key in (('译文', 'translation'), ('场景', 'usage'), ('拆解', 'breakdown')):
+            v = str(data.get(key) or '').strip()
+            if v:
+                lines.append('%s：%s' % (label, v))
+        meaning = '\n'.join(lines)
+        phon = colloc = phras = syns = ants = roots = ''
+    else:
+        phon = str(data.get('phonetic') or '').strip()
+        meaning = str(data.get('meaning') or '').strip()
+        colloc = str(data.get('collocations') or '').strip()
+        phras = str(data.get('phrases') or '').strip()
+        syns = str(data.get('synonyms') or '').strip()
+        ants = str(data.get('antonyms') or '').strip()
+        roots = str(data.get('root_words') or '').strip()
     res = _insert_external_word(word, phon, meaning, colloc, phras, syns, ants, roots)
     return {'ok': True, 'word': word, 'is_phrase': phrase, **res}
 
 
 @app.get('/api/references')
 def references(word: str = Query(''), limit: int = Query(10)):
-    """动词短语参考：按短语的首个词（动词）匹配当前词条，支持原形归一。"""
+    """动词短语参考：按短语首词（动词）匹配，支持原形归一。
+
+    有内置短语库（含中文释义/例句中译/语域/学习价值）时返回分义项结构，
+    否则回退到旧的英文参考表。
+    """
     wl = word.strip().lower()
-    limit = max(1, min(limit, 50))
+    limit = max(1, min(limit, 20))
+    if PHRASAL_BY_HEAD:
+        canonical = wl if ' ' in wl else (_canonical_word(wl) or wl).lower()
+        hits = list(PHRASAL_BY_HEAD.get(wl, []))
+        if canonical != wl:
+            hits += PHRASAL_BY_HEAD.get(canonical, [])
+        seen, out = set(), []
+        for g in hits:
+            if g['key'] in seen:
+                continue
+            seen.add(g['key'])
+            out.append(g)
+        return out[:limit]
     with db.get_conn() as conn:
         if wl:
             canonical = wl if ' ' in wl else (_canonical_word(wl) or wl).lower()

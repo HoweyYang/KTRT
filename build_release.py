@@ -27,6 +27,10 @@ add_data = [
     '--add-data=' + p('docs') + os.pathsep + 'docs',
     '--add-data=' + p('assets') + os.pathsep + 'assets',
 ]
+if os.path.exists(p(os.path.join('data', 'phrasal_verbs.json'))):
+    add_data.append(
+        '--add-data=' + p(os.path.join('data', 'phrasal_verbs.json')) + os.pathsep + 'data'
+    )
 if not LITE:
     add_data.append(
         '--add-data=' + p(os.path.join('data', 'GRE必背_扩展词库.xlsx')) + os.pathsep + 'data'

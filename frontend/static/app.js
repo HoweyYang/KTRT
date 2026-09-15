@@ -429,18 +429,46 @@ async function loadReferences(word) {
       box.classList.add('hidden');
       return;
     }
-    list.innerHTML = hits.map((r) => `
-      <div class="ref-item">
+    list.innerHTML = hits.map((r) => {
+      const display = r.display || r.phrase || r.key || '';
+      const senses = (r.senses && r.senses.length)
+        ? r.senses
+        : [{ zh: r.meaning || '', en: '', example: r.example || '', example_zh: '' }];
+      const first = senses[0] || {};
+      const headZh = (first.zh || first.en || '').trim();
+      const tag = [first.register, first.level].filter(Boolean).join(' · ');
+      const spoken = display + '. ' + senses.map((s) => s.example || '').filter(Boolean).join(' ');
+      return `
+      <div class="ref-item" title="点击展开/收起完整条目">
         <div class="ref-top">
-          <b>${escapeHtml(r.phrase)}</b>
-          <span class="ref-mean">${escapeHtml(r.meaning)}</span>
-          <button class="icon-btn" data-ref-tts="${escapeAttr(r.phrase + '. ' + r.example)}" title="朗读">${SPEAKER_ICON}</button>
+          <b class="ref-phrase">${escapeHtml(display)}</b>
+          <span class="ref-mean">${escapeHtml(headZh)}</span>
+          ${tag ? `<span class="ref-tag">${escapeHtml(tag)}</span>` : ''}
+          ${senses.length > 1 ? `<span class="ref-count">${senses.length} 个义项</span>` : ''}
+          <button class="icon-btn" data-ref-tts="${escapeAttr(spoken)}" title="朗读">${SPEAKER_ICON}</button>
         </div>
-        <div class="ref-ex">${escapeHtml(r.example)}</div>
-      </div>`).join('');
+        <div class="ref-senses hidden">
+          ${senses.map((s) => `
+            <div class="ref-sense">
+              ${s.zh ? `<div class="ref-sense-zh">${escapeHtml(s.zh)}</div>` : ''}
+              ${s.en ? `<div class="ref-sense-en">${escapeHtml(s.en)}</div>` : ''}
+              ${s.example ? `<div class="ref-ex">${escapeHtml(s.example)}</div>` : ''}
+              ${s.example_zh ? `<div class="ref-ex-zh">${escapeHtml(s.example_zh)}</div>` : ''}
+              ${s.register || s.level ? `<div class="ref-sense-tag">${escapeHtml([s.register, s.level].filter(Boolean).join(' · '))}</div>` : ''}
+            </div>`).join('')}
+        </div>
+      </div>`;
+    }).join('');
     box.classList.remove('hidden');
     list.querySelectorAll('[data-ref-tts]').forEach((b) => {
       b.addEventListener('click', () => speak(b.dataset.refTts));
+    });
+    list.querySelectorAll('.ref-item').forEach((item) => {
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('button')) return;
+        const s = item.querySelector('.ref-senses');
+        if (s) s.classList.toggle('hidden');
+      });
     });
   } catch (e) {
     box.classList.add('hidden');
@@ -871,6 +899,40 @@ function cdWireButtons() {
   }));
 }
 
+/* ---------- 机翻（自动判断中↔英，联网即可用） ---------- */
+let cdMtSeq = 0;
+
+async function cdAutoTranslate(text) {
+  const box = $('cd-mt');
+  if (!box) return;
+  const seq = ++cdMtSeq;
+  box.classList.remove('hidden');
+  box.innerHTML = '<span style="color:var(--muted)">机翻中…</span>';
+  try {
+    const r = await api('/api/custom-dict/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+      timeout: 30000,
+    });
+    if (seq !== cdMtSeq) return;
+    box.innerHTML = `<div class="cd-mt-label">机翻 · ${escapeHtml(r.to)}</div>`
+      + `<div class="cd-mt-text">${escapeHtml(r.translation)}</div>`
+      + '<button class="btn" id="cd-mt-copy">复制译文</button>';
+    $('cd-mt-copy').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(r.translation);
+        toast('译文已复制');
+      } catch (e) {
+        toast('复制失败，请手动选择文本');
+      }
+    });
+  } catch (e) {
+    if (seq !== cdMtSeq) return;
+    box.innerHTML = `<span class="err">${escapeHtml(e.message)}</span>`;
+  }
+}
+
 async function cdLookup() {
   const w = $('cd-word').value.trim();
   const out = $('cd-result');
@@ -912,10 +974,11 @@ async function cdLookup() {
           ? '词书未收录该短语；可用 AI 按组成词翻译并加入「外部单词收藏册」'
           : '不在任何已导入词书中（会按原形添加到「外部单词收藏册」）')
         + '</span>'
-        + `<br><button id="cd-add" class="btn primary">${cdState.isPhrase ? '＋ AI 翻译并加入收藏册' : '＋ 添加到外部单词收藏册'}</button>`;
+        + `<br><button id="cd-add" class="btn primary">${cdState.isPhrase ? '＋ 加入词库（只存释义）' : '＋ 添加到外部单词收藏册'}</button>`;
     }
     out.innerHTML = html;
     cdWireButtons();
+    cdAutoTranslate(w);
     // 拼写纠错：词典与词书都没命中时给出建议
     if (!cdState.dict.found && !names) {
       try {

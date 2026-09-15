@@ -292,6 +292,26 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .phrase-list li { position: relative; padding-left: 15px; line-height: 1.6; }
 .phrase-list li::before { content: '·'; position: absolute; left: 4px; color: var(--muted); }
 .phrase-list li .head-hit { color: var(--accent); font-weight: 700; }
+.field .value { white-space: pre-wrap; }
+.cd-mt {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--th);
+  font-size: 14px;
+  line-height: 1.65;
+}
+.cd-mt-label { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.cd-mt-text { white-space: pre-wrap; margin-bottom: 8px; }
+.ref-phrase { cursor: pointer; }
+.ref-tag, .ref-count, .ref-sense-tag { color: var(--muted); font-size: 12px; }
+.ref-count { margin-left: auto; }
+.ref-senses { margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 8px; display: grid; gap: 8px; }
+.ref-sense-zh { font-weight: 700; }
+.ref-sense-en { color: var(--muted); font-size: 13px; }
+.ref-ex-zh { color: var(--muted); font-size: 13px; }
 .ref-section { margin-top: 18px; border-top: 1px dashed var(--line); padding-top: 12px; }
 .ref-title { font-size: 14px; font-weight: 700; margin: 0 0 8px; color: var(--muted); }
 .ref-item { padding: 8px 10px; background: var(--th); border-radius: 8px; margin-bottom: 8px; }

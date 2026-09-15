@@ -352,13 +352,14 @@
         <button id="btn-custom-modal-close" class="btn" data-tip="关闭自定义查词典。">关闭</button>
       </div>
       <div class="row">
-        <input id="cd-word" type="text" placeholder="输入英文单词或短语，如：phenomenon / official transcript" style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)">
+        <input id="cd-word" type="text" placeholder="英文单词 / 短语 / 句子，也可直接输中文（自动机翻）" style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)">
         <button id="btn-cd-lookup" class="btn primary">查询</button>
       </div>
       <div class="row" style="margin-top:8px">
-        <button id="btn-cd-online" class="btn">在线词源</button>
+        <button id="btn-cd-online" class="btn">在线联想</button>
         <label class="ai-switch"><input type="checkbox" id="cd-ai"> AI 翻译 / 整理</label>
       </div>
+      <div id="cd-mt" class="cd-mt hidden"></div>
       <div id="cd-result" style="margin-top:12px;font-size:14px;line-height:1.7"></div>
     </div>
   </div>

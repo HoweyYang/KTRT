@@ -96,7 +96,7 @@ def _wait_splash(proc, timeout=25):
 def ensure_bundled_resources():
     """首次运行：把安装包内置的词库/参考素材复制到用户数据目录。"""
     os.makedirs(db.DATA_DIR, exist_ok=True)
-    for name in ('reference_phrasal_verbs.json',):
+    for name in ('reference_phrasal_verbs.json', 'phrasal_verbs.json'):
         src = os.path.join(RESOURCE_DIR, 'data', name)
         dst = os.path.join(db.DATA_DIR, name)
         if os.path.exists(src) and not os.path.exists(dst):
