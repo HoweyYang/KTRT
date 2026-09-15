@@ -64,7 +64,6 @@ const FEATURE_HINTS = {
   'btn-dict': '打开本地 ECDICT 词典，展示当前词释义与词形变化（离线可用）。',
   'btn-edit': '编辑：在卡片内直接修改当前这一条（单词、音标、释义、搭配、短语、同反义词、同根词），保存后同步本地库并回写所属词书 Excel；原文件失效时自动改用本地托管副本。',
   'btn-cd-lookup': '查询输入词：依次做离线词典速查、变形还原为原形、所在词书与收藏判断；词典与词书都未命中时提供拼写建议。',
-  'btn-cd-online': '在线联想：从 Datamuse 按原形抓取相关词、同音近音与形似词；纯查询，不调用 AI。中文/句子翻译走「查询」时的机翻。',
   'btn-custom-dict': '查询任意单词。流程：离线词典 → 变形还原原形 → 判断原形所在词书/收藏 → 拼写纠错；可按需使用在线词源或 AI 整理（AI 需配置 Key）。',
   'btn-storm-view': '查看或生成当前词的风暴词卡（词源、用法、释义、变形、派生词、同反近义、易混词）；生成需调用 AI 并联网，若尚无词卡会先询问是否生成。',
   'btn-make-sentence': '用当前词造句：先在输入框写一句中文提示词再点击；AI 返回英文句与中文翻译并高亮目标词，保存后进入造句收藏。每词最多 3 句，超出时自动删除最早一条。',
@@ -1010,6 +1009,7 @@ async function cdLookup() {
     cdWireButtons();
     wirePosChips(out);
     cdAutoTranslate(w);
+    cdAutoOnline(w);
     // 拼写纠错：词典与词书都没命中时给出建议
     if (!cdState.dict.found && !names) {
       try {
@@ -1054,36 +1054,37 @@ function cdAppendSaveAiButton(text) {
 }
 
 $('btn-cd-lookup').addEventListener('click', cdLookup);
-$('btn-cd-online').addEventListener('click', async () => {
-  const btn = $('btn-cd-online');
-  const out = $('cd-result');
-  if (!cdState) { toast('先查询一个单词'); return; }
-  btn.disabled = true;
-  btn.textContent = '获取中…';
+/* ---------- 在线联想（Datamuse 词汇关系）：查询后自动加载，无需点击 ---------- */
+let cdOnlineSeq = 0;
+
+async function cdAutoOnline(word) {
+  const box = $('cd-online');
+  if (!box) return;
+  const seq = ++cdOnlineSeq;
+  box.classList.remove('hidden');
+  box.innerHTML = '<span style="color:var(--muted)">在线联想中…</span>';
   try {
     const onl = await api('/api/custom-dict/online', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ word: cdWordForQuery() }),
+      body: JSON.stringify({ word }),
+      timeout: 30000,
     });
-    cdState.online = onl;
-    let html = cdBasicHtml();
+    if (seq !== cdOnlineSeq) return;
     const dm = onl.datamuse || {};
-    if (dm.related && dm.related.length || dm.sounds_like && dm.sounds_like.length || dm.spelled_like && dm.spelled_like.length) {
-      html += '<div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px"><b>词汇关系 · Datamuse</b></div>';
-      if (dm.related && dm.related.length) html += `<br>相关：${dm.related.slice(0, 8).map((x) => escapeHtml(x)).join('、')}`;
-      if (dm.sounds_like && dm.sounds_like.length) html += `<br>同音/近音：${dm.sounds_like.slice(0, 6).map((x) => escapeHtml(x)).join('、')}`;
-      if (dm.spelled_like && dm.spelled_like.length) html += `<br>形似：${dm.spelled_like.slice(0, 6).map((x) => escapeHtml(x)).join('、')}`;
+    const lines = [];
+    if (dm.related && dm.related.length) lines.push('相关：' + dm.related.slice(0, 8).map(escapeHtml).join('、'));
+    if (dm.sounds_like && dm.sounds_like.length) lines.push('同音/近音：' + dm.sounds_like.slice(0, 6).map(escapeHtml).join('、'));
+    if (dm.spelled_like && dm.spelled_like.length) lines.push('形似：' + dm.spelled_like.slice(0, 6).map(escapeHtml).join('、'));
+    if (!lines.length) {
+      box.classList.add('hidden');
+      return;
     }
-    if (onl.error) html += `<div class="err" style="margin-top:6px">${escapeHtml(onl.error)}</div>`;
-    out.innerHTML = html;
-    cdWireButtons();
+    box.innerHTML = '<div class="cd-mt-label">在线联想 · Datamuse</div>' + lines.join('<br>');
   } catch (e) {
-    out.innerHTML += `<div class="err" style="margin-top:6px">${escapeHtml(e.message)}</div>`;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '在线联想';
+    if (seq !== cdOnlineSeq) return;
+    box.classList.add('hidden');
   }
-});
+}
 $('cd-word').addEventListener('keydown', (e) => { if (e.key === 'Enter') cdLookup(); });
 
 /* 查词页 → 风暴：已有词卡就地预览，没有就跳到风暴页去生成 */
