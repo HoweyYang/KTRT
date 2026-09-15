@@ -2,7 +2,7 @@ import csv
 import os
 import re
 
-from . import db
+from . import db, phrasal
 
 WORD_KEYS = {'【单词】', 'word', '单词', 'word_en', 'entry'}
 PHON_KEYS = {'【音标】', 'phonetic', '音标', 'pronunciation', 'ipa'}
@@ -189,16 +189,24 @@ def import_book(path, forced_book='', forced_language=''):
                 ).fetchone()['id']
             seq_counter = {}
             insert_rows = []
+            phrasal_hits = 0
             for r in rows:
                 seq_counter[r['list_no']] = seq_counter.get(r['list_no'], 0) + 1
+                # 导入时按动词做一次短语检索，命中就写进 phrasal_keys（只认动词条目）
+                pk = phrasal.keys_for(r['word'], r['meaning'])
+                if pk:
+                    phrasal_hits += 1
                 insert_rows.append((
                     book_id, r['list_no'], seq_counter[r['list_no']],
                     r['word'], r['phonetic'], r['meaning'], r['collocations'],
                     r['phrases'], r['synonyms'], r['antonyms'], r['root_words'],
+                    ';'.join(pk),
                 ))
             conn.executemany(
                 'INSERT OR REPLACE INTO words(book_id, list_no, seq, word, phonetic, meaning, '
-                'collocations, phrases, synonyms, antonyms, root_words) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                'collocations, phrases, synonyms, antonyms, root_words, phrasal_keys) '
+                'VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
                 insert_rows,
             )
-    return {'book_name': book_name, 'language': language, 'rows': len(rows)}
+    return {'book_name': book_name, 'language': language, 'rows': len(rows),
+            'phrasal_hits': phrasal_hits}
