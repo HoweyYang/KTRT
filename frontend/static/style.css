@@ -286,17 +286,55 @@ body[data-page="cyber"] #note-context {
   border-radius: var(--card-radius, 10px);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03), var(--card-shadow);
 }
-/* 霓虹是双色的：主色 + 副色（参考图配色：青 #3DB3D0 × 品红 #AA5A9C / 黄 × 红 / 矩阵纯绿） */
-body[data-page="cyber"] .wordmark b {
-  /* 参考图那种标题做法：粗斜体 + 青/红色散，而不是渐变填充 */
-  font-family: "Agency FB", "Bahnschrift", "Segoe UI", sans-serif;
-  font-style: italic;
-  font-weight: 700;
-  letter-spacing: .08em;
-  color: var(--ink);
-  text-shadow: 2px 0 0 var(--accent), -2px 0 0 var(--aberr, var(--accent));
+/* 三种科幻配色各配一种片头 logo 风格（都用系统字体，不塞字体文件） */
+/* ① 霓虹 · 银翼杀手：窄体、宽字距、镀铬渐变，标题只用拉丁 */
+body[data-page="cyber"][data-theme="light"] .wordmark b {
+  font-family: "Bahnschrift", "Agency FB", "Segoe UI", sans-serif;
+  font-stretch: condensed;
+  font-weight: 300;
+  letter-spacing: .42em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #f2f8ff 0%, #adc9ea 40%, #6d8db4 58%, #e6f2ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 8px rgba(53, 182, 224, .45));
 }
-body[data-page="cyber"] .wordmark i { color: var(--accent-2); }
+body[data-page="cyber"][data-theme="light"] .wordmark i { display: none; }
+body[data-page="cyber"][data-theme="light"] .wordmark u {
+  display: inline;
+  font-size: 9px;
+  letter-spacing: .34em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+/* ② 酸黄 · 赛博朋克 2077：粗斜体 + 红/青错位（游戏 logo 那套） */
+body[data-page="cyber"][data-theme="dark"] .wordmark b {
+  font-family: Impact, "Haettenschweiler", "Bahnschrift", "Arial Black", sans-serif;
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: .02em;
+  transform: skewX(-7deg);
+  color: var(--accent);
+  text-shadow: 3px 2px 0 rgba(194, 67, 71, .9), -2px -2px 0 rgba(53, 182, 224, .6);
+}
+body[data-page="cyber"][data-theme="dark"] .wordmark i { color: var(--accent-2); letter-spacing: .28em; }
+/* ③ 矩阵 · 黑客帝国：等宽、绿色数字雨渐变 + 光晕 */
+body[data-page="cyber"][data-theme="dark-blue"] .wordmark b {
+  font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+  font-weight: 700;
+  letter-spacing: .16em;
+  background: linear-gradient(180deg, #e6ffee 0%, #35ff7a 52%, #0c7a3a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 12px rgba(53, 255, 122, .55));
+}
+body[data-page="cyber"][data-theme="dark-blue"] .wordmark i {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  color: var(--accent);
+  letter-spacing: .2em;
+}
 /* 词条大标题：轻微色散，保持可读 */
 body[data-page="cyber"] .word {
   font-family: "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", sans-serif;
@@ -387,14 +425,13 @@ html.side-collapsed .brand-text { display: none; }
 .wordmark { display: flex; align-items: baseline; gap: 8px; padding: 0 12px 16px; color: var(--ink); }
 .wordmark b { font-size: 19px; font-weight: 700; letter-spacing: .02em; }
 .wordmark i { font-style: normal; font-size: 10px; letter-spacing: .22em; color: var(--muted); }
+.wordmark u { display: none; text-decoration: none; }
 body[data-page="paper"] .wordmark b {
   font-family: Georgia, "Songti SC", "SimSun", serif;
   font-weight: 600;
   letter-spacing: .14em;
 }
 body[data-page="paper"] .wordmark i { font-family: Georgia, serif; letter-spacing: .3em; }
-body[data-page="cyber"] .wordmark b { font-weight: 700; letter-spacing: .2em; }
-body[data-page="cyber"] .wordmark i { letter-spacing: .32em; }
 .side nav { display: flex; flex-direction: column; gap: 2px; }
 .themes { display: flex; gap: 6px; padding: 14px 12px; border-top: 1px solid var(--line); margin-top: auto; }
 .themes button { flex: 1; font: inherit; font-size: 12px; padding: 6px 0; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
