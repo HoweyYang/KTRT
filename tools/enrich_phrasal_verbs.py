@@ -163,7 +163,10 @@ def main():
     if os.path.exists(OUT_JSONL):
         for line in open(OUT_JSONL, encoding='utf-8'):
             try:
-                done_keys.add(json.loads(line)['key'])
+                g = json.loads(line)
+                # 只有全部义项都翻好了才算完成，缺的会在下一轮重跑
+                if g.get('senses') and all(s.get('zh') for s in g['senses']):
+                    done_keys.add(g['key'])
             except Exception:
                 continue
 
@@ -193,9 +196,9 @@ def main():
                 out.write(json.dumps(g, ensure_ascii=False) + '\n')
                 _done += 1
             out.flush()
-            if _done % 5 == 0 or _done == len(chunks):
-                print('  进度 %d/%d 批（约 %d 条，本批补全 %d 个义项）'
-                      % (_done, len(chunks), _done * args.batch, got), flush=True)
+            if _done % 100 < args.batch or _done >= len(groups):
+                print('  已完成 %d/%d 条短语（本批补全 %d 个义项）'
+                      % (_done, len(groups), got), flush=True)
 
     with ThreadPoolExecutor(max_workers=args.workers) as ex:
         list(ex.map(work, chunks))
