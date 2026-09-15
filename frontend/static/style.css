@@ -177,8 +177,8 @@ body[data-page="cyber"] {
 }
 /* 霓虹夜景（参考赛博朋克色板：青 #3DB3D0 / 品红 #AA5A9C / 黄 #F7D967 / 红 #C24347 / 深紫蓝 #191338） */
 body[data-page="cyber"][data-theme="light"] {
-  --bg: #12102a;
-  --card: #1b1840;
+  --bg: #0c0a1e;
+  --card: #191538;
   --ink: #e9e7ff;
   --muted: #9d95cb;
   --line: #332d66;
@@ -199,29 +199,48 @@ body[data-page="cyber"][data-theme="light"] {
   --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(61, 179, 208, .6);
   --card-radius: 10px;
 }
-/* 酸黄黑（黄 #F7D967 + 红 #C24347） */
+/* 霓虹的底色是混搭的：青 + 品红 + 暖黄三层光晕，青光为主 */
+body[data-page="cyber"][data-theme="light"] {
+  background-image:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, .03) 0 1px, transparent 1px 3px),
+    radial-gradient(64% 50% at 12% -4%, rgba(61, 179, 208, .72), transparent 62%),
+    radial-gradient(40% 32% at 34% 46%, rgba(61, 179, 208, .26), transparent 66%),
+    radial-gradient(46% 36% at 100% 0%, rgba(170, 90, 156, .55), transparent 60%),
+    radial-gradient(58% 44% at 8% 106%, rgba(255, 60, 190, .24), transparent 58%),
+    radial-gradient(64% 48% at 92% 108%, rgba(247, 217, 103, .24), transparent 58%),
+    linear-gradient(135deg, #26124a 0%, #0a0918 42%, #1d0d38 68%, #05050d 100%);
+  background-attachment: fixed;
+}
+/* 酸黄黑：酸柠檬黄绿（黄里带绿），配冷色副色，整体不偏暖 */
 body[data-page="cyber"][data-theme="dark"] {
-  --bg: #0d0b06;
-  --card: #1b1710;
-  --ink: #ffeec2;
-  --muted: #b39a5e;
-  --line: #3a3220;
-  --accent: #f7d967;
-  --accent-dark: #ffe89a;
-  --accent-2: #c24347;
-  --on-accent: #17130a;
-  --th: #262013;
-  --code: #262013;
-  --mark: rgba(247, 217, 103, .3);
-  --track: #3a3220;
-  --toast: #f7d967;
-  --green: #b9d95e;
-  --red: #c24347;
-  --amber: #f7d967;
-  --aberr: #c24347;
-  --cyber-glow: 0 0 22px -8px rgba(247, 217, 103, .7);
-  --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(247, 217, 103, .5);
+  --bg: #060a04;
+  --card: #101a0b;
+  --ink: #eaffd2;
+  --muted: #8fae74;
+  --line: #26401b;
+  --accent: #ccff00;
+  --accent-dark: #e2ff6b;
+  --accent-2: #3db3d0;
+  --on-accent: #101a03;
+  --th: #17240f;
+  --code: #17240f;
+  --mark: rgba(204, 255, 0, .26);
+  --track: #26401b;
+  --toast: #ccff00;
+  --green: #ccff00;
+  --red: #ff4d4d;
+  --amber: #e9ff9b;
+  --aberr: #3db3d0;
+  --cyber-glow: 0 0 22px -8px rgba(204, 255, 0, .7);
+  --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(204, 255, 0, .5);
   --card-radius: 10px;
+}
+body[data-page="cyber"][data-theme="dark"] {
+  background-image:
+    radial-gradient(60% 45% at 8% -6%, rgba(204, 255, 0, .18), transparent 62%),
+    radial-gradient(50% 40% at 94% 6%, rgba(61, 179, 208, .14), transparent 64%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, .03) 0 1px, transparent 1px 3px);
+  background-attachment: fixed;
 }
 /* 矩阵：只有绿和黑，不加副色 */
 body[data-page="cyber"][data-theme="dark-blue"] {
@@ -247,11 +266,19 @@ body[data-page="cyber"][data-theme="dark-blue"] {
   --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(53, 255, 122, .55);
   --card-radius: 10px;
 }
+body[data-page="cyber"][data-theme="dark-blue"] {
+  background-image:
+    radial-gradient(62% 46% at 12% -6%, rgba(53, 255, 122, .16), transparent 62%),
+    radial-gradient(55% 42% at 90% 8%, rgba(53, 255, 122, .09), transparent 64%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, .03) 0 1px, transparent 1px 3px);
+  background-attachment: fixed;
+}
 body[data-page="cyber"] .side,
 body[data-page="cyber"] .card,
 body[data-page="cyber"] .panel,
 body[data-page="cyber"] .note-panel .notes,
 body[data-page="cyber"] #note-context {
+  background-image: linear-gradient(150deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 58%);
   border-radius: var(--card-radius, 10px);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03), var(--card-shadow);
 }
