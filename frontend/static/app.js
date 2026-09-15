@@ -59,11 +59,11 @@ function syncThemeLabels() {
 
 /* 品牌图：可在 frontend/static/brand/ 放自己的 logo（按配色切换），没有就退回文字字标 */
 const BRAND_IMAGES = {
-  'cyber|light': '/static/brand/brand-neon.png',
-  'cyber|dark': '/static/brand/brand-acid.png',
-  'cyber|dark-blue': '/static/brand/brand-matrix.png',
-  'paper|light': '/static/brand/brand-paper.png',
-  'minimal|light': '/static/brand/brand-minimal.png',
+  'cyber|light': '/static/brand/brand-neon.svg',
+  'cyber|dark': '/static/brand/brand-acid.svg',
+  'cyber|dark-blue': '/static/brand/brand-matrix.svg',
+  'paper|light': '/static/brand/brand-paper.svg',
+  'minimal|light': '/static/brand/brand-minimal.svg',
 };
 let brandSeq = 0;
 
