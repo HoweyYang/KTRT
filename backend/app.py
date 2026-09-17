@@ -15,8 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException, Body
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException, Body, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.staticfiles import StaticFiles as StarletteStaticFiles
@@ -26,14 +25,25 @@ from backend import db, ai, tts, importer, phrasal, updater
 
 db.init_db()
 
-APP_VERSION = '0.2.0b'
+APP_VERSION = '0.2.0c'
 GITHUB_REPO = 'HoweyYang/KTRT'
 FRONTEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'static')
 updater.configure(APP_VERSION, sys.executable, bool(getattr(sys, 'frozen', False)))
 app = FastAPI(title='溯源词斩 KTRT')
-app.add_middleware(
-    CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'],
-)
+
+# 本地应用只服务同源页面：原先 CORS 通配等于把本地接口对任意网站敞开，
+# 任何网页都能读到设置里的 API Key，也能删词书。去掉通配后浏览器默认不允许
+# 跨站读取；这里再挡一道来源检查，把 form / no-cors 这类不受 CORS 约束的
+# 跨站写入也一并拦掉。
+_LOCAL_ORIGIN = re.compile(r'^http://(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$')
+
+
+@app.middleware('http')
+async def _block_foreign_origin(request: Request, call_next):
+    origin = request.headers.get('origin')
+    if origin and not _LOCAL_ORIGIN.match(origin):
+        return JSONResponse({'detail': '拒绝跨站请求'}, status_code=403)
+    return await call_next(request)
 
 
 class NoCacheStaticFiles(StarletteStaticFiles):
@@ -140,6 +150,12 @@ def index():
     resp = FileResponse(os.path.join(root, 'index.html'))
     resp.headers['Cache-Control'] = 'no-store, must-revalidate'
     return resp
+
+
+@app.get('/api/ping')
+def ping():
+    """启动器探针：确认这个端口上跑的确实是 KTRT，而不是别的程序。"""
+    return {'app': 'KTRT', 'version': APP_VERSION}
 
 
 @app.get('/api/bootstrap')
@@ -1988,7 +2004,10 @@ def read_aloud(text: str = Query(''), lang: str = Query('英语')):
 def _get_settings():
     cfg = ai.current_config()
     return {
-        'api_key': cfg['api_key'],
+        # 不回传明文 Key：本机任意进程、任意网页都不该读到它。
+        # 前端只需要知道"有没有配过"，改 Key 时再整串覆盖。
+        'api_key': '',
+        'api_key_set': bool(cfg['api_key']),
         'base_url': cfg['base_url'],
         'model': cfg['model'],
         'vendor': cfg['vendor'],
@@ -2007,6 +2026,7 @@ def _get_settings():
 
 class SettingsBody(BaseModel):
     api_key: str = ''
+    clear_api_key: bool = False
     base_url: str = ''
     model: str = ''
     vendor: str = 'ds'
@@ -2027,7 +2047,12 @@ def get_settings():
 
 @app.post('/api/settings')
 def save_settings(body: SettingsBody):
-    db.set_setting('api_key', body.api_key.strip())
+    key = body.api_key.strip()
+    if body.clear_api_key:
+        db.set_setting('api_key', '')
+    elif key:
+        # 留空表示"不修改"：前端拿不到明文，空值不能当成删除 Key
+        db.set_setting('api_key', key)
     db.set_setting('base_url', body.base_url.strip().rstrip('/'))
     db.set_setting('model', body.model.strip())
     db.set_setting('vendor', body.vendor.strip() or 'ds')

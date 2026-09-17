@@ -202,10 +202,18 @@ def import_book(path, forced_book='', forced_language=''):
                     r['phrases'], r['synonyms'], r['antonyms'], r['root_words'],
                     ';'.join(pk),
                 ))
+            # 这里必须用 UPSERT，不能用 INSERT OR REPLACE：REPLACE 是"先删旧行再插新行"，
+            # 外键级联会把已背/收藏/造句/错题/逐词笔记一并清掉（界面明确承诺重复导入
+            # 保留个人状态）。UPSERT 原地更新，词条内容照样被覆盖，且行 id 不变。
             conn.executemany(
-                'INSERT OR REPLACE INTO words(book_id, list_no, seq, word, phonetic, meaning, '
+                'INSERT INTO words(book_id, list_no, seq, word, phonetic, meaning, '
                 'collocations, phrases, synonyms, antonyms, root_words, phrasal_keys) '
-                'VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+                'VALUES(?,?,?,?,?,?,?,?,?,?,?,?) '
+                'ON CONFLICT(book_id, list_no, seq) DO UPDATE SET '
+                'word=excluded.word, phonetic=excluded.phonetic, meaning=excluded.meaning, '
+                'collocations=excluded.collocations, phrases=excluded.phrases, '
+                'synonyms=excluded.synonyms, antonyms=excluded.antonyms, '
+                'root_words=excluded.root_words, phrasal_keys=excluded.phrasal_keys',
                 insert_rows,
             )
     return {'book_name': book_name, 'language': language, 'rows': len(rows),

@@ -220,7 +220,7 @@
       </div>
       <div class="panel" style="margin-top:16px">
         <h2>词书资源</h2>
-        <p class="muted">官方词书（Excel，下载后回到上面直接导入）：</p>
+        <p class="muted">以下是开发者整理好的词书下载源（Excel 格式，下载后回到上方直接导入）：</p>
         <div id="resource-list" class="resource-list"></div>
         <p class="muted" style="margin-top:14px">自制词书：把手上的单词书（Excel / CSV / 纯文本 / 拍照）交给本地 AI，用下面这段提示词整理成同样格式，再导入使用。</p>
         <div class="row">
@@ -259,7 +259,10 @@
           <input id="s-model" type="text" placeholder="deepseek-chat">
         </label>
         <label>API Key
-          <input id="s-key" type="password" placeholder="sk-...">
+          <span class="seg">
+            <input id="s-key" type="password" placeholder="sk-...">
+            <button type="button" id="btn-clear-key" class="btn" data-tip="清除已保存的 API Key。">清除</button>
+          </span>
         </label>
         <label>朗读方式
           <select id="s-tts">

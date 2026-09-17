@@ -227,6 +227,18 @@ def applied_patch():
         return None
 
 
+def _patch_applicable(patch, applied):
+    """补丁要比自己手上的新才提示。
+
+    基线 = 已装补丁的版本，没装过就是当前程序版本。少了这一比，
+    同一份补丁会一直显示"可更新"（应用完刷新还在），所以必须比一次。
+    """
+    pv = version_from_text(patch.get('name', '')) or patch.get('version', '')
+    if not pv:
+        return True          # 认不出补丁版本就别挡，免得把更新通道堵死
+    return is_newer(pv, (applied or {}).get('version') or VERSION)
+
+
 def status(deep=True):
     """给「更新」页用：当前版本、最新 Release、可用的补丁/整包、已装补丁。"""
     out = {
@@ -251,11 +263,8 @@ def status(deep=True):
         out['latest'] = rel
         out['installer'] = rel.get('installer')
         out['patch'] = rel.get('patch')
-        if rel.get('patch') and not rel['newer']:
-            # 同版本也允许补丁（当初发布后修的 bug 挂在同一个 Release 上）
-            out['patch']['applicable'] = True
-        elif rel.get('patch'):
-            out['patch']['applicable'] = True
+        if out['patch']:
+            out['patch']['applicable'] = _patch_applicable(out['patch'], out['applied_patch'])
     if deep:
         try:
             out['commit'] = latest_commit()
@@ -309,54 +318,73 @@ def _safe_rel(name):
 
 
 def apply_patch(zip_path, version):
-    """解压补丁到数据目录 web/：先备份旧补丁，再整套覆盖（补丁包内含全部前端文件）。"""
-    root = overlay_dir(create=True)
-    JOB.update({'state': 'applying', 'message': '正在应用补丁…'})
-    if os.path.isdir(root) and os.listdir(root):
-        backup = '%s_backup_%s' % (root, time.strftime('%Y%m%d_%H%M%S'))
-        try:
-            shutil.move(root, backup)
-            _prune_backups(root)
-        except Exception:
-            pass
-        os.makedirs(root, exist_ok=True)
+    """热补丁：先整套解压到临时目录并逐个校验，全部通过才换上去。
 
-    files = {}
-    with zipfile.ZipFile(zip_path) as z:
-        names = [n for n in z.namelist() if not n.endswith('/')]
-        if 'patch.json' in names:
-            try:
-                manifest = json.loads(z.read('patch.json').decode('utf-8'))
-                files = manifest.get('files') or {}
-            except Exception:
-                files = {}
-        count = 0
-        for name in names:
-            if name == 'patch.json':
-                continue
-            rel = _safe_rel(name)
-            if not rel:
-                continue
-            data = z.read(name)
-            if files.get(name):
-                digest = hashlib.sha256(data).hexdigest()
-                if digest != files[name]:
-                    raise RuntimeError('补丁校验失败：%s' % name)
-            target = os.path.join(root, rel)
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            with open(target, 'wb') as f:
-                f.write(data)
-            count += 1
-    if not os.path.exists(os.path.join(root, 'index.html')):
-        raise RuntimeError('补丁包不完整：缺少 index.html')
-    meta = {
-        'version': version,
-        'applied_at': time.strftime('%Y-%m-%d %H:%M:%S'),
-        'files': count,
-    }
-    with open(os.path.join(root, 'patch.json'), 'w', encoding='utf-8') as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2)
-    return count
+    之前是边解压边往正式目录里写，一旦中途某个文件校验失败，就会留下
+    "新 index.html + 旧 app.js" 这种半成品 overlay，页面直接坏掉，
+    而且旧补丁已被挪到备份目录、不会自动回滚。现在校验不过就原地不动。
+    """
+    root = overlay_dir(create=True)
+    staging = root + '_staging'
+    JOB.update({'state': 'applying', 'message': '正在应用补丁…'})
+    shutil.rmtree(staging, ignore_errors=True)
+    os.makedirs(staging, exist_ok=True)
+    count = 0
+    try:
+        files = {}
+        with zipfile.ZipFile(zip_path) as z:
+            names = [n for n in z.namelist() if not n.endswith('/')]
+            if 'patch.json' in names:
+                try:
+                    manifest = json.loads(z.read('patch.json').decode('utf-8'))
+                    files = manifest.get('files') or {}
+                except Exception:
+                    files = {}
+            for name in names:
+                if name == 'patch.json':
+                    continue
+                rel = _safe_rel(name)
+                if not rel:
+                    continue
+                data = z.read(name)
+                if files.get(name):
+                    digest = hashlib.sha256(data).hexdigest()
+                    if digest != files[name]:
+                        raise RuntimeError('补丁校验失败：%s' % name)
+                target = os.path.join(staging, rel)
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                with open(target, 'wb') as f:
+                    f.write(data)
+                count += 1
+        if not os.path.exists(os.path.join(staging, 'index.html')):
+            raise RuntimeError('补丁包不完整：缺少 index.html')
+        meta = {
+            'version': version,
+            'applied_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'files': count,
+        }
+        with open(os.path.join(staging, 'patch.json'), 'w', encoding='utf-8') as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+
+        # 就位：旧目录改名备份 → 新目录改成正式名；改名失败就把备份换回来
+        backup = ''
+        if os.path.isdir(root):
+            if os.listdir(root):
+                backup = '%s_backup_%s' % (root, time.strftime('%Y%m%d_%H%M%S'))
+                shutil.rmtree(backup, ignore_errors=True)
+                shutil.move(root, backup)
+            else:
+                os.rmdir(root)          # 空目录直接去掉，否则 move 会塞进它里面
+        try:
+            shutil.move(staging, root)
+        except Exception:
+            if backup and not os.path.isdir(root):
+                shutil.move(backup, root)
+            raise
+        _prune_backups(root)
+        return count
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 def _prune_backups(root):
@@ -392,9 +420,14 @@ def write_helper_script(setup_path):
              'tasklist /FI "IMAGENAME eq %s" | find /I "%s" >nul' % (setup_name, setup_name),
              'if not errorlevel 1 goto finish']
     if app_name:
-        lines += ['tasklist /FI "IMAGENAME eq %s" | find /I "%s" >nul' % (app_name, app_name),
+        # 换到 per-user 安装后程序在别处，优先拉起新位置那份；
+        # 判断放在脚本运行时（安装已结束），而不是生成脚本的时候。
+        installed = '%LOCALAPPDATA%\\Programs\\KTRT\\' + app_name
+        lines += ['set "KTRTEXE=' + app_exe + '"',
+                  'if exist "' + installed + '" set "KTRTEXE=' + installed + '"',
+                  'tasklist /FI "IMAGENAME eq %s" | find /I "%s" >nul' % (app_name, app_name),
                   'if not errorlevel 1 goto done',
-                  'start "" "%s"' % app_exe]
+                  'if not "%KTRTEXE%"=="" start "" "%KTRTEXE%"']
     lines += [':done', 'del "%~f0"']
     with open(script, 'w', encoding='ascii', errors='ignore', newline='') as f:
         f.write('\r\n'.join(lines) + '\r\n')

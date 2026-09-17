@@ -789,6 +789,7 @@ th { background: var(--th); font-weight: 700; }
 .seg { display: inline-flex; gap: 6px; margin-top: 6px; }
 .seg .btn { padding: 7px 16px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); cursor: pointer; font: inherit; font-size: 13px; }
 .seg .btn.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+#s-key { flex: 1; min-width: 220px; }
 .tts-val { color: var(--muted); font-size: 13px; margin-left: 6px; font-weight: 400; }
 input[type="range"] { width: 100%; margin-top: 8px; }
 .notice-list { margin: 10px 0 0; padding-left: 20px; line-height: 1.9; color: var(--muted); font-size: 13px; }
