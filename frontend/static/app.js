@@ -165,8 +165,9 @@ const FEATURE_HINTS = {
   'btn-import': '解析并导入所选文件；同词书重复导入会覆盖词条，但保留已背/收藏等个人状态。',
   'btn-test-ai': '向当前配置的 AI 发送一条探针请求，验证 Key 与网络连通；不修改任何数据。',
   'btn-save-settings': '保存本页全部设置（AI、语音、主题与页面质感）。',
-  'btn-check-patch': '读取 GitHub main 的最新提交，判断是否有小补丁。',
-  'btn-check-release': '读取 GitHub 最新正式 Release，判断是否有新版本。',
+  'btn-upd-check': '读取 GitHub 上最新一次发布：有新版本或热补丁时会出现「立即更新」。',
+  'btn-upd-apply': '一键更新：新版本走下载安装（会弹一次系统授权框），热补丁直接应用、刷新即生效。',
+  'upd-auto': '打开程序时自动检查一次更新；有新版会弹窗提示，不会自动安装。',
   's-theme': '主题色：随页面质感变化——简约=浅色/深色/石墨，纸质=米白纸/牛皮纸/靛蓝纸，赛博=电光/酸黄/矩阵。',
   'page-normal': '页面质感：简约（Apple / OpenAI 风格，素色、克制留白、细边框）。',
   'page-paper': '页面质感：纸质（米白纸 / 牛皮纸 / 靛蓝纸，纸纹 + 纤维 + 边缘阴影，衬线阅读字体）。',
@@ -183,7 +184,8 @@ function initFeatureHints() {
     manage: '按 书 → List 管理进度 / 收藏 / 造句 / 笔记，可搜索、筛选、导出。',
     storm: '浏览与生成「风暴词卡」，可搜索已建词卡的单词并导出。',
     import: '导入新词书（Excel / CSV / 纯文本），也可删除词书。',
-    settings: '配置 AI Key / 厂商、语音、主题，以及检查软件更新。',
+    settings: '配置 AI Key / 厂商、语音、主题。',
+    update: '检查更新：有热补丁直接应用（不用重启），有新版本一键下载安装并自动重开。',
     guide: '操作指南与文档。',
   };
   const tip = document.createElement('div');
@@ -334,6 +336,7 @@ async function init() {
     reloadBookmarks();
     loadStorms();
     initFeatureHints();
+    updInit();
     fitNoteHeight();
     if (window.ResizeObserver) new ResizeObserver(fitNoteHeight).observe(document.querySelector('.card'));
   } catch (e) {
@@ -1863,7 +1866,7 @@ $('btn-test-ai').addEventListener('click', async () => {
     : `<p class="err">AI 连接失败：${escapeHtml(r.error)}</p>`;
 });
 
-/* ---------- 软件更新 ---------- */
+/* ---------- 更新 ---------- */
 /* 版本号比较：数字段逐位比，相同再比后缀字母（0.1.6b > 0.1.6 > 0.1.6a）。 */
 function versionKey(v) {
   const m = String(v || '').replace(/^v/i, '').trim().match(/^(\d+(?:\.\d+)*)([a-z]*)/i);
@@ -1882,41 +1885,213 @@ function versionNewer(rel, cur) {
   return a[3] > b[3];
 }
 
-$('btn-check-patch').addEventListener('click', async () => {
-  const box = $('update-msg');
-  box.innerHTML = '<p class="ok">检查中…</p>';
+const upd = { info: null, kind: '', timer: null };
+
+function updKindLabel(kind, ver) {
+  return kind === 'full' ? `下载并安装 v${ver}` : '应用热补丁';
+}
+
+function updDetailHtml(info) {
+  let html = '';
+  if (info.applied_patch) {
+    const ap = info.applied_patch;
+    html += `<p class="ok">已应用热补丁：v${escapeHtml(ap.version || '')} ·`
+      + ` ${escapeHtml(String(ap.files || 0))} 个文件 · ${escapeHtml(ap.applied_at || '')}</p>`;
+  }
+  const latest = info.latest;
+  if (!latest) return html;
+  html += `<p>最新发布：<b>${escapeHtml(latest.tag || '')}</b>`
+    + `（${escapeHtml((latest.published_at || '').slice(0, 10))}）`
+    + (latest.newer ? ' · <span class="ok">有新版本</span>' : ' · 已是最新') + '</p>';
+  if (latest.installer) {
+    html += `<p class="muted">安装包：${escapeHtml(latest.installer.name)}`
+      + `（${(latest.installer.size / 1048576).toFixed(1)} MB）</p>`;
+  }
+  if (latest.patch) {
+    html += `<p class="muted">热补丁：${escapeHtml(latest.patch.name)}`
+      + `（${(latest.patch.size / 1024).toFixed(0)} KB）</p>`;
+  }
+  if (latest.notes) {
+    html += `<details><summary>更新说明</summary><pre class="upd-notes">${
+      escapeHtml(latest.notes.slice(0, 800))}</pre></details>`;
+  }
+  if (latest.html_url) {
+    html += `<p><a href="${escapeAttr(latest.html_url)}" target="_blank" rel="noopener">在 GitHub 查看</a></p>`;
+  }
+  if (info.commit) {
+    html += `<p class="muted">main 最新提交：${escapeHtml(info.commit.sha)} · ${escapeHtml(info.commit.message)}</p>`;
+  }
+  return html;
+}
+
+function updRender() {
+  const info = upd.info;
+  if (!info) return;
+  $('upd-version').textContent = `当前版本：v${info.current_version}（`
+    + (info.mode === 'packaged' ? '安装版' : '源码版') + '）';
+  $('upd-detail').innerHTML = updDetailHtml(info);
+  const latest = info.latest || {};
+  const canPatch = !!(info.patch && info.patch.applicable);
+  const canFull = !!(latest.newer && info.installer && info.mode === 'packaged');
+  upd.kind = canFull ? 'full' : (canPatch ? 'patch' : '');
+  const btn = $('btn-upd-apply');
+  btn.classList.toggle('hidden', !upd.kind);
+  if (upd.kind) btn.textContent = updKindLabel(upd.kind, latest.version || info.current_version);
+  const link = $('upd-page-link');
+  const showLink = !!latest.html_url && (!upd.kind || info.mode !== 'packaged');
+  link.classList.toggle('hidden', !showLink);
+  if (showLink) link.href = latest.html_url;
+}
+
+async function updCheck(manual) {
+  const box = $('upd-msg');
+  if (manual) box.innerHTML = '<p class="muted">检查中…</p>';
   try {
-    const r = await api('/api/update/status', { timeout: 20000 });
-    let html = '';
-    if (r.patch) {
-      html += `<p>最新补丁：<b>${escapeHtml(r.patch.sha)}</b> · ${escapeHtml(r.patch.message)}<br>
-        <span style="color:var(--muted)">${escapeHtml((r.patch.date || '').slice(0, 10))}</span></p>`;
+    const info = await api('/api/update/status', { timeout: 30000 });
+    upd.info = info;
+    updRender();
+    if (manual) {
+      box.innerHTML = !info.ok
+        ? `<p class="err">${escapeHtml(info.error || '检查失败')}</p>`
+        : (upd.kind
+          ? '<p class="ok">发现可更新的内容，点「立即更新」开始。</p>'
+          : '<p class="ok">已是最新版本。</p>');
     }
-    if (r.error) html += `<p class="err">${escapeHtml(r.error)}</p>`;
-    box.innerHTML = html || '<p class="ok">未获取到补丁信息</p>';
+    return info;
   } catch (e) {
-    box.innerHTML = `<p class="err">${e.message}</p>`;
+    if (manual) box.innerHTML = `<p class="err">${escapeHtml(e.message)}</p>`;
+    return null;
+  }
+}
+
+function updPoll(kind) {
+  clearInterval(upd.timer);
+  const wrap = $('upd-bar-wrap');
+  const bar = $('upd-bar');
+  const box = $('upd-msg');
+  wrap.classList.remove('hidden');
+  upd.timer = setInterval(async () => {
+    let j;
+    try {
+      j = await api('/api/update/progress');
+    } catch (e) {
+      return;
+    }
+    const pct = j.total ? Math.round((j.received * 100) / j.total) : 0;
+    bar.style.width = (j.state === 'downloading' ? pct : 100) + '%';
+    box.innerHTML = `<p class="${j.state === 'error' ? 'err' : 'muted'}">${escapeHtml(j.message || '')}</p>`;
+    if (j.state === 'done') {
+      clearInterval(upd.timer);
+      if (kind === 'patch') {
+        toast('补丁已应用，正在重新载入…');
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        wrap.classList.add('hidden');
+      }
+    } else if (j.state === 'error') {
+      clearInterval(upd.timer);
+      wrap.classList.add('hidden');
+    }
+  }, 700);
+}
+
+async function updApply(kind) {
+  const box = $('upd-msg');
+  const latest = (upd.info && upd.info.latest) || {};
+  if (kind === 'full') {
+    const name = latest.installer ? latest.installer.name : '安装包';
+    if (!confirm(`将下载 ${name} 并静默安装。\n`
+      + '过程中会弹出系统授权框，点“是”即可；装完程序会自动重开，学习数据不受影响。\n\n继续吗？')) return;
+  }
+  box.innerHTML = '<p class="muted">准备中…</p>';
+  try {
+    await api('/api/update/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind }),
+      timeout: 30000,
+    });
+  } catch (e) {
+    box.innerHTML = `<p class="err">${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  updPoll(kind);
+}
+
+function updPopup(info) {
+  try {
+    sessionStorage.setItem('updShown', '1');   // 同一次会话里只弹一次，刷新不重复打扰
+  } catch (e) { /* 隐私模式下忽略 */ }
+  const latest = info.latest || {};
+  const lines = [`<p>发现 <b>${escapeHtml(latest.tag || ('v' + (latest.version || '')))}</b>`
+    + `（当前 v${escapeHtml(info.current_version)}）。</p>`];
+  if (latest.newer && info.installer && info.mode === 'packaged') {
+    lines.push('<p class="muted">可以一键下载安装，装完自动重开，学习数据不受影响。</p>');
+  } else if (info.patch && info.patch.applicable) {
+    lines.push('<p class="muted">有热补丁可直接应用，不用重启。</p>');
+  }
+  if (latest.notes) {
+    lines.push(`<pre class="upd-notes">${escapeHtml(latest.notes.slice(0, 400))}</pre>`);
+  }
+  $('update-modal-title').textContent = latest.newer ? '发现新版本' : '发现新补丁';
+  $('update-modal-body').innerHTML = lines.join('');
+  $('update-modal').classList.remove('hidden');
+}
+
+async function updInit() {
+  const s = state.settings || {};
+  const box = $('upd-auto');
+  if (box) box.checked = s.auto_update_check !== '0';
+  if (s.auto_update_check === '0') {
+    updCheck(false);                     // 关了自动弹窗也把版本信息刷出来
+    return;
+  }
+  const info = await updCheck(false);
+  if (!info || !info.latest) return;
+  const latest = info.latest;
+  const hasPatch = !!(info.patch && info.patch.applicable);
+  if (!latest.newer && !hasPatch) return;
+  if ((s.update_snooze || '') === latest.version) return;
+  try {
+    if (sessionStorage.getItem('updShown') === '1') return;
+  } catch (e) { /* 忽略 */ }
+  // 同版本的热补丁已经装过就不再打扰
+  if (!latest.newer && info.applied_patch && info.applied_patch.version === latest.version) return;
+  updPopup(info);
+}
+
+$('btn-upd-check').addEventListener('click', () => updCheck(true));
+$('btn-upd-apply').addEventListener('click', () => { if (upd.kind) updApply(upd.kind); });
+$('btn-upd-modal-now').addEventListener('click', () => {
+  $('update-modal').classList.add('hidden');
+  if (upd.kind) updApply(upd.kind);
+});
+$('btn-upd-modal-later').addEventListener('click', () => $('update-modal').classList.add('hidden'));
+$('btn-upd-modal-snooze').addEventListener('click', async () => {
+  const v = (upd.info && upd.info.latest && upd.info.latest.version) || '';
+  $('update-modal').classList.add('hidden');
+  if (!v) return;
+  if (state.settings) state.settings.update_snooze = v;
+  try {
+    await api('/api/update/prefs', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snooze: v }),
+    });
+    toast('本版本不再提醒');
+  } catch (e) {
+    toast('保存失败：' + e.message);
   }
 });
-
-$('btn-check-release').addEventListener('click', async () => {
-  const box = $('update-msg');
-  box.innerHTML = '<p class="ok">检查中…</p>';
+$('upd-auto').addEventListener('change', async (e) => {
+  const on = e.target.checked ? '1' : '0';
+  if (state.settings) state.settings.auto_update_check = on;
   try {
-    const r = await api('/api/update/status', { timeout: 20000 });
-    let html = '';
-    if (r.release) {
-      const isNewer = versionNewer(r.release.tag_name, r.current_version);
-      html += `<p>当前版本：v${escapeHtml(r.current_version)}<br>
-        最新 Release：${escapeHtml(r.release.tag_name)}（${escapeHtml((r.release.published_at || '').slice(0, 10))}）</p>`;
-      html += isNewer
-        ? `<p class="ok">有新版！<a href="${escapeAttr(r.release.html_url)}" target="_blank" rel="noopener">去 GitHub 下载</a></p>`
-        : '<p class="ok">已是最新版本</p>';
-    }
-    if (r.error) html += `<p class="err">${escapeHtml(r.error)}</p>`;
-    box.innerHTML = html || '<p class="err">未获取到 Release 信息</p>';
-  } catch (e) {
-    box.innerHTML = `<p class="err">${e.message}</p>`;
+    await api('/api/update/prefs', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auto_check: on }),
+    });
+  } catch (err) {
+    toast('保存失败：' + err.message);
   }
 });
 

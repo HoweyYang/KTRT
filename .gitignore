@@ -29,3 +29,4 @@ Thumbs.db
 tools/*
 !tools/enrich_workbook.py
 !tools/enrich_phrasal_verbs.py
+!tools/make_patch.py

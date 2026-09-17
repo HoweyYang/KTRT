@@ -889,6 +889,18 @@ code { background: var(--code); padding: 2px 5px; border-radius: 4px; font-size:
   max-width: 80vw;
 }
 .hidden { display: none !important; }
+
+/* ---------- 更新页 ---------- */
+.upd-inline { display: flex !important; align-items: center; gap: 8px; margin: 14px 0 0; font-weight: 600; }
+.upd-inline input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--accent); }
+.upd-bar-wrap { margin-top: 12px; height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.upd-bar { height: 100%; width: 0; border-radius: 999px; background: var(--accent); transition: width .25s ease; }
+.upd-msg { margin-top: 10px; font-size: 13.5px; line-height: 1.7; }
+.upd-detail { margin-top: 12px; font-size: 13px; line-height: 1.8; border-top: 1px solid var(--line); padding-top: 12px; }
+.upd-detail details { margin-top: 6px; }
+.upd-detail summary { cursor: pointer; color: var(--muted); }
+.upd-notes { white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 12.5px;
+  line-height: 1.7; color: var(--muted); background: transparent; border: 0; margin: 6px 0 0; }
 .ok { color: var(--green); font-size: 14px; margin-top: 8px; }
 .err { color: var(--red); font-size: 14px; margin-top: 8px; }
 

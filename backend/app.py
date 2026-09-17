@@ -22,13 +22,14 @@ from fastapi.staticfiles import StaticFiles
 from starlette.staticfiles import StaticFiles as StarletteStaticFiles
 from pydantic import BaseModel
 
-from backend import db, ai, tts, importer, phrasal
+from backend import db, ai, tts, importer, phrasal, updater
 
 db.init_db()
 
-APP_VERSION = '0.2.0'
+APP_VERSION = '0.2.0b'
 GITHUB_REPO = 'HoweyYang/KTRT'
 FRONTEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'static')
+updater.configure(APP_VERSION, sys.executable, bool(getattr(sys, 'frozen', False)))
 app = FastAPI(title='溯源词斩 KTRT')
 app.add_middleware(
     CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'],
@@ -40,6 +41,29 @@ class NoCacheStaticFiles(StarletteStaticFiles):
         resp = await super().get_response(path, scope)
         resp.headers['Cache-Control'] = 'no-store, must-revalidate'
         return resp
+
+    def lookup_path(self, path):
+        """先看数据目录里的热补丁（更新页下载的 patch），再回落到内置前端。"""
+        if path.startswith(('/', '\\')):
+            return '', None
+        bases = [updater.overlay_dir()]
+        for d in (getattr(self, 'all_directories', None) or [getattr(self, 'directory', '')]):
+            bases.append(d)
+        for base in bases:
+            if not base or not os.path.isdir(base):
+                continue
+            root = os.path.realpath(base)
+            full = os.path.realpath(os.path.join(root, path))
+            try:
+                if os.path.commonpath([full, root]) != root:
+                    continue
+            except ValueError:
+                continue
+            try:
+                return full, os.stat(full)
+            except (FileNotFoundError, NotADirectoryError):
+                continue
+        return '', None
 
 
 app.mount('/static', NoCacheStaticFiles(directory=FRONTEND), name='static')
@@ -112,7 +136,8 @@ def _status(conn, word_id):
 
 @app.get('/')
 def index():
-    resp = FileResponse(os.path.join(FRONTEND, 'index.html'))
+    root = updater.overlay_dir() if updater.overlay_active() else FRONTEND
+    resp = FileResponse(os.path.join(root, 'index.html'))
     resp.headers['Cache-Control'] = 'no-store, must-revalidate'
     return resp
 
@@ -1975,6 +2000,8 @@ def _get_settings():
         'tts_volume': db.get_setting('tts_volume', '100'),
         'theme': db.get_setting('theme', 'dark-blue'),
         'theme_page': db.get_setting('theme_page', 'normal'),
+        'auto_update_check': db.get_setting('auto_update_check', '1'),
+        'update_snooze': db.get_setting('update_snooze', ''),
     }
 
 
@@ -2017,88 +2044,54 @@ def save_settings(body: SettingsBody):
 
 @app.get('/api/update/status')
 def update_status():
-    """检查 GitHub 最新补丁与最新 Release（并发请求，识别系统代理，带超时）。"""
-    def _proxy():
-        # 1) 环境变量（Clash/VPN 等常见设置）
-        for key in ('HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy'):
-            v = os.environ.get(key)
-            if v:
-                return {'http': v, 'https': v}
-        # 2) Windows 系统代理（注册表）
-        try:
-            import winreg
-            with winreg.OpenKey(
-                    winreg.HKEY_CURRENT_USER,
-                    r'Software\Microsoft\Windows\CurrentVersion\Internet Settings') as k:
-                enabled, _ = winreg.QueryValueEx(k, 'ProxyEnable')
-                server, _ = winreg.QueryValueEx(k, 'ProxyServer')
-            if not enabled or not server:
-                return None
-            if '=' in server:  # 兼容 http=127.0.0.1:7897;https=127.0.0.1:7897
-                proxies = {}
-                for part in server.split(';'):
-                    scheme, _, addr = part.strip().partition('=')
-                    if scheme in ('http', 'https') and addr:
-                        proxies[scheme] = addr if '://' in addr else 'http://' + addr
-                return proxies or None
-            return {'http': 'http://' + server, 'https': 'http://' + server}
-        except Exception:
-            return None
+    """检查更新：当前版本 / 最新 Release / 可用的补丁与整包 / 已装补丁。"""
+    return updater.status()
 
-    def feed(url):
-        proxies = _proxy()
-        opener = (urllib.request.build_opener(urllib.request.ProxyHandler(proxies))
-                  if proxies else urllib.request.build_opener())
-        req = urllib.request.Request(url, headers={'User-Agent': 'KTRT/' + APP_VERSION})
-        with opener.open(req, timeout=8) as r:
-            return ET.fromstring(r.read().decode('utf-8', 'replace'))
 
-    ns = {'a': 'http://www.w3.org/2005/Atom'}
+class UpdateApplyBody(BaseModel):
+    kind: str = 'patch'
 
-    out = {'ok': True, 'current_version': APP_VERSION, 'patch': None, 'release': None, 'error': ''}
 
-    def check_patch():
-        root = feed('https://github.com/%s/commits/main.atom' % GITHUB_REPO)
-        entries = root.findall('a:entry', ns)
-        if not entries:
-            return None
-        e = entries[0]
-        link = e.find('a:link', ns)
-        href = link.get('href', '') if link is not None else ''
-        sha = href.rstrip('/').split('/')[-1][:7] if href else ''
-        return {
-            'sha': sha,
-            'message': (e.findtext('a:title', '', ns) or '').strip(),
-            'date': e.findtext('a:updated', '', ns),
-            'url': href,
-        }
+@app.post('/api/update/apply')
+def update_apply(body: UpdateApplyBody):
+    """一键更新：patch 走热补丁（不用重启），full 下载安装包静默安装并自动重开。"""
+    kind = (body.kind or '').strip()
+    if kind not in ('patch', 'full'):
+        raise HTTPException(400, '未知的更新类型')
+    info = updater.status(deep=False)
+    latest = info.get('latest') or {}
+    target = info.get('patch') if kind == 'patch' else info.get('installer')
+    if not target:
+        raise HTTPException(400, '没有可用的更新内容，请先点「检查更新」')
+    if kind == 'full' and info.get('mode') != 'packaged':
+        raise HTTPException(400, '源码版请用 git pull 更新，一键安装只对安装版可用')
+    try:
+        return updater.start(kind, target['url'], latest.get('version') or info['current_version'])
+    except Exception as e:
+        raise HTTPException(400, str(e))
 
-    def check_release():
-        root = feed('https://github.com/%s/releases.atom' % GITHUB_REPO)
-        entries = root.findall('a:entry', ns)
-        if not entries:
-            return None
-        e = entries[0]
-        link = e.find('a:link', ns)
-        return {
-            'tag_name': (e.findtext('a:title', '', ns) or '').strip(),
-            'name': (e.findtext('a:title', '', ns) or '').strip(),
-            'published_at': e.findtext('a:updated', '', ns),
-            'html_url': link.get('href', '') if link is not None else '',
-        }
 
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        f_patch = ex.submit(check_patch)
-        f_release = ex.submit(check_release)
-        try:
-            out['patch'] = f_patch.result()
-        except Exception as e:
-            out['error'] += '补丁检查失败：%s' % e
-        try:
-            out['release'] = f_release.result()
-        except Exception as e:
-            out['error'] += ('；' if out['error'] else '') + '版本检查失败：%s' % e
+@app.get('/api/update/progress')
+def update_progress():
+    out = updater.job()
+    out['overlay'] = updater.overlay_active()
     return out
+
+
+class UpdatePrefsBody(BaseModel):
+    auto_check: str = ''
+    snooze: str = ''
+
+
+@app.post('/api/update/prefs')
+def update_prefs(body: UpdatePrefsBody):
+    """更新页偏好：启动时自动检查、本版本不再提醒。"""
+    if body.auto_check:
+        db.set_setting('auto_update_check', '1' if body.auto_check == '1' else '0')
+    if body.snooze:
+        db.set_setting('update_snooze', body.snooze.strip())
+    return {'auto_update_check': db.get_setting('auto_update_check', '1'),
+            'update_snooze': db.get_setting('update_snooze', '')}
 
 
 @app.post('/api/ai/test')
