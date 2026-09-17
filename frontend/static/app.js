@@ -1925,6 +1925,16 @@ function updDetailHtml(info) {
     html += `<p class="ok">已应用小更新：v${escapeHtml(ap.version || '')} ·`
       + ` ${escapeHtml(String(ap.files || 0))} 个文件 · ${escapeHtml(ap.applied_at || '')}</p>`;
   }
+  // 小更新只替换界面文件，程序主体版本不会跟着变：
+  // 源码版重启一下就能读到新代码，安装版必须装新安装包。
+  const applied = info.applied_patch;
+  if (applied && applied.version && versionNewer(applied.version, info.current_version)) {
+    html += `<p class="muted">注意：小更新只替换界面文件，程序主体仍是 <b>v${escapeHtml(info.current_version)}</b>——`
+      + (info.mode === 'packaged'
+        ? '要升级程序主体，请点「立即更新」下载安装新版。'
+        : '<b>重启程序</b>即可用上新代码。')
+      + '</p>';
+  }
   const latest = info.latest;
   if (!latest) return html;
   html += `<p>最新发布：<b>${escapeHtml(latest.tag || '')}</b>`
