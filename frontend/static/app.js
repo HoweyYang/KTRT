@@ -1787,6 +1787,8 @@ function populateSettings() {
   // 两种都要安全：给到明文就填进去，给不到就留空并提示"留空不修改"。
   $('s-key').value = s.api_key || '';
   $('s-key').placeholder = (s.api_key_set || s.api_key) ? '已保存（留空则不修改）' : 'sk-...';
+  $('s-key').oninput = syncKeyHint;      // 用赋值而不是 addEventListener，重复初始化也不会叠加
+  syncKeyHint();
   $('s-tts').value = s.tts_provider || 'edge-tts';
   $('s-voice-en').value = s.tts_voice_en || '美音·男';
   $('s-voice-fr').value = s.tts_voice_fr || '女声';
@@ -1869,6 +1871,28 @@ $('theme-dark').addEventListener('click', () => setTheme('dark'));
 $('theme-blue').addEventListener('click', () => setTheme('dark-blue'));
 
 /* 设置页当前表单值（不含 API Key，Key 由调用方决定怎么给）。 */
+/* API Key 的填写指引：没配过就告诉你怎么开始，改了没保存就提醒一句并点亮保存按钮，
+   两种提示都会在事情办完之后自动消失。 */
+function syncKeyHint() {
+  const hint = $('s-key-hint');
+  const field = $('s-key');
+  if (!hint || !field) return;
+  const saved = !!(state.settings && state.settings.api_key_set);
+  const dirty = !!field.value.trim();
+  if (dirty) {
+    hint.textContent = '改动还没保存 —— 点最下方的「保存设置」才会生效。';
+    hint.className = 'field-hint warn';
+  } else if (!saved) {
+    hint.textContent = '还没有 API Key。AI 翻译、整理、造句都要用它；填好后记得点最下方的「保存设置」。';
+    hint.className = 'field-hint';
+  } else {
+    hint.textContent = '';
+    hint.className = 'field-hint';
+  }
+  const save = $('btn-save-settings');
+  if (save) save.classList.toggle('needs-save', dirty);
+}
+
 function settingsPayload() {
   return {
     base_url: $('s-base').value,
@@ -1896,6 +1920,7 @@ $('btn-save-settings').addEventListener('click', async () => {
     applyPageMode(state.settings.theme_page);
     $('s-key').value = '';
     $('s-key').placeholder = state.settings.api_key_set ? '已保存（留空则不修改）' : 'sk-...';
+    syncKeyHint();
     $('settings-msg').innerHTML = '<p class="ok">设置已保存</p>';
   } catch (e) {
     $('settings-msg').innerHTML = `<p class="err">${e.message}</p>`;
@@ -1912,6 +1937,7 @@ $('btn-clear-key').addEventListener('click', async () => {
     });
     $('s-key').value = '';
     $('s-key').placeholder = 'sk-...';
+    syncKeyHint();
     $('settings-msg').innerHTML = '<p class="ok">API Key 已清除</p>';
   } catch (e) {
     $('settings-msg').innerHTML = `<p class="err">${e.message}</p>`;

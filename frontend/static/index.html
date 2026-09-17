@@ -260,11 +260,12 @@
           <input id="s-model" type="text" placeholder="deepseek-chat">
         </label>
         <label>API Key
-          <span class="seg">
+          <span class="seg key-row">
             <input id="s-key" type="password" placeholder="sk-...">
             <button type="button" id="btn-clear-key" class="btn" data-tip="清除已保存的 API Key。">清除</button>
           </span>
         </label>
+        <p id="s-key-hint" class="field-hint"></p>
         <label>朗读方式
           <select id="s-tts">
             <option value="edge-tts">edge-tts（联网，音质好）</option>
