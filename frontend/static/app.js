@@ -165,8 +165,8 @@ const FEATURE_HINTS = {
   'btn-import': '解析并导入所选文件；同词书重复导入会覆盖词条，但保留已背/收藏等个人状态。',
   'btn-test-ai': '向当前配置的 AI 发送一条探针请求，验证 Key 与网络连通；不修改任何数据。',
   'btn-save-settings': '保存本页全部设置（AI、语音、主题与页面质感）。',
-  'btn-upd-check': '读取 GitHub 上最新一次发布：有新版本或热补丁时会出现「立即更新」。',
-  'btn-upd-apply': '一键更新：新版本走下载安装（会弹一次系统授权框），热补丁直接应用、刷新即生效。',
+  'btn-upd-check': '读取 GitHub 上最新一次发布：有新版本或小更新时会出现「立即更新」。',
+  'btn-upd-apply': '一键更新：新版本走下载安装并自动重开；小更新是界面、文案这类小改动，直接应用、刷新即生效。',
   'upd-auto': '打开程序时自动检查一次更新；有新版会弹窗提示，不会自动安装。',
   's-theme': '主题色：随页面质感变化——简约=浅色/深色/石墨，纸质=米白纸/牛皮纸/靛蓝纸，赛博=电光/酸黄/矩阵。',
   'page-normal': '页面质感：简约（Apple / OpenAI 风格，素色、克制留白、细边框）。',
@@ -185,7 +185,7 @@ function initFeatureHints() {
     storm: '浏览与生成「风暴词卡」，可搜索已建词卡的单词并导出。',
     import: '导入新词书（Excel / CSV / 纯文本），也可删除词书。',
     settings: '配置 AI Key / 厂商、语音、主题。',
-    update: '检查更新：有热补丁直接应用（不用重启），有新版本一键下载安装并自动重开。',
+    update: '检查更新：有小更新直接应用（不用重启），有新版本一键下载安装并自动重开。',
     guide: '操作指南与文档。',
   };
   const tip = document.createElement('div');
@@ -1913,14 +1913,16 @@ function versionNewer(rel, cur) {
 const upd = { info: null, kind: '', timer: null };
 
 function updKindLabel(kind, ver) {
-  return kind === 'full' ? `下载并安装 v${ver}` : '应用热补丁';
+  // 统一叫「立即更新」：上面已经列清楚这次要装的是安装包还是小更新，
+  // 按钮再换个名字（旧的「应用热补丁」）反而让人找不到。
+  return '立即更新';
 }
 
 function updDetailHtml(info) {
   let html = '';
   if (info.applied_patch) {
     const ap = info.applied_patch;
-    html += `<p class="ok">已应用热补丁：v${escapeHtml(ap.version || '')} ·`
+    html += `<p class="ok">已应用小更新：v${escapeHtml(ap.version || '')} ·`
       + ` ${escapeHtml(String(ap.files || 0))} 个文件 · ${escapeHtml(ap.applied_at || '')}</p>`;
   }
   const latest = info.latest;
@@ -1933,8 +1935,11 @@ function updDetailHtml(info) {
       + `（${(latest.installer.size / 1048576).toFixed(1)} MB）</p>`;
   }
   if (latest.patch) {
-    html += `<p class="muted">热补丁：${escapeHtml(latest.patch.name)}`
+    html += `<p class="muted">小更新：${escapeHtml(latest.patch.name)}`
       + `（${(latest.patch.size / 1024).toFixed(0)} KB）</p>`;
+  }
+  if (info.mode !== 'packaged') {
+    html += '<p class="muted">源码版：整包更新请用 <code>git pull</code>；界面、文案这类小更新可以直接在这里应用。</p>';
   }
   if (latest.notes) {
     html += `<details><summary>更新说明</summary><pre class="upd-notes">${
@@ -2008,7 +2013,7 @@ function updPoll(kind) {
     if (j.state === 'done') {
       clearInterval(upd.timer);
       if (kind === 'patch') {
-        toast('补丁已应用，正在重新载入…');
+        toast('小更新已应用，正在重新载入…');
         setTimeout(() => location.reload(), 1200);
       } else {
         wrap.classList.add('hidden');
@@ -2053,12 +2058,12 @@ function updPopup(info) {
   if (latest.newer && info.installer && info.mode === 'packaged') {
     lines.push('<p class="muted">可以一键下载安装，装完自动重开，学习数据不受影响。</p>');
   } else if (info.patch && info.patch.applicable) {
-    lines.push('<p class="muted">有热补丁可直接应用，不用重启。</p>');
+    lines.push('<p class="muted">有小更新可直接应用，不用重启。</p>');
   }
   if (latest.notes) {
     lines.push(`<pre class="upd-notes">${escapeHtml(latest.notes.slice(0, 400))}</pre>`);
   }
-  $('update-modal-title').textContent = latest.newer ? '发现新版本' : '发现新补丁';
+  $('update-modal-title').textContent = latest.newer ? '发现新版本' : '发现小更新';
   $('update-modal-body').innerHTML = lines.join('');
   $('update-modal').classList.remove('hidden');
 }
@@ -2080,7 +2085,7 @@ async function updInit() {
   try {
     if (sessionStorage.getItem('updShown') === '1') return;
   } catch (e) { /* 忽略 */ }
-  // 同版本的热补丁已经装过就不再打扰
+  // 同版本的小更新已经装过就不再打扰
   if (!latest.newer && info.applied_patch && info.applied_patch.version === latest.version) return;
   updPopup(info);
 }
