@@ -799,9 +799,16 @@ th { background: var(--th); font-weight: 700; }
 .seg .btn.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
 #s-key { flex: 1; min-width: 220px; }
 .key-row { display: flex; margin-top: 6px; }   /* 让 API Key 跟其他字段一样：标签在上、输入框占满一行 */
-.field-hint { margin: 6px 0 2px; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+.field-hint {
+  display: block; margin-top: 7px;
+  font-size: 12.5px; line-height: 1.5; letter-spacing: .01em; color: var(--muted);
+}
 .field-hint:empty { display: none; }
-.field-hint.warn { color: var(--amber); font-weight: 600; }
+.field-hint > b { font-weight: 600; color: var(--ink); margin-right: 8px; }
+.field-hint.warn { color: var(--ink); }
+/* 状态词用「琥珀混墨色」而不是纯琥珀：浅色主题的白底上纯 #ff9500 对比度只有 2.2，
+   混进墨色后各主题都能读清（深色主题本来就够亮，混完依然醒目）。 */
+.field-hint.warn > b { color: color-mix(in srgb, var(--amber) 60%, var(--ink)); }
 .btn.needs-save { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
 .tts-val { color: var(--muted); font-size: 13px; margin-left: 6px; font-weight: 400; }
 input[type="range"] { width: 100%; margin-top: 8px; }

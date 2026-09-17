@@ -1880,10 +1880,10 @@ function syncKeyHint() {
   const saved = !!(state.settings && state.settings.api_key_set);
   const dirty = !!field.value.trim();
   if (dirty) {
-    hint.textContent = '改动还没保存 —— 点最下方的「保存设置」才会生效。';
+    hint.innerHTML = '<b>未保存</b>点下方「保存设置」生效';
     hint.className = 'field-hint warn';
   } else if (!saved) {
-    hint.textContent = '还没有 API Key。AI 翻译、整理、造句都要用它；填好后记得点最下方的「保存设置」。';
+    hint.innerHTML = '<b>未配置</b>填好后点下方「保存设置」';
     hint.className = 'field-hint';
   } else {
     hint.textContent = '';
