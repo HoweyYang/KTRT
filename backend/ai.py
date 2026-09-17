@@ -2,7 +2,7 @@ import json
 import os
 import urllib.request
 
-from . import db
+from . import db, net
 
 # 厂商预设（OpenAI 兼容接口；Claude 单独处理）
 PRESETS = {
@@ -62,8 +62,12 @@ def _chat_openai_compat(cfg, messages, max_tokens, temperature):
         headers={'Content-Type': 'application/json',
                  'Authorization': 'Bearer ' + cfg['api_key']},
     )
-    with urllib.request.urlopen(req, timeout=120) as r:
-        data = json.loads(r.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            raw = r.read()
+    except Exception as e:
+        raise RuntimeError(net.describe(e, 'AI 请求')) from e
+    data = json.loads(raw.decode())
     return data['choices'][0]['message']['content']
 
 
@@ -84,6 +88,10 @@ def _chat_claude(cfg, messages, max_tokens, temperature):
                  'x-api-key': cfg['api_key'],
                  'anthropic-version': '2023-06-01'},
     )
-    with urllib.request.urlopen(req, timeout=120) as r:
-        data = json.loads(r.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            raw = r.read()
+    except Exception as e:
+        raise RuntimeError(net.describe(e, 'AI 请求')) from e
+    data = json.loads(raw.decode())
     return ''.join(b.get('text', '') for b in data.get('content', []))

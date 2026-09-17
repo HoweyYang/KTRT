@@ -22,7 +22,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
 
-from . import db
+from . import db, net
 
 REPO = 'HoweyYang/KTRT'
 ATOM_RELEASES = 'https://github.com/%s/releases.atom' % REPO
@@ -270,7 +270,7 @@ def status(deep=True):
         rel = latest_release()
     except Exception as e:
         out['ok'] = False
-        out['error'] = '检查更新失败：%s' % e
+        out['error'] = net.describe(e, '检查更新')
         rel = None
     if rel:
         rel['newer'] = is_newer(rel['version'], VERSION)

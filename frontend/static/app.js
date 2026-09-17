@@ -94,6 +94,11 @@ function syncBrandImage() {
 }
 
 async function api(path, opts = {}) {
+  // 离线时在线功能直接给结论，不让它干等到超时（navigator.onLine 只说"有没有网卡"，
+  // 有网卡但上不了网的情况由后端返回的提示兜住）
+  if (isOffline() && isOnlineOnly(path, opts.method)) {
+    throw new Error('离线状态：该功能需要联网');
+  }
   const { timeout = 0, ...rest } = opts;
   const ctrl = timeout ? new AbortController() : null;
   const timer = timeout ? setTimeout(() => ctrl.abort(), timeout) : null;
@@ -101,6 +106,8 @@ async function api(path, opts = {}) {
   try {
     res = await fetch(path, { ...rest, signal: ctrl ? ctrl.signal : undefined });
   } catch (e) {
+    // 只有在线功能才把失败归因于离线；本地接口（词书、进度、词典）出问题要如实报错
+    if (isOffline() && isOnlineOnly(path, opts.method)) throw new Error('离线状态：该功能需要联网');
     throw new Error(timeout ? '请求超时，请检查网络后重试' : e.message);
   } finally {
     if (timer) clearTimeout(timer);
@@ -117,6 +124,34 @@ function toast(msg) {
   clearTimeout(toast._t);
   toast._t = setTimeout(() => el.classList.add('hidden'), 2600);
 }
+
+/* ---------- 离线状态 ---------- */
+/* 这些接口必须联网。离线时直接给明确结论，不让用户干等到超时；
+   navigator.onLine 只能反映"有没有网卡"，连上网卡却上不了网的情况
+   由后端返回的提示兜住（见 backend/net.py）。 */
+function isOffline() {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
+function isOnlineOnly(path, method) {
+  const m = String(method || 'GET').toUpperCase();
+  if (/^\/api\/custom-dict\/(online|translate|enhance|suggest|save-ai)/.test(path)) return true;
+  if (/^\/api\/storm\/generate/.test(path)) return true;
+  if (/^\/api\/ai\//.test(path)) return true;
+  if (/^\/api\/update\/(status|apply)/.test(path)) return true;
+  if (/^\/api\/tts/.test(path)) return true;
+  if (path === '/api/sentences' && m === 'POST') return true;   // 造句要调 AI
+  return false;
+}
+
+function syncOfflineBar() {
+  const bar = $('offline-bar');
+  if (bar) bar.classList.toggle('hidden', !isOffline());
+}
+
+window.addEventListener('online', syncOfflineBar);
+window.addEventListener('offline', syncOfflineBar);
+syncOfflineBar();
 
 /* ---------- 功能引导：悬停显示该按钮的作用与效果 ---------- */
 const FEATURE_HINTS = {

@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.staticfiles import StaticFiles as StarletteStaticFiles
 from pydantic import BaseModel
 
-from backend import db, ai, tts, importer, phrasal, updater
+from backend import db, ai, tts, importer, phrasal, updater, net
 
 db.init_db()
 
@@ -1245,8 +1245,11 @@ def custom_dict_suggest(body: CustomDictBody):
 
 def _http_get_json(url):
     req = urllib.request.Request(url, headers={'User-Agent': 'KTRT/0.2.0 (local dictionary tool)'})
-    with urllib.request.urlopen(req, timeout=8) as r:
-        return json.loads(r.read().decode('utf-8', 'replace'))
+    try:
+        with urllib.request.urlopen(req, timeout=8) as r:
+            return json.loads(r.read().decode('utf-8', 'replace'))
+    except Exception as e:
+        raise RuntimeError(net.describe(e)) from e
 
 
 @app.post('/api/custom-dict/online')

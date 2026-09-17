@@ -3,7 +3,7 @@ import hashlib
 import os
 import time
 
-from . import db
+from . import db, net
 
 # 语言 -> 可选发音（美/英 × 男/女；法语男/女）
 VOICES = {
@@ -114,6 +114,9 @@ def synthesize(text, language, voice=None, rate='0', pitch='0', volume='100'):
     if os.path.exists(path) and os.path.getsize(path) > 0:
         return path
     _maybe_prune()
-    import edge_tts  # 延迟导入，降低启动内存占用
-    asyncio.run(edge_tts.Communicate(text, voice, rate=rate_s, pitch=pitch_s, volume=volume_s).save(path))
+    try:
+        import edge_tts  # 延迟导入，降低启动内存占用
+        asyncio.run(edge_tts.Communicate(text, voice, rate=rate_s, pitch=pitch_s, volume=volume_s).save(path))
+    except Exception as e:
+        raise RuntimeError(net.describe(e, '在线语音')) from e
     return path
