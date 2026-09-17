@@ -310,10 +310,10 @@ def _download(url, dest, label):
 def _safe_rel(name):
     name = name.replace('\\', '/')
     if name.startswith('/') or ':' in name:
-        raise RuntimeError('补丁包路径非法：%s' % name)
+        raise RuntimeError('小更新包路径非法：%s' % name)
     parts = [p for p in name.split('/') if p not in ('', '.')]
     if any(p == '..' for p in parts):
-        raise RuntimeError('补丁包路径非法：%s' % name)
+        raise RuntimeError('小更新包路径非法：%s' % name)
     return os.path.join(*parts) if parts else ''
 
 
@@ -326,7 +326,7 @@ def apply_patch(zip_path, version):
     """
     root = overlay_dir(create=True)
     staging = root + '_staging'
-    JOB.update({'state': 'applying', 'message': '正在应用补丁…'})
+    JOB.update({'state': 'applying', 'message': '正在应用小更新…'})
     shutil.rmtree(staging, ignore_errors=True)
     os.makedirs(staging, exist_ok=True)
     count = 0
@@ -350,14 +350,14 @@ def apply_patch(zip_path, version):
                 if files.get(name):
                     digest = hashlib.sha256(data).hexdigest()
                     if digest != files[name]:
-                        raise RuntimeError('补丁校验失败：%s' % name)
+                        raise RuntimeError('小更新校验失败：%s' % name)
                 target = os.path.join(staging, rel)
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 with open(target, 'wb') as f:
                     f.write(data)
                 count += 1
         if not os.path.exists(os.path.join(staging, 'index.html')):
-            raise RuntimeError('补丁包不完整：缺少 index.html')
+            raise RuntimeError('小更新包不完整：缺少 index.html')
         meta = {
             'version': version,
             'applied_at': time.strftime('%Y-%m-%d %H:%M:%S'),
@@ -446,11 +446,11 @@ def start(kind, url, version):
         try:
             if kind == 'patch':
                 dest = os.path.join(tempfile.gettempdir(), 'ktrt_patch_%s.zip' % version)
-                _download(url, dest, '补丁')
-                JOB['message'] = '正在校验并应用补丁…'
+                _download(url, dest, '小更新')
+                JOB['message'] = '正在校验并应用小更新…'
                 count = apply_patch(dest, version)
                 JOB['state'] = 'done'
-                JOB['message'] = '补丁已应用（%d 个文件），刷新页面即可生效' % count
+                JOB['message'] = '小更新已应用（%d 个文件），刷新页面即可生效' % count
             elif kind == 'full':
                 name = os.path.basename(urllib.parse.urlparse(url).path) or 'KTRTSetup.exe'
                 dest = os.path.join(tempfile.gettempdir(), name)
