@@ -17,7 +17,7 @@
   #define OUT_BASE "KTRTSetup-lite"
 #endif
 
-#define APP_VERSION "0.2.0b"
+#define APP_VERSION "0.2.0c"
 #define APP_NAME "KillTimeRecitationTool"
 
 [Setup]
@@ -26,7 +26,7 @@ AppName={#APP_NAME}
 AppVersion={#APP_VERSION}
 AppPublisher=HoweyYueng
 AppPublisherURL=https://github.com/HoweyYang/KTRT
-DefaultDirName={autopf}\KTRT
+DefaultDirName={localappdata}\Programs\KTRT
 DefaultGroupName=KTRT
 UninstallDisplayIcon={app}\{#APP_EXE}
 OutputDir=..\release
@@ -35,7 +35,8 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
-PrivilegesRequired=admin
+; 装到用户目录（per-user）：安装与静默更新都不需要管理员权限，也就不会弹 UAC。
+PrivilegesRequired=lowest
 SetupIconFile=..\logo.ico
 
 [Languages]
@@ -54,5 +55,5 @@ Name: "{autodesktop}\KTRT"; Filename: "{app}\{#APP_EXE}"; IconFilename: "{app}\{
 Name: "{autoprograms}\KTRT"; Filename: "{app}\{#APP_EXE}"
 
 [Run]
-Filename: "{app}\{#APP_EXE}"; Description: "立即启动 KTRT"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#APP_EXE}"; Description: "立即启动 KTRT"; Flags: nowait postinstall
 
