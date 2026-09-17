@@ -1722,7 +1722,7 @@ function renderResources() {
       <a class="btn" href="${REPO_URL}/raw/main/wordbooks/${b.file}">下载</a>
     </div>`).join('') + `
     <div class="resource-item">
-      <span>仓库 wordbooks/ 目录（全部词书资源）</span>
+      <span>词书目录（GitHub 仓库，持续补充）</span>
       <a class="btn" href="${REPO_URL}/tree/main/wordbooks" target="_blank" rel="noopener">打开</a>
     </div>`;
 }
@@ -1748,7 +1748,10 @@ function populateSettings() {
   sel.value = s.vendor || 'ds';
   $('s-base').value = s.base_url || '';
   $('s-model').value = s.model || '';
+  // 新后端不回传明文 Key（api_key 为空 + api_key_set），旧后端会回传明文。
+  // 两种都要安全：给到明文就填进去，给不到就留空并提示"留空不修改"。
   $('s-key').value = s.api_key || '';
+  $('s-key').placeholder = (s.api_key_set || s.api_key) ? '已保存（留空则不修改）' : 'sk-...';
   $('s-tts').value = s.tts_provider || 'edge-tts';
   $('s-voice-en').value = s.tts_voice_en || '美音·男';
   $('s-voice-fr').value = s.tts_voice_fr || '女声';
@@ -1830,29 +1833,51 @@ $('theme-light').addEventListener('click', () => setTheme('light'));
 $('theme-dark').addEventListener('click', () => setTheme('dark'));
 $('theme-blue').addEventListener('click', () => setTheme('dark-blue'));
 
+/* 设置页当前表单值（不含 API Key，Key 由调用方决定怎么给）。 */
+function settingsPayload() {
+  return {
+    base_url: $('s-base').value,
+    model: $('s-model').value,
+    vendor: $('s-vendor').value,
+    tts_provider: $('s-tts').value,
+    tts_voice_en: $('s-voice-en').value,
+    tts_voice_fr: $('s-voice-fr').value,
+    tts_rate: String(Number($('s-rate').value) - 100),
+    tts_pitch: $('s-pitch').value,
+    tts_volume: $('s-volume').value,
+    theme: $('s-theme').value,
+    theme_page: currentPageMode(),
+  };
+}
+
 $('btn-save-settings').addEventListener('click', async () => {
   try {
     state.settings = await api('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: $('s-key').value,
-        base_url: $('s-base').value,
-        model: $('s-model').value,
-        vendor: $('s-vendor').value,
-        tts_provider: $('s-tts').value,
-        tts_voice_en: $('s-voice-en').value,
-        tts_voice_fr: $('s-voice-fr').value,
-        tts_rate: String(Number($('s-rate').value) - 100),
-        tts_pitch: $('s-pitch').value,
-        tts_volume: $('s-volume').value,
-        theme: $('s-theme').value,
-        theme_page: currentPageMode(),
-      }),
+      body: JSON.stringify({ ...settingsPayload(), api_key: $('s-key').value }),
     });
     applyTheme($('s-theme').value);
     applyPageMode(state.settings.theme_page);
+    $('s-key').value = '';
+    $('s-key').placeholder = state.settings.api_key_set ? '已保存（留空则不修改）' : 'sk-...';
     $('settings-msg').innerHTML = '<p class="ok">设置已保存</p>';
+  } catch (e) {
+    $('settings-msg').innerHTML = `<p class="err">${e.message}</p>`;
+  }
+});
+
+$('btn-clear-key').addEventListener('click', async () => {
+  if (!confirm('清除已保存的 API Key？清除后 AI 功能需要重新填写。')) return;
+  try {
+    state.settings = await api('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...settingsPayload(), api_key: '', clear_api_key: true }),
+    });
+    $('s-key').value = '';
+    $('s-key').placeholder = 'sk-...';
+    $('settings-msg').innerHTML = '<p class="ok">API Key 已清除</p>';
   } catch (e) {
     $('settings-msg').innerHTML = `<p class="err">${e.message}</p>`;
   }
