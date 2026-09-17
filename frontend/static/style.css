@@ -949,3 +949,20 @@ code { background: var(--code); padding: 2px 5px; border-radius: 4px; font-size:
   transform: translateY(-1px);
 }
 .btn.nav:active { transform: translateY(1px); }
+.upd-status {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 13px 15px; margin: 2px 0 14px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--th);
+}
+.upd-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background: var(--muted); }
+.upd-status[data-kind="latest"] .upd-dot { background: var(--green); }
+.upd-status[data-kind="patch"] .upd-dot,
+.upd-status[data-kind="source"] .upd-dot { background: var(--amber); }
+.upd-status[data-kind="full"] .upd-dot { background: var(--accent); }
+.upd-status[data-kind="error"] .upd-dot { background: var(--red); }
+.upd-status-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.upd-status-text b { font-size: 15px; line-height: 1.35; }
+.upd-status-text span { font-size: 12.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.upd-actions { align-items: center; }
+.upd-detail > summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+.upd-detail[open] > summary { margin-bottom: 8px; }

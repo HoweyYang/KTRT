@@ -200,8 +200,8 @@ const FEATURE_HINTS = {
   'btn-import': '解析并导入所选文件；同词书重复导入会覆盖词条，但保留已背/收藏等个人状态。',
   'btn-test-ai': '向当前配置的 AI 发送一条探针请求，验证 Key 与网络连通；不修改任何数据。',
   'btn-save-settings': '保存本页全部设置（AI、语音、主题与页面质感）。',
-  'btn-upd-check': '读取 GitHub 上最新一次发布：有新版本或小更新时会出现「立即更新」。',
-  'btn-upd-apply': '一键更新：新版本走下载安装并自动重开；小更新是界面、文案这类小改动，直接应用、刷新即生效。',
+  'btn-upd-check': '去 GitHub 看有没有新东西：有新版本或小更新时，上面的状态会变，并多出一个「立即更新」按钮。',
+  'btn-upd-apply': '一键更新：小更新只替换界面文件，刷新即生效；新版本会下载安装包，装完自动重开。',
   'upd-auto': '打开程序时自动检查一次更新；有新版会弹窗提示，不会自动安装。',
   's-theme': '主题色：随页面质感变化——简约=浅色/深色/石墨，纸质=米白纸/牛皮纸/靛蓝纸，赛博=电光/酸黄/矩阵。',
   'page-normal': '页面质感：简约（Apple / OpenAI 风格，素色、克制留白、细边框）。',
@@ -220,7 +220,7 @@ function initFeatureHints() {
     storm: '浏览与生成「风暴词卡」，可搜索已建词卡的单词并导出。',
     import: '导入新词书（Excel / CSV / 纯文本），也可删除词书。',
     settings: '配置 AI Key / 厂商、语音、主题。',
-    update: '检查更新：有小更新直接应用（不用重启），有新版本一键下载安装并自动重开。',
+    update: '检查更新：有小更新可直接应用，有新版本一键下载安装。',
     guide: '操作指南与文档。',
   };
   const tip = document.createElement('div');
@@ -1947,75 +1947,111 @@ function versionNewer(rel, cur) {
 
 const upd = { info: null, kind: '', timer: null };
 
-function updKindLabel(kind, ver) {
-  // 统一叫「立即更新」：上面已经列清楚这次要装的是安装包还是小更新，
-  // 按钮再换个名字（旧的「应用热补丁」）反而让人找不到。
-  return '立即更新';
+/* 更新页只讲两件事：现在是什么状态、需不需要你动手。其余细节都进「详情」。 */
+function updStatus(info) {
+  if (!info) return { kind: 'loading', headline: '检查中…', sub: '正在读取当前版本' };
+  if (!info.ok) return { kind: 'error', headline: '检查更新失败', sub: info.error || '请检查网络后重试' };
+  const latest = info.latest || {};
+  const tag = latest.tag || ('v' + (latest.version || ''));
+  const cur = 'v' + (info.current_version || '');
+  const packaged = info.mode === 'packaged';
+  const canPatch = !!(info.patch && info.patch.applicable);
+  const canFull = !!(latest.newer && info.installer && packaged);
+  if (canFull) {
+    return { kind: 'full', headline: '有新版本 ' + tag,
+             sub: '当前 ' + cur + ' · 点「立即更新」下载安装包，装完自动重开',
+             action: '可以一键下载安装，装完自动重开，学习数据不受影响。' };
+  }
+  if (canPatch) {
+    return { kind: 'patch', headline: '有小更新 v' + (info.patch.version || ''),
+             sub: '当前 ' + cur + ' · 只替换界面文件，刷新页面即生效',
+             action: '有小更新可直接应用，不用重启。' };
+  }
+  if (latest.newer) {
+    return { kind: 'source', headline: '有新版本 ' + tag,
+             sub: '当前 ' + cur + ' · 源码版请在项目目录执行 git pull',
+             action: '源码版：在项目目录执行 git pull 即可更新。' };
+  }
+  const ap = info.applied_patch;
+  if (ap && ap.version && versionNewer(ap.version, info.current_version)) {
+    return {
+      kind: 'patch',
+      headline: '小更新已应用（v' + ap.version + '）',
+      sub: packaged
+        ? '界面已是新版，程序主体仍是 ' + cur + ' · 升级程序主体请点「立即更新」装新版'
+        : '界面已是新版，程序主体仍是 ' + cur + ' · 重启程序即可用上新代码',
+      action: packaged
+        ? '界面已是新版，程序主体还是旧的，需要点「立即更新」装新版。'
+        : '界面已是新版，重启程序即可用上新代码。',
+    };
+  }
+  return { kind: 'latest', headline: '已是最新版本',
+           sub: '当前 ' + cur + ' · 最新发布 ' + (tag || '—'), action: '' };
 }
 
 function updDetailHtml(info) {
-  let html = '';
-  if (info.applied_patch) {
-    const ap = info.applied_patch;
-    html += `<p class="ok">已应用小更新：v${escapeHtml(ap.version || '')} ·`
-      + ` ${escapeHtml(String(ap.files || 0))} 个文件 · ${escapeHtml(ap.applied_at || '')}</p>`;
+  const latest = info.latest || {};
+  const rows = [];
+  rows.push(`<p class="muted">当前版本：v${escapeHtml(info.current_version || '')}`
+    + `（${info.mode === 'packaged' ? '安装版' : '源码版'}）</p>`);
+  if (latest.tag) {
+    rows.push(`<p class="muted">最新发布：${escapeHtml(latest.tag)}`
+      + `（${escapeHtml((latest.published_at || '').slice(0, 10))}）</p>`);
   }
-  // 小更新只替换界面文件，程序主体版本不会跟着变：
-  // 源码版重启一下就能读到新代码，安装版必须装新安装包。
-  const applied = info.applied_patch;
-  if (applied && applied.version && versionNewer(applied.version, info.current_version)) {
-    html += `<p class="muted">注意：小更新只替换界面文件，程序主体仍是 <b>v${escapeHtml(info.current_version)}</b>——`
-      + (info.mode === 'packaged'
-        ? '要升级程序主体，请点「立即更新」下载安装新版。'
-        : '<b>重启程序</b>即可用上新代码。')
-      + '</p>';
-  }
-  const latest = info.latest;
-  if (!latest) return html;
-  html += `<p>最新发布：<b>${escapeHtml(latest.tag || '')}</b>`
-    + `（${escapeHtml((latest.published_at || '').slice(0, 10))}）`
-    + (latest.newer ? ' · <span class="ok">有新版本</span>' : ' · 已是最新') + '</p>';
   if (latest.installer) {
-    html += `<p class="muted">安装包：${escapeHtml(latest.installer.name)}`
-      + `（${(latest.installer.size / 1048576).toFixed(1)} MB）</p>`;
+    rows.push(`<p class="muted">安装包：${escapeHtml(latest.installer.name)}`
+      + ` · ${(latest.installer.size / 1048576).toFixed(1)} MB</p>`);
   }
   if (latest.patch) {
-    html += `<p class="muted">小更新：${escapeHtml(latest.patch.name)}`
-      + `（${(latest.patch.size / 1024).toFixed(0)} KB）</p>`;
+    rows.push(`<p class="muted">小更新：${escapeHtml(latest.patch.name)}`
+      + ` · ${(latest.patch.size / 1024).toFixed(0)} KB</p>`);
   }
-  if (info.mode !== 'packaged') {
-    html += '<p class="muted">源码版：整包更新请用 <code>git pull</code>；界面、文案这类小更新可以直接在这里应用。</p>';
-  }
-  if (latest.notes) {
-    html += `<details><summary>更新说明</summary><pre class="upd-notes">${
-      escapeHtml(latest.notes.slice(0, 800))}</pre></details>`;
-  }
-  if (latest.html_url) {
-    html += `<p><a href="${escapeAttr(latest.html_url)}" target="_blank" rel="noopener">在 GitHub 查看</a></p>`;
+  const ap = info.applied_patch;
+  if (ap) {
+    rows.push(`<p class="muted">已应用：v${escapeHtml(ap.version || '')}`
+      + ` · ${escapeHtml(String(ap.files || 0))} 个文件 · ${escapeHtml(ap.applied_at || '')}</p>`);
   }
   if (info.commit) {
-    html += `<p class="muted">main 最新提交：${escapeHtml(info.commit.sha)} · ${escapeHtml(info.commit.message)}</p>`;
+    rows.push(`<p class="muted">main 最新提交：${escapeHtml(info.commit.sha)}`
+      + ` · ${escapeHtml(info.commit.message)}</p>`);
   }
-  return html;
+  if (latest.notes) {
+    rows.push(`<details><summary>更新说明</summary><pre class="upd-notes">${
+      escapeHtml(latest.notes.slice(0, 900))}</pre></details>`);
+  }
+  if (latest.html_url) {
+    rows.push(`<p><a href="${escapeAttr(latest.html_url)}" target="_blank" rel="noopener">在 GitHub 查看发布页</a></p>`);
+  }
+  rows.push('<p class="muted">小更新只替换界面文件（HTML / CSS / JS），刷新即生效；'
+    + '整包更新会下载安装包，装完自动重开。学习数据不受影响。</p>');
+  return rows.join('');
 }
 
 function updRender() {
   const info = upd.info;
-  if (!info) return;
-  $('upd-version').textContent = `当前版本：v${info.current_version}（`
-    + (info.mode === 'packaged' ? '安装版' : '源码版') + '）';
-  $('upd-detail').innerHTML = updDetailHtml(info);
-  const latest = info.latest || {};
-  const canPatch = !!(info.patch && info.patch.applicable);
-  const canFull = !!(latest.newer && info.installer && info.mode === 'packaged');
+  const st = updStatus(info);
+  const card = $('upd-status');
+  card.dataset.kind = st.kind;
+  $('upd-headline').textContent = st.headline;
+  $('upd-sub').textContent = st.sub;
+
+  const latest = (info && info.latest) || {};
+  const canPatch = !!(info && info.patch && info.patch.applicable);
+  const canFull = !!(info && latest.newer && info.installer && info.mode === 'packaged');
   upd.kind = canFull ? 'full' : (canPatch ? 'patch' : '');
-  const btn = $('btn-upd-apply');
-  btn.classList.toggle('hidden', !upd.kind);
-  if (upd.kind) btn.textContent = updKindLabel(upd.kind, latest.version || info.current_version);
-  const link = $('upd-page-link');
-  const showLink = !!latest.html_url && (!upd.kind || info.mode !== 'packaged');
-  link.classList.toggle('hidden', !showLink);
-  if (showLink) link.href = latest.html_url;
+  const apply = $('btn-upd-apply');
+  apply.classList.toggle('hidden', !upd.kind);
+  apply.textContent = '立即更新';
+  // 没东西可更时，主按钮就是「检查更新」
+  $('btn-upd-check').classList.toggle('primary', !upd.kind);
+
+  const box = $('upd-detail-box');
+  if (info) {
+    $('upd-detail').innerHTML = updDetailHtml(info);
+    box.classList.remove('hidden');
+  } else {
+    box.classList.add('hidden');
+  }
 }
 
 async function updCheck(manual) {
@@ -2026,16 +2062,10 @@ async function updCheck(manual) {
     const info = await api('/api/update/status', { timeout: 60000 });
     upd.info = info;
     updRender();
-    if (manual) {
-      box.innerHTML = !info.ok
-        ? `<p class="err">${escapeHtml(info.error || '检查失败')}</p>`
-        : (upd.kind
-          ? '<p class="ok">发现可更新的内容，点「立即更新」开始。</p>'
-          : '<p class="ok">已是最新版本。</p>');
-    }
+    box.innerHTML = '';          // 结论在顶部状态卡里，这里不再重复一遍
     return info;
   } catch (e) {
-    if (manual) box.innerHTML = `<p class="err">${escapeHtml(e.message)}</p>`;
+    box.innerHTML = `<p class="err">${escapeHtml(e.message)}</p>`;   // 请求本身失败才在这里报
     return null;
   }
 }
@@ -2098,18 +2128,16 @@ function updPopup(info) {
   try {
     sessionStorage.setItem('updShown', '1');   // 同一次会话里只弹一次，刷新不重复打扰
   } catch (e) { /* 隐私模式下忽略 */ }
+  const st = updStatus(info);
   const latest = info.latest || {};
   const lines = [`<p>发现 <b>${escapeHtml(latest.tag || ('v' + (latest.version || '')))}</b>`
     + `（当前 v${escapeHtml(info.current_version)}）。</p>`];
-  if (latest.newer && info.installer && info.mode === 'packaged') {
-    lines.push('<p class="muted">可以一键下载安装，装完自动重开，学习数据不受影响。</p>');
-  } else if (info.patch && info.patch.applicable) {
-    lines.push('<p class="muted">有小更新可直接应用，不用重启。</p>');
-  }
+  if (st.action) lines.push(`<p class="muted">${escapeHtml(st.action)}</p>`);
   if (latest.notes) {
     lines.push(`<pre class="upd-notes">${escapeHtml(latest.notes.slice(0, 400))}</pre>`);
   }
-  $('update-modal-title').textContent = latest.newer ? '发现新版本' : '发现小更新';
+  $('update-modal-title').textContent =
+    (st.kind === 'full' || st.kind === 'source') ? '发现新版本' : '发现小更新';
   $('update-modal-body').innerHTML = lines.join('');
   $('update-modal').classList.remove('hidden');
 }

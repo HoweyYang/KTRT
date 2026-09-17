@@ -313,18 +313,25 @@
     <section id="view-update" class="view">
       <div class="panel">
         <h2>更新</h2>
-        <p class="muted" id="upd-version">当前版本：读取中…</p>
-        <p class="muted">「检查更新」会去 GitHub 上看有没有新版：<b>小更新</b>（界面、文案这类小改动）可以直接应用，
-        刷一下页面就生效，不用重装；<b>新版本</b>会下载安装包，一键装好并自动重开。两者都来自本项目的 Release。</p>
-        <div class="row">
-          <button id="btn-upd-check" class="btn primary">检查更新</button>
-          <button id="btn-upd-apply" class="btn hidden">立即更新</button>
-          <a id="upd-page-link" class="btn hidden" target="_blank" rel="noopener">打开 Release 页面</a>
+        <!-- 结论先行：第一行看状态，第二行看要不要动手；细节全在下面折叠里 -->
+        <div id="upd-status" class="upd-status" data-kind="loading">
+          <span class="upd-dot"></span>
+          <div class="upd-status-text">
+            <b id="upd-headline">检查中…</b>
+            <span class="muted" id="upd-sub">正在读取当前版本</span>
+          </div>
         </div>
-        <label class="upd-inline"><input type="checkbox" id="upd-auto"> 启动时自动检查更新</label>
+        <div class="row upd-actions">
+          <button id="btn-upd-apply" class="btn primary hidden">立即更新</button>
+          <button id="btn-upd-check" class="btn">检查更新</button>
+          <label class="upd-inline"><input type="checkbox" id="upd-auto"> 启动时自动检查</label>
+        </div>
         <div id="upd-bar-wrap" class="upd-bar-wrap hidden"><div id="upd-bar" class="upd-bar"></div></div>
         <div id="upd-msg" class="upd-msg"></div>
-        <div id="upd-detail" class="upd-detail"></div>
+        <details id="upd-detail-box" class="upd-detail hidden">
+          <summary>详情</summary>
+          <div id="upd-detail"></div>
+        </details>
       </div>
     </section>
 
