@@ -239,6 +239,14 @@ def _patch_applicable(patch, applied):
     return is_newer(pv, (applied or {}).get('version') or VERSION)
 
 
+def _grab_commit(out):
+    """抓 main 最新提交（锦上添花的一条信息，失败就留空，不影响更新检查）。"""
+    try:
+        out['commit'] = latest_commit()
+    except Exception:
+        out['commit'] = None
+
+
 def status(deep=True):
     """给「更新」页用：当前版本、最新 Release、可用的补丁/整包、已装补丁。"""
     out = {
@@ -252,6 +260,12 @@ def status(deep=True):
         'overlay': overlay_active(),
         'error': '',
     }
+    # 提交信息和 Release 信息互不依赖，并行抓：实测能省掉一轮 5 秒左右的白等，
+    # 少了它更新检查就容易顶到前端等待上限。
+    thread = None
+    if deep:
+        thread = threading.Thread(target=_grab_commit, args=(out,), daemon=True)
+        thread.start()
     try:
         rel = latest_release()
     except Exception as e:
@@ -266,10 +280,9 @@ def status(deep=True):
         if out['patch']:
             out['patch']['applicable'] = _patch_applicable(out['patch'], out['applied_patch'])
     if deep:
-        try:
-            out['commit'] = latest_commit()
-        except Exception:
-            out['commit'] = None
+        if thread is not None:
+            thread.join(timeout=15)
+        out.setdefault('commit', None)
     return out
 
 
