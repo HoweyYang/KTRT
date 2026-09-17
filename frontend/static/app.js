@@ -1977,7 +1977,8 @@ async function updCheck(manual) {
   const box = $('upd-msg');
   if (manual) box.innerHTML = '<p class="muted">检查中…</p>';
   try {
-    const info = await api('/api/update/status', { timeout: 30000 });
+    // 检查更新要连 GitHub，网络慢时可能十几二十秒，给足一分钟再判超时
+    const info = await api('/api/update/status', { timeout: 60000 });
     upd.info = info;
     updRender();
     if (manual) {
