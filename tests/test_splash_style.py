@@ -15,10 +15,13 @@ import splash  # noqa: E402
 
 
 def test_splash_uses_noble_dark_palette_and_roomier_layout():
-    assert splash.SPLASH_WIDTH == 600
-    assert splash.SPLASH_HEIGHT == 420
+    assert splash.SPLASH_WIDTH == 720
+    assert splash.SPLASH_HEIGHT == 500
     assert splash.SPLASH_PALETTE['background'] == '#101b25'
     assert splash.DESCRIPTOR_FONT == ('Segoe UI', 10, 'italic')
+    # 签名走手写花体，第一位是 Edwardian Script（Apple 那种优雅手写）
+    assert splash.SIGNATURE_FONTS[0] == 'Edwardian Script ITC'
+    assert splash.SIGNATURE_TEXT.startswith('Designed by')
 
 
 def main():
