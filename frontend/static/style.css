@@ -75,12 +75,14 @@ body[data-page="paper"] {
   --font: Garamond, "Palatino Linotype", Georgia, "Noto Serif SC", "Source Han Serif SC", "STZhongsong", "Songti SC", "SimSun", serif;
   -webkit-font-smoothing: antialiased;
 }
-/* 标题与字标再往上提一档：华文中宋的骨架比正文更"碑帖"一些 */
+/* 标题与字标用楷体：抄本、碑帖那一路，比宋体更贴"古籍"这个场景；
+   正文仍用思源宋体，保证小字可读。 */
 body[data-page="paper"] h2,
 body[data-page="paper"] .wordmark b,
 body[data-page="paper"] .field .label {
-  font-family: Garamond, "Palatino Linotype", "STZhongsong", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
+  font-family: "STKaiti", "KaiTi", "Kaiti SC", Garamond, "Palatino Linotype", "STZhongsong", "Noto Serif SC", serif;
   font-weight: 600;
+  letter-spacing: .03em;
 }
 /* 米白纸 */
 body[data-page="paper"][data-theme="light"] {
