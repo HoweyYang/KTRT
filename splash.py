@@ -16,6 +16,20 @@ import tkinter.font as tkfont
 TOTAL_TICKS = 100
 TICK_MS = 30            # 100 * 30ms = 3 秒
 READY_TIMEOUT = 25      # 动画播完后最多再等服务 25 秒
+SPLASH_WIDTH = 600
+SPLASH_HEIGHT = 420
+SPLASH_PALETTE = {
+    'background': '#101b25',
+    'ink': '#f3eee6',
+    'muted': '#b9c3bc',
+    'subtle': '#99a7aa',
+    'field': '#315b43',
+    'field_edge': '#547561',
+    'field_line': '#d3e5d2',
+    'goal': '#d5e4d5',
+    'accent': '#20ad70',
+}
+DESCRIPTOR_FONT = ('Segoe UI', 10, 'italic')
 
 
 def _pick_font(root, size):
@@ -38,61 +52,144 @@ def run_splash(host, port, asset_dir):
     root = tk.Tk()
     root.overrideredirect(True)
     root.attributes('-topmost', True)
-    W, H = 560, 380
+    W, H = SPLASH_WIDTH, SPLASH_HEIGHT
     sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
     root.geometry('%dx%d+%d+%d' % (W, H, (sw - W) // 2, (sh - H) // 2))
-    root.configure(bg='#ffffff')
+    palette = SPLASH_PALETTE
+    root.configure(bg=palette['background'])
 
     state = {'done': False, 'ready': False}
     t_start = time.time()
 
-    # 标题（抽象字体）+ 宣传语 + 副标
-    tk.Label(root, text='KillTimeRecitationTool', font=_pick_font(root, 22),
-             fg='#17202a', bg='#ffffff').pack(pady=(16, 0))
-    tk.Label(root, text='溯源词斩 · 直击词源的本地单词学习软件',
-             font=('Microsoft YaHei UI', 10), fg='#4a5a6e', bg='#ffffff').pack(pady=(3, 0))
-    tk.Label(root, text='by HoweyYueng', font=('Segoe UI', 9, 'italic'),
-             fg='#7f8c9b', bg='#ffffff').pack(pady=(2, 4))
+    # 品牌区：主标题更大，英文副标保留原来的 Segoe UI 斜体。
+    top = tk.Frame(root, bg=palette['background'])
+    top.pack(fill='x', padx=42, pady=(25, 0))
+    tk.Label(top, text='KTRT', font=('Segoe UI', 10, 'bold'),
+             fg=palette['muted'], bg=palette['background']).pack(side='left')
+    tk.Label(top, text='LOCAL APP', font=('Segoe UI', 10),
+             fg=palette['subtle'], bg=palette['background']).pack(side='right')
+    tk.Label(root, text='溯源词斩', font=('Microsoft YaHei UI', 27, 'bold'),
+             fg=palette['ink'], bg=palette['background']).pack(anchor='w', padx=42, pady=(12, 0))
+    tk.Label(root, text='本地优先的单词学习工具', font=('Microsoft YaHei UI', 14),
+             fg=palette['muted'], bg=palette['background']).pack(anchor='w', padx=42, pady=(2, 0))
+    tk.Label(root, text='KILLTIME RECITATION TOOL · BY HOWEY', font=DESCRIPTOR_FONT,
+             fg=palette['subtle'], bg=palette['background']).pack(anchor='w', padx=42, pady=(7, 0))
 
-    # 动画画布
-    canvas = tk.Canvas(root, width=W - 24, height=178, bg='#ffffff', highlightthickness=0)
-    canvas.pack()
+    # 球场本身就是进度条：草纹、场线和从左向右的绿色渐变共用一块画布。
+    canvas = tk.Canvas(root, width=W - 84, height=190, bg=palette['background'], highlightthickness=0)
+    canvas.pack(pady=(15, 0))
+    canvas_width = W - 84
+    field_x = 22
+    field_top = 66
+    field_w = canvas_width - 44
+    field_h = 58
+    field_bottom = field_top + field_h
+    field_right = field_x + field_w
+    player_y = field_top + field_h // 2 + 12
 
-    canvas_width = W - 24
-    y_track = 148            # 轨道（小人贴地行走的线）
-    x0 = 56                  # 左侧起点
-    goal_w = 34              # 球门宽度
-    goal_h = 50              # 球门高度
-    right_margin = 14
-    gx = canvas_width - right_margin - goal_w   # 球门左立柱，进度条终点直接连到它
-    gy0 = y_track - 32
-    gy1 = y_track + 14
-    # 轨道槽：从起点一路连到球门左立柱，不留缺口
-    canvas.create_rectangle(x0, y_track - 5, gx, y_track + 7, fill='#e8edf2', outline='')
-    # 球门（终点），左立柱与轨道槽相接
-    canvas.create_rectangle(gx, gy0, gx + goal_w, gy1, outline='#17202a', width=2)
-    canvas.create_line(gx, gy0, gx + goal_w, gy0, fill='#17202a', width=2)
+    canvas.create_rectangle(field_x, field_top, field_right, field_bottom,
+                             fill=palette['field'], outline=palette['field_edge'], width=2)
+    # 草干：低对比斜纹，不抢人物和进度的视觉焦点。
+    for x in range(field_x + 8, field_right, 13):
+        canvas.create_line(x, field_top + 7, x - 5, field_bottom - 7,
+                           fill='#6f9b79', width=1)
+    segments = 48
+    seg_w = field_w / segments
+    progress_items = []
+    for i in range(segments):
+        progress_items.append(canvas.create_rectangle(
+            field_x + i * seg_w, field_top + 1,
+            field_x + (i + 1) * seg_w + .5, field_bottom - 1,
+            fill=palette['field'], outline=''))
+    # 再压一层草干，让未完成与已完成区域都保留足球场质感。
+    for x in range(field_x + 8, field_right, 13):
+        canvas.create_line(x, field_top + 7, x - 5, field_bottom - 7,
+                           fill='#6f9b79', width=1)
+    # 俯拍球场线：中线、圆和内框均压在进度层之上。
+    canvas.create_rectangle(field_x + 7, field_top + 7, field_right - 7, field_bottom - 7,
+                             outline=palette['field_line'], width=1)
+    mid_x = field_x + field_w / 2
+    canvas.create_line(mid_x, field_top + 7, mid_x, field_bottom - 7,
+                       fill=palette['field_line'], width=1)
+    canvas.create_oval(mid_x - 15, field_top + field_h / 2 - 15,
+                       mid_x + 15, field_top + field_h / 2 + 15,
+                       outline=palette['field_line'], width=1)
+    canvas.create_oval(mid_x - 2, field_top + field_h / 2 - 2,
+                       mid_x + 2, field_top + field_h / 2 + 2,
+                       fill=palette['field_line'], outline='')
+
+    # 俯拍球门：窄门线 + 向右伸出的梯形网面，和球场中线对齐。
+    goal_x = field_right - 2
+    net_top = field_top + 14
+    net_bottom = field_bottom - 14
+    goal_items = []
+    goal_items.append(canvas.create_line(goal_x, net_top, goal_x, net_bottom,
+                                         fill=palette['goal'], width=2, state='hidden'))
+    goal_items.append(canvas.create_polygon(
+        goal_x, net_top, goal_x + 27, net_top + 3,
+        goal_x + 27, net_bottom - 3, goal_x, net_bottom,
+        outline=palette['goal'], fill='', width=1, state='hidden'))
     for i in range(1, 4):
-        canvas.create_line(gx, gy0 + i * 12, gx + goal_w, gy0 + i * 12, fill='#c3ccd6')
-    for j in range(1, 3):
-        canvas.create_line(gx + j * 11, gy0, gx + j * 11, gy1, fill='#c3ccd6')
+        goal_items.append(canvas.create_line(
+            goal_x + i * 7, net_top + 3, goal_x + i * 7,
+            net_bottom - 3, fill='#8da998', width=1, state='hidden'))
+    for i in range(1, 3):
+        goal_items.append(canvas.create_line(
+            goal_x + 1, net_top + i * 8, goal_x + 26,
+            net_top + i * 8 + 2, fill='#8da998', width=1, state='hidden'))
+    badge_x = goal_x + 18
+    badge_y = field_top - 13
+    badge_box = canvas.create_rectangle(badge_x - 27, badge_y - 10, badge_x + 27, badge_y + 10,
+                                        fill=palette['accent'], outline='', state='hidden')
+    badge_text = canvas.create_text(badge_x, badge_y, text='GOAL!',
+                                    font=('Segoe UI', 10, 'bold'), fill='#ffffff', state='hidden')
+    goal_items.extend([badge_box, badge_text])
 
-    # 绿色渐变进度条（从左往右填充，终点连到球门左立柱）
-    bar = canvas.create_rectangle(x0, y_track - 5, x0, y_track + 7, fill='#7cfc00', outline='')
-
-    # 带球小人（透明抠图，整张图从左往右移动）
+    # 拖影用轻量速度线实现，原始艺术小人 PNG 始终只使用这一份。
+    trail_lines = [
+        canvas.create_line(0, 0, 0, 0, fill='#8db89a', width=2, state='hidden'),
+        canvas.create_line(0, 0, 0, 0, fill='#6d9d7d', width=1, state='hidden'),
+        canvas.create_line(0, 0, 0, 0, fill='#9fc4aa', width=1, state='hidden'),
+    ]
     img_item = None
     img_path = os.path.join(asset_dir, 'assets', 'dribble_small.png')
     if os.path.exists(img_path):
         photo = tk.PhotoImage(file=img_path)
         root.photo = photo
-        img_item = canvas.create_image(x0, y_track + 2, anchor='s', image=photo)
+        img_item = canvas.create_image(field_x + 14, player_y, anchor='s', image=photo)
     else:
-        img_item = canvas.create_text(x0, y_track - 4, text='⚽', font=('Segoe UI', 30), anchor='s')
+        img_item = canvas.create_text(field_x + 14, player_y - 4, text='⚽',
+                                      font=('Segoe UI', 30), anchor='s', fill=palette['ink'])
 
-    status = tk.Label(root, text='正在准备词库…', font=('Microsoft YaHei UI', 9),
-                      fg='#5d6b7e', bg='#ffffff')
-    status.pack(pady=(0, 12))
+    status = tk.Label(root, text='正在准备词库…', font=('Microsoft YaHei UI', 11),
+                      fg=palette['muted'], bg=palette['background'])
+    status.pack(anchor='w', padx=42, pady=(0, 16))
+    goal_shown = {'value': False}
+    close_scheduled = {'value': False}
+
+    def _gradient_color(p):
+        start = (0xb7, 0xec, 0x55)
+        end = (0x16, 0xa9, 0x65)
+        return '#%02x%02x%02x' % tuple(int(a + (b - a) * p) for a, b in zip(start, end))
+
+    def show_goal():
+        if goal_shown['value']:
+            return
+        goal_shown['value'] = True
+        for item in goal_items:
+            canvas.itemconfigure(item, state='normal')
+        pulse_goal(0)
+
+    def pulse_goal(step):
+        if state['done']:
+            return
+        scale = .72 + min(step, 6) / 6 * .28
+        half_w, half_h = 27 * scale, 10 * scale
+        canvas.coords(badge_box, badge_x - half_w, badge_y - half_h,
+                      badge_x + half_w, badge_y + half_h)
+        canvas.coords(badge_text, badge_x, badge_y)
+        if step < 6:
+            root.after(45, lambda: pulse_goal(step + 1))
 
     def close(ready):
         state['ready'] = ready
@@ -107,26 +204,37 @@ def run_splash(host, port, asset_dir):
         if state['done']:
             return
         p = min(1.0, i / TOTAL_TICKS)
-        xw = x0 + (gx - x0) * p
-        canvas.coords(bar, x0, y_track - 5, xw, y_track + 7)
-        r = int(0x7C + (0x00 - 0x7C) * p)
-        g = int(0xFC + (0x64 - 0xFC) * p)
-        b = 0
-        canvas.itemconfig(bar, fill='#%02x%02x%02x' % (r, g, b))
-        px = x0 + (gx - x0) * p
+        active = int(p * segments)
+        for j, item in enumerate(progress_items):
+            fill_p = j / max(1, segments - 1)
+            canvas.itemconfig(item, fill=_gradient_color(fill_p) if j < active else palette['field'])
+        px = field_x + (field_w - 28) * p
         if img_item is not None:
-            canvas.coords(img_item, px, y_track + 2)
-        status.config(text='正在准备词库… %d%%' % int(p * 100))
+            canvas.coords(img_item, px, player_y)
+        for idx, line in enumerate(trail_lines):
+            if .04 < p < .98:
+                offset = 34 + idx * 11
+                y = player_y - 22 + idx * 10
+                canvas.coords(line, px - offset - 26, y, px - offset, y - 2)
+                canvas.itemconfigure(line, state='normal')
+            else:
+                canvas.itemconfigure(line, state='hidden')
+        if p < 1:
+            status.config(text='正在准备词库… %d%%' % int(p * 100))
         if i < TOTAL_TICKS:
             root.after(TICK_MS, lambda: animate(i + 1))
         else:
+            show_goal()
             # 动画播完：主线程轮询服务端口，就绪即关；最多等到 READY_TIMEOUT
             if _port_open(host, port):
-                close(True)
+                status.config(text='准备完成，正在打开 KTRT…')
+                if not close_scheduled['value']:
+                    close_scheduled['value'] = True
+                    root.after(520, lambda: close(True))
             elif time.time() - t_start > READY_TIMEOUT:
                 close(False)
             else:
-                status.config(text='等待服务就绪…')
+                status.config(text='等待本地服务就绪…')
                 root.after(300, lambda: animate(i))
 
     animate()

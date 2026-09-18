@@ -680,6 +680,18 @@ def export_words(scope: str = Query('unfamiliar'), book_id: int = Query(None), l
     return FileResponse(path, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', filename=name)
 
 
+_HL_RE = re.compile(r'==(.+?)==')
+
+
+def _plain_note(text):
+    """导出用：把 ==高亮== 还原成纯文字。
+
+    笔记里用 ==x== 表示高亮，但导出成 .md 后只有部分编辑器认这个写法，
+    普通阅读器看到的就是一堆等号，不如直接给原文。
+    """
+    return _HL_RE.sub(r'\1', text or '')
+
+
 @app.get('/api/export/notes')
 def export_notes(book_id: int = Query(None), list_no: int = Query(None)):
     """导出笔记：只含写了笔记的词，Markdown 文件，格式为「词 + 笔记」循环。"""
@@ -707,7 +719,7 @@ def export_notes(book_id: int = Query(None), list_no: int = Query(None)):
         if not key or key in seen or key not in notes:
             continue
         seen.add(key)
-        parts.append('## ' + r['word'] + '\n\n' + notes[key] + '\n')
+        parts.append('## ' + r['word'] + '\n\n' + _plain_note(notes[key]) + '\n')
     if not parts:
         raise HTTPException(404, '没有可导出的笔记')
     text = '\n'.join(parts)

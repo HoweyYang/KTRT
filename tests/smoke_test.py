@@ -145,15 +145,17 @@ def test_launcher_port_probe():
 
 
 def test_data_layer():
-    """数据层回归（重复导入保留状态、补丁原子性）用子进程跑，保证模块状态干净。"""
-    r = subprocess.run([sys.executable, os.path.join(ROOT, 'tests', 'db_test.py')],
-                       cwd=ROOT, capture_output=True, text=True,
-                       encoding='utf-8', errors='replace')
-    lines = [l for l in (r.stdout or '').splitlines() if l.strip()]
-    check('数据层回归测试 tests/db_test.py 全过', r.returncode == 0,
-          (lines[-1] if lines else 'no output'))
-    if r.returncode != 0:
-        print((r.stdout or '').encode('ascii', 'replace').decode('ascii'))
+    """子测试用子进程跑，保证模块状态干净（数据层 / 启动弹窗样式）。"""
+    for script, label in (('db_test.py', '数据层回归'),
+                          ('test_splash_style.py', '启动弹窗样式')):
+        r = subprocess.run([sys.executable, os.path.join(ROOT, 'tests', script)],
+                           cwd=ROOT, capture_output=True, text=True,
+                           encoding='utf-8', errors='replace')
+        lines = [l for l in (r.stdout or '').splitlines() if l.strip()]
+        check('%s 测试 tests/%s 全过' % (label, script), r.returncode == 0,
+              (lines[-1] if lines else 'no output'))
+        if r.returncode != 0:
+            print((r.stdout or '').encode('ascii', 'replace').decode('ascii'))
 
 
 def test_launcher_end_to_end():
