@@ -16,8 +16,8 @@ import tkinter.font as tkfont
 TOTAL_TICKS = 100
 TICK_MS = 30            # 100 * 30ms = 3 秒
 READY_TIMEOUT = 25      # 动画播完后最多再等服务 25 秒
-SPLASH_WIDTH = 600
-SPLASH_HEIGHT = 420
+SPLASH_WIDTH = 720
+SPLASH_HEIGHT = 500
 SPLASH_PALETTE = {
     'background': '#101b25',
     'ink': '#f3eee6',
@@ -30,6 +30,13 @@ SPLASH_PALETTE = {
     'accent': '#20ad70',
 }
 DESCRIPTOR_FONT = ('Segoe UI', 10, 'italic')
+# 签名用系统里的手写花体：Edwardian Script 最接近 Apple 那种优雅手写，后面几个做兜底
+SIGNATURE_FONTS = ('Edwardian Script ITC', 'Kunstler Script', 'Monotype Corsiva',
+                   'Segoe Script', 'Ink Free')
+SIGNATURE_TEXT = 'Designed by HoweyYueng'
+# 中文主标题：思源宋体优先（比雅黑更有书卷气），没有就退到华文中宋、雅黑
+TITLE_FONTS = ('Noto Serif SC SemiBold', 'Noto Serif SC', 'STZhongsong', 'Microsoft YaHei UI')
+SUBTITLE_FONTS = ('Noto Serif SC', 'Noto Serif SC Light', 'STZhongsong', 'Microsoft YaHei UI')
 
 
 def _pick_font(root, size):
@@ -46,6 +53,15 @@ def _port_open(host, port, timeout=0.3):
             return True
     except OSError:
         return False
+
+
+def _pick_family(root, candidates, fallback='Segoe UI'):
+    """挑第一个系统里真装了的字体，避免静默落到 Tk 默认字体。"""
+    fams = set(tkfont.families(root))
+    for name in candidates:
+        if name in fams:
+            return name
+    return fallback
 
 
 def run_splash(host, port, asset_dir):
@@ -68,21 +84,59 @@ def run_splash(host, port, asset_dir):
              fg=palette['muted'], bg=palette['background']).pack(side='left')
     tk.Label(top, text='LOCAL APP', font=('Segoe UI', 10),
              fg=palette['subtle'], bg=palette['background']).pack(side='right')
-    tk.Label(root, text='溯源词斩', font=('Microsoft YaHei UI', 27, 'bold'),
-             fg=palette['ink'], bg=palette['background']).pack(anchor='w', padx=42, pady=(12, 0))
-    tk.Label(root, text='本地优先的单词学习工具', font=('Microsoft YaHei UI', 14),
-             fg=palette['muted'], bg=palette['background']).pack(anchor='w', padx=42, pady=(2, 0))
-    tk.Label(root, text='KILLTIME RECITATION TOOL · BY HOWEY', font=DESCRIPTOR_FONT,
-             fg=palette['subtle'], bg=palette['background']).pack(anchor='w', padx=42, pady=(7, 0))
+    tk.Label(root, text='溯源词斩', font=(_pick_family(root, TITLE_FONTS), 32),
+             fg=palette['ink'], bg=palette['background']).pack(anchor='w', padx=48, pady=(14, 0))
+    tk.Label(root, text='本地优先的单词学习工具', font=(_pick_family(root, SUBTITLE_FONTS), 15),
+             fg=palette['muted'], bg=palette['background']).pack(anchor='w', padx=48, pady=(3, 0))
+    # 签名区：上面一行是 KTRT 全称（镶金），下面一行是手写花体签名。
+    # 流光用「整串文字 + 按字符区间上亮色」实现：花体的连笔不会被拆开，
+    # 亮色区间从左往右走，就是光扫过去的感觉 —— 不做发光副本，所以不糊。
+    script_font = (_pick_family(root, SIGNATURE_FONTS, 'Segoe Script'), 23)
+    sign_zone = tk.Frame(root, bg=palette['background'])
+    sign_zone.pack(anchor='w', padx=48, pady=(4, 0))
+
+    def _shimmer_line(parent, text, font, base_color, bright_color):
+        f = tkfont.Font(font=font)
+        chars = int(f.measure(text) / max(1, f.measure('0'))) + 2
+        widget = tk.Text(parent, height=1, width=chars, font=font, bd=0, relief='flat',
+                         highlightthickness=0, padx=0, pady=0, cursor='arrow',
+                         bg=palette['background'], fg=base_color)
+        widget.insert('1.0', text)
+        widget.tag_configure('bright', foreground=bright_color)
+        widget.configure(state='disabled')
+        return widget
+
+    GOLD_TEXT = 'KILLTIME RECITATION TOOL'
+    gold_line = _shimmer_line(sign_zone, GOLD_TEXT, DESCRIPTOR_FONT, '#9c7c34', '#ffeaa8')
+    gold_line.pack(anchor='w')
+    sig_line = _shimmer_line(sign_zone, SIGNATURE_TEXT, script_font, '#67808f', '#ffffff')
+    sig_line.pack(anchor='w', pady=(3, 0))
+    sweep = {'i': -8}
+
+    def animate_sweep():
+        if state['done']:
+            return
+        for widget, text in ((gold_line, GOLD_TEXT), (sig_line, SIGNATURE_TEXT)):
+            total = len(text)
+            widget.tag_remove('bright', '1.0', 'end')
+            start, end = max(0, sweep['i'] - 8), min(total, sweep['i'])
+            if end > start:
+                widget.tag_add('bright', '1.%d' % start, '1.%d' % end)
+        sweep['i'] += 1
+        if sweep['i'] > max(len(GOLD_TEXT), len(SIGNATURE_TEXT)) + 8:
+            sweep['i'] = -8
+        root.after(110, animate_sweep)
+
+    animate_sweep()
 
     # 球场本身就是进度条：草纹、场线和从左向右的绿色渐变共用一块画布。
-    canvas = tk.Canvas(root, width=W - 84, height=190, bg=palette['background'], highlightthickness=0)
+    canvas = tk.Canvas(root, width=W - 84, height=226, bg=palette['background'], highlightthickness=0)
     canvas.pack(pady=(15, 0))
     canvas_width = W - 84
     field_x = 22
-    field_top = 66
+    field_top = 88
     field_w = canvas_width - 44
-    field_h = 58
+    field_h = 64
     field_bottom = field_top + field_h
     field_right = field_x + field_w
     player_y = field_top + field_h // 2 + 12
@@ -119,7 +173,10 @@ def run_splash(host, port, asset_dir):
                        fill=palette['field_line'], outline='')
 
     # 俯拍球门：窄门线 + 向右伸出的梯形网面，和球场中线对齐。
-    goal_x = field_right - 2
+    # 球门与徽标整体往左收，让它们完整落在画布内：
+    # 画布会硬裁超出部分，之前球门网右缘到 519、徽标右缘到 537（画布只有 516），
+    # 所以 GOAL! 右边被切掉。现在球门右缘与球场右端齐平，徽标居中在其上方。
+    goal_x = field_right - 26
     net_top = field_top + 14
     net_bottom = field_bottom - 14
     goal_items = []
@@ -137,7 +194,7 @@ def run_splash(host, port, asset_dir):
         goal_items.append(canvas.create_line(
             goal_x + 1, net_top + i * 8, goal_x + 26,
             net_top + i * 8 + 2, fill='#8da998', width=1, state='hidden'))
-    badge_x = goal_x + 18
+    badge_x = goal_x + 14
     badge_y = field_top - 13
     badge_box = canvas.create_rectangle(badge_x - 27, badge_y - 10, badge_x + 27, badge_y + 10,
                                         fill=palette['accent'], outline='', state='hidden')
@@ -188,6 +245,9 @@ def run_splash(host, port, asset_dir):
         goal_shown['value'] = True
         for item in goal_items:
             canvas.itemconfigure(item, state='normal')
+        # 徽标建在人物之前，不抬到最上层会被人物挡住（设计稿里它是压在人物肩上的）
+        canvas.tag_raise(badge_box)
+        canvas.tag_raise(badge_text)
         pulse_goal(0)
 
     def pulse_goal(step):
