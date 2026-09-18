@@ -25,7 +25,7 @@ from backend import db, ai, tts, importer, phrasal, updater, net
 
 db.init_db()
 
-APP_VERSION = '0.2.0c'
+APP_VERSION = '0.2.0d'
 GITHUB_REPO = 'HoweyYang/KTRT'
 FRONTEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'static')
 updater.configure(APP_VERSION, sys.executable, bool(getattr(sys, 'frozen', False)))
