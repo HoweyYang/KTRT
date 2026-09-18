@@ -145,7 +145,17 @@ def run_splash(host, port, asset_dir):
                                     font=('Segoe UI', 10, 'bold'), fill='#ffffff', state='hidden')
     goal_items.extend([badge_box, badge_text])
 
-    # 拖影用轻量速度线实现，原始艺术小人 PNG 始终只使用这一份。
+    # 拖影分两层，和设计稿一致：两张去色残影（跟在身后）＋三条速度线。
+    # 小人本体只加载这一次，残影是用去色降透明预处理好的副本。
+    ghost_items = []
+    for idx, ghost_name in enumerate(('dribble_ghost_1.png', 'dribble_ghost_2.png')):
+        ghost_path = os.path.join(asset_dir, 'assets', ghost_name)
+        if not os.path.exists(ghost_path):
+            continue
+        ghost_photo = tk.PhotoImage(file=ghost_path)
+        setattr(root, 'ghost_photo_%d' % idx, ghost_photo)   # 挂在 root 上，否则会被回收
+        ghost_items.append(canvas.create_image(-200, player_y, anchor='s',
+                                              image=ghost_photo, state='hidden'))
     trail_lines = [
         canvas.create_line(0, 0, 0, 0, fill='#8db89a', width=2, state='hidden'),
         canvas.create_line(0, 0, 0, 0, fill='#6d9d7d', width=1, state='hidden'),
@@ -219,6 +229,12 @@ def run_splash(host, port, asset_dir):
                 canvas.itemconfigure(line, state='normal')
             else:
                 canvas.itemconfigure(line, state='hidden')
+        for idx, item in enumerate(ghost_items):
+            if .12 < p < .96:
+                canvas.coords(item, px - 17 - idx * 15, player_y - idx)
+                canvas.itemconfigure(item, state='normal')
+            else:
+                canvas.itemconfigure(item, state='hidden')
         if p < 1:
             status.config(text='正在准备词库… %d%%' % int(p * 100))
         if i < TOTAL_TICKS:
