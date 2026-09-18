@@ -224,7 +224,10 @@ body[data-page="cyber"][data-theme="light"] {
   --on-accent: #050a16;
   --th: #16294c;
   --code: #16294c;
-  --mark: rgba(170, 90, 156, .38);
+  /* 科幻三色：高亮改成实心霓虹底 + 近黑字。之前是半透明霓虹底配霓虹字，
+     字的边缘和底色糊在一起，读起来发虚。 */
+  --mark: #cf6cc0;
+  --mark-ink: #17060f;
   --track: #24406f;
   --toast: #35b6e0;
   --green: #57d9a3;
@@ -263,7 +266,8 @@ body[data-page="cyber"][data-theme="dark"] {
   --on-accent: #101a03;
   --th: #17240f;
   --code: #17240f;
-  --mark: rgba(204, 255, 0, .26);
+  --mark: #ccff33;              /* 酸黄霓虹：实心底 + 近黑字 */
+  --mark-ink: #131a02;
   --track: #26401b;
   --toast: #ccff00;
   --green: #ccff00;
@@ -294,7 +298,8 @@ body[data-page="cyber"][data-theme="dark-blue"] {
   --on-accent: #001206;
   --th: #0b1c11;
   --code: #0b1c11;
-  --mark: rgba(53, 255, 122, .22);
+  --mark: #35ff7a;              /* 矩阵绿霓虹：实心底 + 近黑字 */
+  --mark-ink: #04140a;
   --track: #14361f;
   --toast: #35ff7a;
   --green: #35ff7a;
@@ -605,7 +610,7 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .field { display: grid; grid-template-columns: 74px 1fr auto; gap: 8px; align-items: start; }
 .field .label { font-weight: 700; color: var(--muted); font-size: 13px; padding-top: 2px; }
 .field .value { line-height: 1.55; font-size: 15px; }
-.field .value mark { background: var(--mark); color: inherit; padding: 0 2px; border-radius: 3px; }
+.field .value mark { background: var(--mark); color: var(--mark-ink, inherit); padding: 0 2px; border-radius: 3px; }
 .phrase-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
 .phrase-list li { position: relative; padding-left: 15px; line-height: 1.6; display: flex; align-items: center; gap: 6px; }
 .phrase-list li::before { content: '·'; position: absolute; left: 4px; color: var(--muted); }
@@ -785,7 +790,7 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
   padding: 12px 14px;
 }
 .sentence-item .en { font-size: 15px; line-height: 1.5; }
-.sentence-item .en mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 0 2px; }
+.sentence-item .en mark { background: var(--mark); color: var(--mark-ink, inherit); border-radius: 3px; padding: 0 2px; }
 .sentence-item .zh { color: var(--muted); font-size: 13px; margin-top: 4px; }
 .sentence-item .meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
 .sentence-item .del { float: right; color: var(--red); background: none; border: none; cursor: pointer; font-size: 13px; }
@@ -876,7 +881,7 @@ input[type="range"] { width: 100%; margin-top: 8px; }
 .note-md [data-block] { margin: 0; min-height: 1.3em; }
 .note-md h3 { font-size: 19px; font-weight: 700; }
 .note-md h4 { font-size: 16px; font-weight: 700; }
-.note-md mark { background: var(--mark); color: inherit; padding: 0 2px; border-radius: 3px; }
+.note-md mark { background: var(--mark); color: var(--mark-ink, inherit); padding: 0 2px; border-radius: 3px; }
 #note-context {
   position: fixed; z-index: 100; min-width: 150px;
   background: var(--card); border: 1px solid var(--line);
