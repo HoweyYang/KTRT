@@ -70,74 +70,90 @@ body[data-page="minimal"][data-theme="dark-blue"] {
 }
 /* ================= 纸质 paper：真实纸感（米白纸 / 牛皮纸 / 靛蓝纸） ================= */
 body[data-page="paper"] {
-  --font: Georgia, "Times New Roman", "Songti SC", "SimSun", serif;
+  /* 西文走 Garamond / Palatino（老式衬线，笔画有粗细对比），中文落到思源宋体，
+     没有思源再退到华文中宋与宋体 —— 都是"书里印出来的字"这一路。 */
+  --font: Garamond, "Palatino Linotype", Georgia, "Noto Serif SC", "Source Han Serif SC", "STZhongsong", "Songti SC", "SimSun", serif;
   -webkit-font-smoothing: antialiased;
+}
+/* 标题与字标再往上提一档：华文中宋的骨架比正文更"碑帖"一些 */
+body[data-page="paper"] h2,
+body[data-page="paper"] .wordmark b,
+body[data-page="paper"] .field .label {
+  font-family: Garamond, "Palatino Linotype", "STZhongsong", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
+  font-weight: 600;
 }
 /* 米白纸 */
 body[data-page="paper"][data-theme="light"] {
-  --paper-edge: rgba(255, 255, 255, .85);
-  --bg: #ece2cd;
-  --card: #faf4e6;
-  --ink: #3d3427;
-  --muted: #857763;
-  --line: #dccdae;
-  --accent: #9a6a3a;
-  --accent-dark: #7c5228;
-  --on-accent: #fdf8ec;
-  --th: #f2e9d6;
-  --code: #f2e9d6;
-  --mark: rgba(255, 214, 102, .5);
-  --track: #e0d3b6;
-  --toast: #3d3427;
-  --green: #6f7a45;
-  --red: #a8482f;
-  --amber: #9a6a1f;
-  --card-shadow: 0 1px 1px rgba(90, 62, 24, .07), 0 14px 34px -20px rgba(90, 62, 24, .34);
-  --card-radius: 12px;
+  /* 宣纸：暖白偏米、墨色文字、朱砂作主色 */
+  --paper-edge: rgba(255, 255, 255, .7);
+  --bg: #e7dcc3;
+  --card: #f7f0dd;
+  --ink: #241c14;
+  --muted: #7d6d55;
+  --line: #cdb995;
+  --frame-line: rgba(140, 108, 66, .38);
+  --vignette: rgba(88, 60, 22, .2);
+  --accent: #9c3124;
+  --accent-dark: #7c241a;
+  --on-accent: #fdf6ea;
+  --th: #eee3c9;
+  --code: #eee3c9;
+  --mark: rgba(206, 160, 62, .45);
+  --track: #ded0b2;
+  --toast: #2b2118;
+  --green: #5d6b3f;
+  --red: #9c3124;
+  --amber: #a8823c;
+  --card-shadow: 0 1px 0 rgba(90, 62, 24, .07);
+  --card-radius: 4px;
 }
-/* 牛皮纸（中间色，不是"深色模式贴纸纹"） */
+/* 绢本：旧绢黄、赭石作主色（比原先的牛皮纸更深更旧） */
 body[data-page="paper"][data-theme="dark"] {
-  --paper-edge: rgba(255, 255, 255, .35);
-  --bg: #d2bd97;
-  --card: #e6d7b6;
-  --ink: #3a3020;
-  --muted: #7a6a4c;
-  --line: #c3ad85;
-  --accent: #8a5a24;
-  --accent-dark: #6d4518;
-  --on-accent: #fdf6e6;
-  --th: #dccdaa;
-  --code: #dccdaa;
-  --mark: rgba(255, 199, 61, .45);
-  --track: #c9b48d;
-  --toast: #3a3020;
-  --green: #67703a;
-  --red: #9d4530;
-  --amber: #8d5f16;
-  --card-shadow: 0 1px 1px rgba(74, 50, 18, .1), 0 16px 36px -20px rgba(74, 50, 18, .4);
-  --card-radius: 12px;
+  --paper-edge: rgba(255, 255, 255, .5);
+  --bg: #c6b183;
+  --card: #e5d5ad;
+  --ink: #2a2114;
+  --muted: #6f5f3d;
+  --line: #b39a6a;
+  --frame-line: rgba(112, 80, 38, .45);
+  --vignette: rgba(74, 50, 18, .26);
+  --accent: #7a3b1d;
+  --accent-dark: #5c2b13;
+  --on-accent: #fbf3e2;
+  --th: #d8c79c;
+  --code: #d8c79c;
+  --mark: rgba(200, 156, 60, .5);
+  --track: #bfa97a;
+  --toast: #2a2114;
+  --green: #5c6a38;
+  --red: #8f3a22;
+  --amber: #8a6a22;
+  --card-shadow: 0 1px 0 rgba(74, 50, 18, .1);
+  --card-radius: 4px;
 }
-/* 靛蓝纸 */
+/* 靛蓝纸：靛青底子配泥金，古籍里"蓝绢洒金"的路子 */
 body[data-page="paper"][data-theme="dark-blue"] {
-  --paper-edge: rgba(255, 255, 255, .07);
-  --bg: #2a3446;
-  --card: #364256;
-  --ink: #e7edf7;
-  --muted: #a3b1c8;
-  --line: #4a5872;
-  --accent: #8fb6e8;
-  --accent-dark: #aecdf4;
-  --on-accent: #1a2230;
-  --th: #3d4a60;
-  --code: #3d4a60;
-  --mark: rgba(255, 214, 120, .3);
-  --track: #4a5872;
-  --toast: #e7edf7;
-  --green: #86a878;
-  --red: #d98a72;
-  --amber: #e0b464;
-  --card-shadow: 0 1px 1px rgba(0, 0, 0, .18), 0 16px 36px -20px rgba(0, 0, 0, .55);
-  --card-radius: 12px;
+  --paper-edge: rgba(255, 255, 255, .06);
+  --bg: #1b2231;
+  --card: #242e3f;
+  --ink: #ece3ce;
+  --muted: #a2977f;
+  --line: #3b4658;
+  --frame-line: rgba(201, 162, 39, .3);
+  --vignette: rgba(0, 0, 0, .4);
+  --accent: #c9a227;
+  --accent-dark: #a8851b;
+  --on-accent: #1a1810;
+  --th: #2c3749;
+  --code: #2c3749;
+  --mark: rgba(201, 162, 39, .3);
+  --track: #3b4658;
+  --toast: #ece3ce;
+  --green: #8aa06a;
+  --red: #c4705a;
+  --amber: #d9b44a;
+  --card-shadow: 0 1px 0 rgba(0, 0, 0, .2);
+  --card-radius: 4px;
 }
 body[data-page="paper"] {
   background-image:
@@ -152,7 +168,7 @@ body[data-page="paper"]::after {
   inset: 0;
   pointer-events: none;
   z-index: 1;
-  box-shadow: inset 0 0 150px rgba(88, 60, 22, .17);
+  box-shadow: inset 0 0 150px var(--vignette, rgba(88, 60, 22, .17));
 }
 body[data-page="paper"] .side,
 body[data-page="paper"] .card,
@@ -165,7 +181,24 @@ body[data-page="paper"] #note-context {
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.006 0.55' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.04'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
   border-color: var(--line);
   border-radius: var(--card-radius, 12px);
-  box-shadow: inset 0 1px 0 var(--paper-edge), var(--card-shadow);
+  /* 书框：外一圈实边线，内嵌一道浅线，做出古籍页面的双线框 */
+  box-shadow: inset 0 0 0 3px var(--card),
+              inset 0 0 0 4px var(--frame-line, rgba(140, 108, 66, .35)),
+              var(--card-shadow);
+}
+
+/* 古籍版式：双线标题、方正圆角、侧栏一道界行 —— 三个纸色共用 */
+body[data-page="paper"] h2 {
+  border-bottom: 3px double var(--line);
+  padding-bottom: 8px;
+  letter-spacing: .04em;
+}
+body[data-page="paper"] .side { border-right: 1px solid var(--line); }
+body[data-page="paper"] .btn,
+body[data-page="paper"] .tab,
+body[data-page="paper"] .icon-btn,
+body[data-page="paper"] .seg .btn {
+  border-radius: 3px;
 }
 
 /* ================= 赛博朋克 cyber：霓虹 / 扫描线 / 单色终端感 ================= */
@@ -570,7 +603,7 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .field { display: grid; grid-template-columns: 74px 1fr auto; gap: 8px; align-items: start; }
 .field .label { font-weight: 700; color: var(--muted); font-size: 13px; padding-top: 2px; }
 .field .value { line-height: 1.55; font-size: 15px; }
-.field .value mark { background: var(--mark); padding: 0 2px; border-radius: 3px; }
+.field .value mark { background: var(--mark); color: inherit; padding: 0 2px; border-radius: 3px; }
 .phrase-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
 .phrase-list li { position: relative; padding-left: 15px; line-height: 1.6; display: flex; align-items: center; gap: 6px; }
 .phrase-list li::before { content: '·'; position: absolute; left: 4px; color: var(--muted); }
@@ -750,7 +783,7 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
   padding: 12px 14px;
 }
 .sentence-item .en { font-size: 15px; line-height: 1.5; }
-.sentence-item .en mark { background: var(--mark); border-radius: 3px; padding: 0 2px; }
+.sentence-item .en mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 0 2px; }
 .sentence-item .zh { color: var(--muted); font-size: 13px; margin-top: 4px; }
 .sentence-item .meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
 .sentence-item .del { float: right; color: var(--red); background: none; border: none; cursor: pointer; font-size: 13px; }
@@ -841,7 +874,7 @@ input[type="range"] { width: 100%; margin-top: 8px; }
 .note-md [data-block] { margin: 0; min-height: 1.3em; }
 .note-md h3 { font-size: 19px; font-weight: 700; }
 .note-md h4 { font-size: 16px; font-weight: 700; }
-.note-md mark { background: var(--mark); padding: 0 2px; border-radius: 3px; }
+.note-md mark { background: var(--mark); color: inherit; padding: 0 2px; border-radius: 3px; }
 #note-context {
   position: fixed; z-index: 100; min-width: 150px;
   background: var(--card); border: 1px solid var(--line);
