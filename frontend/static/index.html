@@ -21,6 +21,7 @@
       <button class="tab" data-view="challenge"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg><span>杀词</span></button>
       <button class="tab" data-view="manage"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span>管理</span></button>
       <button class="tab" data-view="storm"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>风暴词卡</span></button>
+      <button class="tab" data-view="mask"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg><span>词性蒙版</span></button>
       <button class="tab" data-view="import"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>导入</span></button>
       <button class="tab" data-view="settings"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg><span>设置</span></button>
       <button class="tab" data-view="update"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>更新</span></button>
@@ -168,13 +169,6 @@
         <button id="btn-export-notes" class="btn" data-tip="导出词条及其 Markdown 笔记。">笔记</button>
       </div>
       <div class="manage-group">
-        <span class="mg-label">词性筛选</span>
-        <select id="pos-book"><option value="">选词书</option></select>
-        <select id="pos-list"><option value="">全部 List</option></select>
-        <button id="btn-pos-build" class="btn primary" data-tip="按勾选的词性生成一本新词书：按字母排序、按首字母分 List，学词 / 杀词直接可用，卡片上可跳回原书位置（说白了就是重新筛选、排列、整合）。">生成定向词书</button>
-      </div>
-      <div id="pos-box" class="pos-box"></div>
-      <div class="manage-group">
         <span class="mg-label">清空</span>
         <select id="clear-book"></select>
         <select id="clear-list"></select>
@@ -199,6 +193,20 @@
         </div>
         <div id="storm-gen-msg" style="margin-top:8px;font-size:13px;line-height:1.6"></div>
         <div id="storm-list"></div>
+      </div>
+    </section>
+
+    <!-- ============ 词性蒙版 ============ -->
+    <section id="view-mask" class="view">
+      <div class="panel">
+        <h2>词性蒙版</h2>
+        <p class="muted" style="margin-top:-2px">选词书 → 勾词性 → 生成。出来就是一本普通词书：按字母排、按首字母分 List，学词 / 杀词 / 进度 / 错题 / 笔记 / 导出全都照常；卡片上标着原书位置，点一下跳回去。</p>
+        <div class="row">
+          <select id="pos-book" style="flex:1"><option value="">选词书</option></select>
+          <select id="pos-list" style="flex:1"><option value="">全部 List</option></select>
+          <button id="btn-pos-build" class="btn primary" data-tip="按勾选的词性生成一本新词书：按字母排序、按首字母分 List，学词 / 杀词直接可用，卡片上可跳回原书位置（说白了就是重新筛选、排列、整合）。">生成词性蒙版</button>
+        </div>
+        <div id="pos-box" class="pos-box" style="margin-top:14px"></div>
       </div>
     </section>
 

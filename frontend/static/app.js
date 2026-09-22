@@ -336,6 +336,8 @@ function switchView(name) {
   localStorage.setItem('activeView', name);
   if (name === 'manage') {
     refreshBooksUI().then(loadManage);
+  } else if (name === 'mask') {
+    refreshBooksUI();                    // 顺带把词书列表刷新，刚生成的词性蒙版马上能选
   } else if (name === 'import') {
     renderBookList();
   } else if (name === 'challenge') {
@@ -1624,7 +1626,7 @@ function refreshExportSelects() {
   refreshPosSelects();
 }
 
-/* ---------- 词性筛选（词蒙版）---------- */
+/* ---------- 词性蒙版（按词性筛出定向词书）---------- */
 function refreshPosSelects() {
   const bs = $('pos-book');
   if (!bs) return;
