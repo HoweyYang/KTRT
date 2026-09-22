@@ -554,6 +554,10 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .mg-label { color: var(--muted); font-weight: 700; font-size: 12px; min-width: 52px; }
 .manage-group select, .manage-group input { padding: 6px 8px; }
 .manage-group .btn { padding: 5px 10px; font-size: 13px; }
+.pos-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--th); margin-bottom: 8px; font-size: 13px; }
+.pos-item { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: var(--ink); font-weight: 400; }
+.pos-item input { width: auto; margin: 0; accent-color: var(--accent); }
+.pos-item b { color: var(--muted); font-weight: 600; }
 .toolbar select, .toolbar input {
   padding: 8px 10px;
   border: 1px solid var(--line);

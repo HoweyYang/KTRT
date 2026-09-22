@@ -168,6 +168,13 @@
         <button id="btn-export-notes" class="btn" data-tip="导出词条及其 Markdown 笔记。">笔记</button>
       </div>
       <div class="manage-group">
+        <span class="mg-label">词性筛选</span>
+        <select id="pos-book"><option value="">选词书</option></select>
+        <select id="pos-list"><option value="">全部 List</option></select>
+        <button id="btn-pos-build" class="btn primary" data-tip="按勾选的词性生成一本新词书：按字母排序、按首字母分 List，学词 / 杀词直接可用，卡片上可跳回原书位置（说白了就是重新筛选、排列、整合）。">生成定向词书</button>
+      </div>
+      <div id="pos-box" class="pos-box"></div>
+      <div class="manage-group">
         <span class="mg-label">清空</span>
         <select id="clear-book"></select>
         <select id="clear-list"></select>

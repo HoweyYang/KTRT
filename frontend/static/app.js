@@ -544,7 +544,21 @@ function renderCard() {
         <button class="icon-btn" data-tts="${escapeAttr(label + '：' + value)}" title="朗读">${SPEAKER_ICON}</button>
       </div>`);
   }
+  // 定向词书（词性筛选生成）里的词，标注它来自哪本书的哪个位置，可一键跳回去
+  const srcRef = String(c.word.source_ref || '').split('|');
+  if (srcRef.length === 3 && srcRef[0]) {
+    const sb = state.books.find((b) => String(b.id) === srcRef[0]);
+    const sname = sb ? sb.name : ('词书 ' + srcRef[0]);
+    rows.push(`
+      <div class="field">
+        <span class="label">来源</span>
+        <span class="value">${escapeHtml(sname)} · List ${escapeHtml(srcRef[1])} 第 ${escapeHtml(srcRef[2])} 个词
+          <span class="pos-chip" data-book="${escapeAttr(srcRef[0])}" data-list="${escapeAttr(srcRef[1])}" data-seq="${escapeAttr(srcRef[2])}"
+            data-tip="跳回《${escapeAttr(sname)}》 List ${escapeAttr(srcRef[1])} 第 ${escapeAttr(srcRef[2])} 个词">跳回原位置</span></span>
+      </div>`);
+  }
   $('fields').innerHTML = rows.join('');
+  wirePosChips($('fields'));
   document.querySelectorAll('[data-tts]').forEach((b) => {
     b.addEventListener('click', () => {
       if (b === ttsBtnActive) { _ttsStop(); return; }
@@ -1607,7 +1621,75 @@ function refreshExportSelects() {
     `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
   if (cur !== '' && state.books.some((b) => String(b.id) === cur)) bs.value = cur;
   refreshExportLists();
+  refreshPosSelects();
 }
+
+/* ---------- 词性筛选（词蒙版）---------- */
+function refreshPosSelects() {
+  const bs = $('pos-book');
+  if (!bs) return;
+  const cur = bs.value;
+  bs.innerHTML = '<option value="">选词书</option>' + state.books.map((b) =>
+    `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
+  if (cur && state.books.some((b) => String(b.id) === cur)) bs.value = cur;
+  refreshPosLists();
+}
+
+async function refreshPosLists() {
+  const ls = $('pos-list');
+  const box = $('pos-box');
+  const bookId = Number($('pos-book').value || 0);
+  ls.innerHTML = '<option value="">全部 List</option>';
+  if (!bookId) { box.innerHTML = '<span class="muted">选一本词书，再勾词性</span>'; return; }
+  try {
+    const meta = await api(`/api/books/${bookId}/lists`);
+    ls.innerHTML = '<option value="">全部 List</option>' + meta.map((l) =>
+      `<option value="${l.list_no}">List ${l.list_no}</option>`).join('');
+  } catch (e) { /* 拿不到 List 就按整本算 */ }
+  loadPosStats();
+}
+
+async function loadPosStats() {
+  const box = $('pos-box');
+  const bookId = Number($('pos-book').value || 0);
+  if (!bookId) { box.innerHTML = '<span class="muted">选一本词书，再勾词性</span>'; return; }
+  box.innerHTML = '<span class="muted">统计中…</span>';
+  try {
+    const listNo = Number($('pos-list').value || 0);
+    const s = await api(`/api/pos/stats?book_id=${bookId}` + (listNo ? `&list_no=${listNo}` : ''));
+    if (!s.items.length) { box.innerHTML = '<span class="muted">这本书没解析出词性</span>'; return; }
+    box.innerHTML = `<span class="muted">共 ${s.total} 词 · 其中 ${s.multi} 个一词多性</span>`
+      + s.items.map((i) => `<label class="pos-item"><input type="checkbox" value="${i.key}">`
+        + ` ${escapeHtml(i.label)} <b>${i.count}</b></label>`).join('');
+  } catch (e) {
+    box.innerHTML = `<span class="muted">${escapeHtml(e.message)}</span>`;
+  }
+}
+
+async function buildPosBook() {
+  const bookId = Number($('pos-book').value || 0);
+  if (!bookId) { toast('先选一本词书'); return; }
+  const poss = [...document.querySelectorAll('#pos-box input:checked')].map((i) => i.value);
+  if (!poss.length) { toast('先勾选要筛的词性'); return; }
+  const listNo = Number($('pos-list').value || 0);
+  try {
+    const r = await api('/api/pos/build', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ book_id: bookId, list_no: listNo, pos: poss }),
+    });
+    const boot = await api('/api/bootstrap');
+    state.books = boot.books;
+    populateBookSelect();
+    refreshExportSelects();
+    toast(`已生成《${r.name}》：${r.count} 词 / ${r.lists} 个 List，去学词页选它即可`);
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+$('pos-book').addEventListener('change', refreshPosLists);
+$('pos-list').addEventListener('change', loadPosStats);
+$('btn-pos-build').addEventListener('click', buildPosBook);
 
 async function refreshExportLists() {
   const ls = $('export-list');

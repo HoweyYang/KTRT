@@ -21,11 +21,11 @@ from fastapi.staticfiles import StaticFiles
 from starlette.staticfiles import StaticFiles as StarletteStaticFiles
 from pydantic import BaseModel
 
-from backend import db, ai, tts, importer, phrasal, updater, net
+from backend import db, ai, tts, importer, phrasal, updater, net, pos as poslib
 
 db.init_db()
 
-APP_VERSION = '0.2.0d'
+APP_VERSION = '0.2.1'
 GITHUB_REPO = 'HoweyYang/KTRT'
 FRONTEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'static')
 updater.configure(APP_VERSION, sys.executable, bool(getattr(sys, 'frozen', False)))
@@ -728,6 +728,28 @@ def export_notes(book_id: int = Query(None), list_no: int = Query(None)):
     with open(path, 'w', encoding='utf-8') as f:
         f.write(text)
     return FileResponse(path, media_type='text/markdown', filename=name)
+
+
+class PosBuildBody(BaseModel):
+    book_id: int = 0
+    list_no: int = 0
+    pos: list = []
+    name: str = ''
+
+
+@app.get('/api/pos/stats')
+def pos_stats(book_id: int = Query(...), list_no: int = Query(0)):
+    """词性筛选用：某本词书（可选某个 List）里各词性的词条数。"""
+    return poslib.stats(book_id, list_no or None)
+
+
+@app.post('/api/pos/build')
+def pos_build(body: PosBuildBody):
+    """按勾选的词性生成一本定向词书：按字母排序、按首字母分 List、可跳回原书位置。"""
+    try:
+        return poslib.build(body.book_id, body.list_no or None, body.pos, body.name)
+    except Exception as e:
+        raise HTTPException(400, str(e))
 
 
 # ---------- 词书本地副本与词条编辑 ----------
