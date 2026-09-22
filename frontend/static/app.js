@@ -1745,6 +1745,7 @@ const BOOK_RESOURCES = [
   { name: 'GRE 必背（6519 词）', file: 'GRE_Wordbook.xlsx' },
   { name: '雅思词汇真经（3608 词）', file: 'IELTS_Wordbook.xlsx' },
   { name: '考研英语词汇词根+联想记忆法（5905 词）', file: 'KAOYAN_Wordbook.xlsx' },
+  { name: '动词短语库（2217 条，按首字母分 List）', file: 'Phrasal_Verbs_Wordbook.xlsx' },
 ];
 const REPO_URL = 'https://github.com/HoweyYang/KTRT';
 
