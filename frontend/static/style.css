@@ -231,6 +231,8 @@ body[data-page="cyber"][data-theme="light"] {
   --track: #24406f;
   --toast: #35b6e0;
   --green: #57d9a3;
+  --active-ink: #062430;        /* 选中态按钮的文字：霓虹绿底太亮，白字看不清，改用近黑 */
+  --wrong-ink: #ffffff;         /* 霓虹的红是中调，白字反而更清楚（4.86），另两色用近黑 */
   --red: #c24347;
   --amber: #f7d967;
   --aberr: #c24347;
@@ -266,11 +268,13 @@ body[data-page="cyber"][data-theme="dark"] {
   --on-accent: #101a03;
   --th: #17240f;
   --code: #17240f;
-  --mark: #ccff33;              /* 酸黄霓虹：实心底 + 近黑字 */
-  --mark-ink: #131a02;
+  --mark: linear-gradient(92deg, var(--accent), var(--accent-2));   /* 高亮走黄→蓝混合渐变，与主按钮同一套 */
+  --mark-ink: #131a02;          /* 渐变两端都偏亮，文字仍用近黑（两端对比度 7.4 / 15.2） */
   --track: #26401b;
   --toast: #ccff00;
   --green: #ccff00;
+  --active-ink: #131a02;        /* 酸黄底同样太亮，选中态用近黑字 */
+  --wrong-ink: #131a02;
   --red: #ff4d4d;
   --amber: #e9ff9b;
   --aberr: #3db3d0;
@@ -303,6 +307,8 @@ body[data-page="cyber"][data-theme="dark-blue"] {
   --track: #14361f;
   --toast: #35ff7a;
   --green: #35ff7a;
+  --active-ink: #04140a;        /* 矩阵绿底同理 */
+  --wrong-ink: #04140a;
   --red: #ff5c5c;
   --amber: #b8ff9a;
   --aberr: #35ff7a;
@@ -776,8 +782,8 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .btn:hover { border-color: var(--accent); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.primary:hover { background: var(--accent-dark); }
-.btn.active { background: var(--green); border-color: var(--green); color: #fff; }
-.btn.active-fav { background: var(--amber); border-color: var(--amber); color: #fff; }
+.btn.active { background: var(--green); border-color: var(--green); color: var(--active-ink, #fff); }
+.btn.active-fav { background: var(--amber); border-color: var(--amber); color: var(--active-ink, #fff); }
 .btn.danger { color: var(--red); }
 
 .sentences { margin-top: 22px; }
@@ -895,8 +901,8 @@ input[type="range"] { width: 100%; margin-top: 8px; }
 #note-context button:hover { background: var(--th); }
 .opt { display: block; width: 100%; text-align: left; margin: 8px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); font-size: 15px; cursor: pointer; }
 .opt:hover { border-color: var(--accent); }
-.opt.right { background: var(--green); border-color: var(--green); color: #fff; }
-.opt.wrong { background: var(--red); border-color: var(--red); color: #fff; }
+.opt.right { background: var(--green); border-color: var(--green); color: var(--active-ink, #fff); }
+.opt.wrong { background: var(--red); border-color: var(--red); color: var(--wrong-ink, #fff); }
 .chg-lists { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin: 6px 0 12px; }
 .chg-lists label { display: flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-weight: 400; margin: 0; }
 #view-challenge .panel { max-width: 760px; }
