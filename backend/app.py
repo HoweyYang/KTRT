@@ -739,13 +739,13 @@ class PosBuildBody(BaseModel):
 
 @app.get('/api/pos/stats')
 def pos_stats(book_id: int = Query(...), list_no: int = Query(0)):
-    """词性筛选用：某本词书（可选某个 List）里各词性的词条数。"""
+    """词性蒙版用：某本词书（可选某个 List）里各词性的词条数。"""
     return poslib.stats(book_id, list_no or None)
 
 
 @app.post('/api/pos/build')
 def pos_build(body: PosBuildBody):
-    """按勾选的词性生成一本定向词书：按字母排序、按首字母分 List、可跳回原书位置。"""
+    """词性蒙版：按勾选的词性生成一本定向词书，按字母排序、按首字母分 List、可跳回原书位置。"""
     try:
         return poslib.build(body.book_id, body.list_no or None, body.pos, body.name)
     except Exception as e:
