@@ -214,14 +214,15 @@ const FEATURE_HINTS = {
 
 function initFeatureHints() {
   const VIEW_TIPS = {
-    study: '一页一词地背：进度、收藏、笔记、书签与风暴都在这页。',
-    challenge: '四选一闯关：记词闯关 & 错题闯关，答错自动进错题本。',
-    manage: '按 书 → List 管理进度 / 收藏 / 造句 / 笔记，可搜索、筛选、导出。',
-    storm: '浏览与生成「风暴词卡」，可搜索已建词卡的单词并导出。',
-    import: '导入新词书（Excel / CSV / 纯文本），也可删除词书。',
-    settings: '配置 AI Key / 厂商、语音、主题。',
-    update: '检查更新：有小更新可直接应用，有新版本一键下载安装。',
-    guide: '操作指南与文档。',
+    study: '学词 · Learn：一页一词地背。进度、收藏、笔记、书签与风暴都在这页。',
+    challenge: '杀词 · Challenge：四选一闯关（记词闯关 / 错题闯关），答错自动进错题本。',
+    manage: '管理 · Manage：按 书 → List 管理进度、收藏、造句、笔记，可搜索、筛选、导出。',
+    storm: '风暴 · Storm Card：生成与浏览风暴词卡，可搜索已建词卡的单词并导出。',
+    mask: '蒙版 · Word Mask：按词性从词书里筛出定向词书——按字母排、按首字母分 List，卡片上可跳回原书位置。',
+    import: '导入 · Import：导入新词书（Excel / CSV / 纯文本），也可删除词书。',
+    settings: '设置 · Settings：配置 AI Key / 厂商、语音、主题。',
+    update: '更新 · Update：检查更新——小更新直接应用，新版本一键下载安装。',
+    guide: '指南 · Guide：操作指南与使用文档。',
   };
   const tip = document.createElement('div');
   tip.className = 'kttip';
