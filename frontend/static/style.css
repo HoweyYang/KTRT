@@ -296,30 +296,30 @@ body[data-page="cyber"][data-theme="dark-blue"] {
   --ink: #c8ffd9;
   --muted: #5f9c76;
   --line: #14361f;
-  --accent: #35ff7a;
-  --accent-dark: #8bffb4;
-  --accent-2: #35ff7a;
+  --accent: #00ff41;            /* 激光绿：黑客帝国那种荧光绿 */
+  --accent-dark: #6effa0;
+  --accent-2: #00ff41;
   --on-accent: #001206;
   --th: #0b1c11;
   --code: #0b1c11;
-  --mark: #35ff7a;              /* 矩阵绿霓虹：实心底 + 近黑字 */
+  --mark: #00ff41;              /* 激光绿实心底 + 近黑字（对比度约 13.7） */
   --mark-ink: #04140a;
   --track: #14361f;
-  --toast: #35ff7a;
-  --green: #35ff7a;
+  --toast: #00ff41;
+  --green: #00ff41;
   --active-ink: #04140a;        /* 矩阵绿底同理 */
   --wrong-ink: #04140a;
   --red: #ff5c5c;
   --amber: #b8ff9a;
-  --aberr: #35ff7a;
-  --cyber-glow: 0 0 22px -8px rgba(53, 255, 122, .75);
-  --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(53, 255, 122, .55);
+  --aberr: #00ff41;
+  --cyber-glow: 0 0 22px -8px rgba(0, 255, 65, .75);
+  --card-shadow: 0 0 0 1px var(--line), 0 0 30px -16px rgba(0, 255, 65, .55);
   --card-radius: 10px;
 }
 body[data-page="cyber"][data-theme="dark-blue"] {
   background-image:
-    radial-gradient(62% 46% at 12% -6%, rgba(53, 255, 122, .16), transparent 62%),
-    radial-gradient(55% 42% at 90% 8%, rgba(53, 255, 122, .09), transparent 64%),
+    radial-gradient(62% 46% at 12% -6%, rgba(0, 255, 65, .16), transparent 62%),
+    radial-gradient(55% 42% at 90% 8%, rgba(0, 255, 65, .09), transparent 64%),
     repeating-linear-gradient(0deg, rgba(255, 255, 255, .03) 0 1px, transparent 1px 3px);
   background-attachment: fixed;
 }
@@ -378,11 +378,11 @@ body[data-page="cyber"][data-theme="dark-blue"] .wordmark b {
   font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
   font-weight: 700;
   letter-spacing: .16em;
-  background: linear-gradient(180deg, #e6ffee 0%, #35ff7a 52%, #0c7a3a 100%);
+  background: linear-gradient(180deg, #e6ffee 0%, #00ff41 52%, #0c7a3a 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 12px rgba(53, 255, 122, .55));
+  filter: drop-shadow(0 0 12px rgba(0, 255, 65, .55));
 }
 body[data-page="cyber"][data-theme="dark-blue"] .wordmark i {
   font-family: "Cascadia Mono", Consolas, monospace;
