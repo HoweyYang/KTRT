@@ -56,7 +56,7 @@ class NoCacheStaticFiles(StarletteStaticFiles):
         """先看数据目录里的热补丁（更新页下载的 patch），再回落到内置前端。"""
         if path.startswith(('/', '\\')):
             return '', None
-        bases = [updater.overlay_dir()]
+        bases = [updater.overlay_dir()] if updater.overlay_usable() else []
         for d in (getattr(self, 'all_directories', None) or [getattr(self, 'directory', '')]):
             bases.append(d)
         for base in bases:
@@ -146,7 +146,7 @@ def _status(conn, word_id):
 
 @app.get('/')
 def index():
-    root = updater.overlay_dir() if updater.overlay_active() else FRONTEND
+    root = updater.overlay_dir() if updater.overlay_usable() else FRONTEND
     resp = FileResponse(os.path.join(root, 'index.html'))
     resp.headers['Cache-Control'] = 'no-store, must-revalidate'
     return resp
@@ -2127,8 +2127,11 @@ def update_apply(body: UpdateApplyBody):
         raise HTTPException(400, '没有可用的更新内容，请先点「检查更新」')
     if kind == 'full' and info.get('mode') != 'packaged':
         raise HTTPException(400, '源码版请用 git pull 更新，一键安装只对安装版可用')
+    # 补丁用自己的版本号（patch-0.2.0e.zip → 0.2.0e）：记成 Release 版本的话，
+    # 装完再检查会发现"补丁比已装的还新"，又提示一次。
+    version = target.get('version') or latest.get('version') or info['current_version']
     try:
-        return updater.start(kind, target['url'], latest.get('version') or info['current_version'])
+        return updater.start(kind, target['url'], version)
     except Exception as e:
         raise HTTPException(400, str(e))
 
@@ -2136,7 +2139,7 @@ def update_apply(body: UpdateApplyBody):
 @app.get('/api/update/progress')
 def update_progress():
     out = updater.job()
-    out['overlay'] = updater.overlay_active()
+    out['overlay'] = updater.overlay_usable()
     return out
 
 

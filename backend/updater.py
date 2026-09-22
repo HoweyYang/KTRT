@@ -69,6 +69,16 @@ def is_newer(candidate, current):
     return a > b
 
 
+def patch_version(name, fallback=''):
+    """补丁版本看文件名：patch-0.2.0e.zip → 0.2.0e（认不出才退回 Release 版本）。
+
+    热补丁挂在"上一版"的 Release 里，所以补丁版本常比 Release 版本新
+    （v0.2.0d 的 Release 里挂着 patch-0.2.0e.zip）。显示、应用、去重都必须
+    用补丁自己的版本号，否则会一直提示「有小更新」，用户也不知道装没装上。
+    """
+    return version_from_text(name) or str(fallback or '')
+
+
 # ---------- 网络 ----------
 
 def _proxy():
@@ -196,7 +206,11 @@ def latest_release():
             if low.endswith('.exe') and low.startswith('ktrtsetup'):
                 out['installer'] = asset
             elif low.endswith('.zip') and low.startswith('patch-'):
-                out['patch'] = dict(asset, version=out['version'])
+                cand = dict(asset, version=patch_version(asset['name'], out['version']),
+                            release=out['version'])
+                # 同一个 Release 里挂着多个补丁时，取版本最高的那个
+                if not out['patch'] or is_newer(cand['version'], out['patch']['version']):
+                    out['patch'] = cand
     except Exception:
         pass
     return out
@@ -227,6 +241,21 @@ def applied_patch():
         return None
 
 
+def overlay_usable(applied=None):
+    """热补丁目录是否真该顶替内置前端：补丁要比当前程序本体新才生效。
+
+    程序主体升级后必须让位。否则新装的新版本会被上一版的热补丁压在下面，
+    界面上看不到新东西，用户也判断不了更新到底装上没有。
+    """
+    if not overlay_active():
+        return False
+    meta = applied_patch() if applied is None else applied
+    ver = (meta or {}).get('version') or ''
+    if not ver:
+        return True          # 认不出补丁版本：维持"补丁优先"的老行为
+    return is_newer(ver, VERSION)
+
+
 def _patch_applicable(patch, applied):
     """补丁要比自己手上的新才提示。
 
@@ -236,7 +265,12 @@ def _patch_applicable(patch, applied):
     pv = version_from_text(patch.get('name', '')) or patch.get('version', '')
     if not pv:
         return True          # 认不出补丁版本就别挡，免得把更新通道堵死
-    return is_newer(pv, (applied or {}).get('version') or VERSION)
+    # 基线取「已装补丁」与「程序本体」里更新的那个：程序升到新版后，
+    # 上一版的热补丁不该再被当成可更新内容。
+    base = (applied or {}).get('version') or ''
+    if version_key(VERSION) > version_key(base):
+        base = VERSION
+    return is_newer(pv, base)
 
 
 def _grab_commit(out):
@@ -257,7 +291,7 @@ def status(deep=True):
         'installer': None,
         'patch': None,
         'applied_patch': applied_patch(),
-        'overlay': overlay_active(),
+        'overlay': overlay_usable(),
         'error': '',
     }
     # 提交信息和 Release 信息互不依赖，并行抓：实测能省掉一轮 5 秒左右的白等，

@@ -6,6 +6,7 @@
 """
 import csv
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -190,12 +191,74 @@ def test_patch_notification_rules():
         updater.applied_patch = real_applied
         updater.VERSION = real_ver
 
+def test_patch_version_source():
+    """补丁版本看文件名：Release v0.2.0d 里挂的 patch-0.2.0e.zip 是 0.2.0e。
+
+    用户报的 bug：点了「立即更新」、刷新后提示还在 —— 因为补丁被记成了 Release
+    版本（0.2.0d），下次检查发现"补丁 0.2.0e 比已装的 0.2.0d 新"，又提示一次。
+    """
+    real_assets, real_opener, real_ver = updater._assets, updater._opener, updater.VERSION
+    atom = ('<?xml version="1.0" encoding="utf-8"?>'
+            '<feed xmlns="http://www.w3.org/2005/Atom"><entry>'
+            '<title>KTRT v0.2.0d — 三套纸质主题重做</title>'
+            '<link href="https://github.com/HoweyYang/KTRT/releases/tag/v0.2.0d"/>'
+            '<updated>2026-09-18T14:04:13Z</updated><content type="html">x</content>'
+            '</entry></feed>')
+
+    class FakeResp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    class FakeOpener:
+        def open(self, req, timeout=10):
+            return FakeResp(atom.encode('utf-8'))
+
+    def fake_assets(tag):
+        return [{'name': 'KTRTSetup-lite-0.2.0d.exe', 'url': 'u', 'size': 18926149},
+                {'name': 'patch-0.2.0d.zip', 'url': 'u', 'size': 1},
+                {'name': 'patch-0.2.0e.zip', 'url': 'u', 'size': 1}]
+
+    real_applied = updater.applied_patch
+    try:
+        updater._assets = fake_assets
+        updater._opener = lambda: FakeOpener()
+        rel = updater.latest_release()
+        check('补丁版本取自文件名（patch-0.2.0e.zip → 0.2.0e）',
+              rel['patch']['version'] == '0.2.0e', rel['patch'])
+        check('Release 版本仍取 tag', rel['version'] == '0.2.0d')
+        check('同一 Release 挂多个补丁时取最新的',
+              rel['patch']['name'] == 'patch-0.2.0e.zip', rel['patch']['name'])
+
+        updater.VERSION = '0.2.0d'
+        updater.applied_patch = lambda: None
+        st = updater.status(deep=False)
+        check('没装过：提示可更新，且显示的是补丁自己的版本',
+              st['patch']['applicable'] is True and st['patch']['version'] == '0.2.0e')
+        updater.applied_patch = lambda: {'version': '0.2.0e', 'files': 12}
+        st = updater.status(deep=False)
+        check('装过 0.2.0e 之后不再提示「有小更新」', st['patch']['applicable'] is False)
+        check('补丁比程序新：overlay 照常生效', st['overlay'] is True)
+
+        updater.VERSION = '0.2.1'
+        st = updater.status(deep=False)
+        check('程序升到 0.2.1 后，0.2.0e 的补丁不再提示', st['patch']['applicable'] is False)
+        check('程序升到 0.2.1 后，旧 overlay 不再顶替内置前端', st['overlay'] is False)
+    finally:
+        updater._assets = real_assets
+        updater._opener = real_opener
+        updater.applied_patch = real_applied
+        updater.VERSION = real_ver
+
 
 def main():
     try:
         test_reimport_keeps_personal_state()
         test_patch_is_atomic()
         test_patch_notification_rules()
+        test_patch_version_source()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)
     print('\n%d 项通过，%d 项失败' % (len(PASSED), len(FAILED)))
