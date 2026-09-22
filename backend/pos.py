@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""词性筛选（词蒙版）：从释义里抽出词性，并据此生成"定向词书"。
+"""词性蒙版：从释义里抽出词性，并据此生成"定向词书"。
 
 词性写在释义开头，形如「n. 减少，减轻」「vi. 停留…\\nvt. 忍受…」；
 一个词可能命中多个词性，所以它会同时落进多个筛选桶（多义即多重对应）。
@@ -91,7 +91,7 @@ def build(book_id, list_no, poss, name=''):
             raise RuntimeError('已存在同名词书《%s》：先删掉它，或换个名字' % book_name)
         picked.sort(key=lambda r: (r['word'].lower(), r['list_no'], r['seq']))
         cur = conn.execute('INSERT INTO word_books(name, language, source) VALUES(?,?,?)',
-                           (book_name, src['language'], '词性筛选'))
+                           (book_name, src['language'], '词性蒙版'))
         new_id = cur.lastrowid
         counter, data = {}, []
         for r in picked:
