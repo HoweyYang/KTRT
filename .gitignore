@@ -33,3 +33,4 @@ tools/*
 !tools/make_manual.py
 !tools/make_extract_pdf.py
 !tools/make_logo.py
+!tools/make_phrasal_wordbook.py
