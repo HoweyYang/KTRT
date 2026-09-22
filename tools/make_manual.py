@@ -2,9 +2,9 @@
 r"""生成 KTRT 使用说明 PDF。
 
 用法（reportlab 在 Codex 运行时 python 里）：
-runtime_python tools/make_manual.py --version 0.2.0d --out "C:\桌面\KTRT使用说明_内测版.pdf" --test-key sk-xxx
-runtime_python tools/make_manual.py --version 0.2.0d --out "C:\桌面\KTRT使用说明.pdf"
-runtime_python tools/make_manual.py --version 0.2.0d --out frontend/static/docs/guide_usage.pdf
+runtime_python tools/make_manual.py --version 0.2.1 --out "C:\桌面\KTRT使用说明_内测版.pdf" --test-key sk-xxx
+runtime_python tools/make_manual.py --version 0.2.1 --out "C:\桌面\KTRT使用说明.pdf"
+runtime_python tools/make_manual.py --version 0.2.1 --out frontend/static/docs/guide_usage.pdf
 
 命名约定：**输出文件名不带版本号**，版本号只写在文档内容里（副标题与页脚）。
 每次发版重新生成时把 --version 换成新版本即可，文件名保持不变。
