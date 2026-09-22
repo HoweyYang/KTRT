@@ -2113,6 +2113,7 @@ function updDetailHtml(info) {
   }
   if (latest.patch) {
     rows.push(`<p class="muted">小更新：${escapeHtml(latest.patch.name)}`
+      + `（v${escapeHtml(latest.patch.version || '')}）`
       + ` · ${(latest.patch.size / 1024).toFixed(0)} KB</p>`);
   }
   const ap = info.applied_patch;
@@ -2268,8 +2269,9 @@ async function updInit() {
   try {
     if (sessionStorage.getItem('updShown') === '1') return;
   } catch (e) { /* 忽略 */ }
-  // 同版本的小更新已经装过就不再打扰
-  if (!latest.newer && info.applied_patch && info.applied_patch.version === latest.version) return;
+  // 同一份小更新已经装过就不再打扰（比对补丁自己的版本，不是 Release 版本）
+  const patchV = (info.patch && info.patch.version) || '';
+  if (!latest.newer && patchV && info.applied_patch && info.applied_patch.version === patchV) return;
   updPopup(info);
 }
 
