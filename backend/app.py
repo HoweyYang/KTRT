@@ -803,9 +803,13 @@ def _export_book_xlsx(conn, book, path):
 
 
 def _book_excel_path(conn, book):
-    """返回该词书可写的 Excel 路径：优先原文件，失效则落本地托管副本。"""
+    """返回该词书可写的 Excel 路径：原文件是 Excel 就直接写它，否则落本地托管副本。
+
+    CSV / 纯文本导入的书没有可写的 Excel 原文件（openpyxl 打不开 CSV，以前会直接报错），
+    统一改用本地副本，编辑才存得住。
+    """
     src = (book['source'] or '').strip()
-    if src and os.path.isfile(src):
+    if src and os.path.isfile(src) and os.path.splitext(src)[1].lower() in ('.xlsx', '.xlsm'):
         return src, False
     path = os.path.join(BOOK_FILES_DIR, _safe_filename(book['name']) + '.xlsx')
     _export_book_xlsx(conn, book, path)
@@ -904,9 +908,28 @@ class EditBody(BaseModel):
     root_words: str | None = None
 
 
+def _linked_words(conn, w):
+    """母子关系：蒙版词书的词带 source_ref 指回源词书（书id|List|序号）。
+
+    编辑任意一边，另一边跟着改 —— 两本书共用同一套版面，内容不该各说各话。
+    """
+    out = []
+    parts = (w['source_ref'] or '').strip().split('|')
+    if len(parts) == 3 and parts[0].isdigit():
+        row = conn.execute(
+            'SELECT * FROM words WHERE book_id=? AND list_no=? AND seq=?',
+            (int(parts[0]), int(parts[1]), int(parts[2]))).fetchone()
+        if row is not None:
+            out.append(row)
+    key = '%d|%d|%d' % (w['book_id'], w['list_no'], w['seq'])
+    for row in conn.execute('SELECT * FROM words WHERE source_ref=? AND id<>?', (key, w['id'])):
+        out.append(row)
+    return out
+
+
 @app.post('/api/word/{word_id}/edit')
 def edit_word(word_id: int, body: EditBody):
-    """编辑词条：同步本地库，并回写这个词书 Excel 的对应行。"""
+    """编辑词条：同步本地库 + 回写这个词书 Excel；蒙版书与源词书是母子关系，一起改。"""
     changed = {}
     for k in EDIT_FIELDS:
         v = getattr(body, k)
@@ -923,24 +946,35 @@ def edit_word(word_id: int, body: EditBody):
             if w is None:
                 raise HTTPException(404, '词条不存在')
             book = conn.execute('SELECT * FROM word_books WHERE id=?', (w['book_id'],)).fetchone()
-            conn.execute(
-                'UPDATE words SET ' + ', '.join(f'{k}=?' for k in changed) + ' WHERE id=?',
-                (*changed.values(), word_id),
-            )
+            set_sql = ', '.join(f'{k}=?' for k in changed)
+            conn.execute('UPDATE words SET ' + set_sql + ' WHERE id=?', (*changed.values(), word_id))
+            linked = _linked_words(conn, w)
+            for lw in linked:
+                conn.execute('UPDATE words SET ' + set_sql + ' WHERE id=?', (*changed.values(), lw['id']))
+
             excel = {'updated': False, 'created': False, 'path': '', 'message': ''}
-            if book is not None and book['name'] != '外部单词收藏册':
+            synced = []
+            for row, main in [(w, True)] + [(lw, False) for lw in linked]:
+                bk = book if main else conn.execute(
+                    'SELECT * FROM word_books WHERE id=?', (row['book_id'],)).fetchone()
+                if bk is None or bk['name'] == '外部单词收藏册':
+                    continue
+                item = {'book': bk['name'], 'ok': False, 'path': '', 'created': False, 'message': ''}
                 try:
-                    path, created = _book_excel_path(conn, book)
-                    excel['path'] = path
-                    excel['created'] = created
-                    ok, msg = _write_excel_entry(path, w['word'], w['list_no'], changed)
-                    excel['updated'] = ok
-                    excel['message'] = msg
+                    path, created = _book_excel_path(conn, bk)
+                    ok, msg = _write_excel_entry(path, row['word'], row['list_no'], changed)
+                    item.update({'ok': ok, 'path': path, 'created': created, 'message': msg})
                 except PermissionError:
-                    excel['message'] = '词书 Excel 正被占用（若已在 Excel 里打开请先关闭），已只改本地库'
+                    item['message'] = '词书 Excel 正被占用（若已在 Excel 里打开请先关闭），已只改本地库'
                 except Exception as e:
-                    excel['message'] = '回写词书失败：' + str(e)
-    return {'ok': True, 'word_id': word_id, 'changed': sorted(changed), 'excel': excel}
+                    item['message'] = '回写词书失败：' + str(e)
+                if main:
+                    excel = {'updated': item['ok'], 'created': item['created'],
+                             'path': item['path'], 'message': item['message']}
+                else:
+                    synced.append(item)
+    return {'ok': True, 'word_id': word_id, 'changed': sorted(changed),
+            'excel': excel, 'synced': synced}
 
 
 @app.delete('/api/books/{book_id}')

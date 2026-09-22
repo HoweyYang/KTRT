@@ -969,10 +969,14 @@ async function saveEdit() {
       body: JSON.stringify(payload),
     });
     const ex = r.excel || {};
+    const synced = (r.synced || []).filter((s) => s.ok).map((s) => '《' + s.book + '》').join('');
+    const syncMsg = (r.synced || []).length
+      ? (synced ? '，并同步到 ' + synced : '，母子词书同步失败（' + ((r.synced[0] || {}).message || '') + '）')
+      : '';
     await loadCard();
-    if (ex.updated) toast('已保存，词书 Excel 已更新');
-    else if (ex.message) toast('已存入本地库；' + ex.message);
-    else toast('已存入本地库');
+    if (ex.updated) toast('已保存，词书 Excel 已更新' + syncMsg);
+    else if (ex.message) toast('已存入本地库；' + ex.message + syncMsg);
+    else toast('已存入本地库' + syncMsg);
   } catch (e) {
     toast('保存失败：' + e.message);
     btn.disabled = false;
