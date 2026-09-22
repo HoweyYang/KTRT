@@ -47,6 +47,7 @@ def init_db():
                   antonyms TEXT DEFAULT '',
                   root_words TEXT DEFAULT '',
                   phrasal_keys TEXT DEFAULT '',
+                  source_ref TEXT DEFAULT '',
                   UNIQUE(book_id, list_no, seq)
                 );
                 CREATE INDEX IF NOT EXISTS idx_words_book ON words(book_id, list_no, seq);
@@ -128,6 +129,9 @@ def init_db():
             cols = {r[1] for r in conn.execute('PRAGMA table_info(words)')}
             if 'phrasal_keys' not in cols:
                 conn.execute("ALTER TABLE words ADD COLUMN phrasal_keys TEXT DEFAULT ''")
+            # 旧库补列：该词来自哪本词书的哪个位置（词性筛选生成的定向词书用，格式 书id|List|序号）
+            if 'source_ref' not in cols:
+                conn.execute("ALTER TABLE words ADD COLUMN source_ref TEXT DEFAULT ''")
 
 
 def get_setting(key, default=None):

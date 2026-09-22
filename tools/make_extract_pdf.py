@@ -2,7 +2,7 @@
 r"""生成「把单词书变成可导入的 Excel」说明 PDF（程序内 docs/guide_extract.pdf）。
 
 用法（reportlab 在 Codex 运行时 python 里）：
-  runtime_python tools/make_extract_pdf.py --version 0.2.0b --out frontend/static/docs/guide_extract.pdf
+  runtime_python tools/make_extract_pdf.py --version 0.2.1 --out frontend/static/docs/guide_extract.pdf
 
 命名约定：输出文件名不带版本号，版本号只在页脚；发版时换 --version 重新生成即可。
 """
