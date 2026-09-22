@@ -253,12 +253,65 @@ def test_patch_version_source():
         updater.VERSION = real_ver
 
 
+def test_mask_edit_syncs_source_book():
+    """蒙版词书与源词书是母子关系：改任意一边，另一边跟着改（DB 与两边 Excel 都跟上）。"""
+    import openpyxl
+    from backend import app as appmod, pos as poslib
+
+    path = os.path.join(TMP, 'mask_src.csv')
+    write_csv(path, [['apple', 'n. 苹果'], ['run', 'v. 跑'], ['banana', 'n. 香蕉']])
+    importer.import_book(path)
+    with db.get_conn() as conn:
+        src = conn.execute('SELECT * FROM word_books ORDER BY id DESC LIMIT 1').fetchone()
+        mother = conn.execute("SELECT * FROM words WHERE book_id=? AND word='apple'",
+                              (src['id'],)).fetchone()
+
+    built = poslib.build(src['id'], None, ['n'], '蒙版测试书')
+    with db.get_conn() as conn:
+        child = conn.execute('SELECT * FROM words WHERE book_id=? AND word=\'apple\'',
+                             (built['book_id'],)).fetchone()
+    check('蒙版词条记着源书位置（书id|List|序号）',
+          (child['source_ref'] or '') == '%d|%d|%d' % (src['id'], mother['list_no'], mother['seq']),
+          child['source_ref'])
+
+    appmod.edit_word(child['id'], appmod.EditBody(meaning='n. 苹果（蒙版改的）'))
+    with db.get_conn() as conn:
+        m2 = conn.execute('SELECT meaning FROM words WHERE id=?', (mother['id'],)).fetchone()['meaning']
+    check('改蒙版 → 源词书同一条跟着改', m2 == 'n. 苹果（蒙版改的）', m2)
+
+    appmod.edit_word(mother['id'], appmod.EditBody(meaning='n. 苹果（源书改的）'))
+    with db.get_conn() as conn:
+        c2 = conn.execute('SELECT meaning FROM words WHERE id=?', (child['id'],)).fetchone()['meaning']
+    check('改源词书 → 蒙版同一条跟着改', c2 == 'n. 苹果（源书改的）', c2)
+
+    def row_of(book_id, word):
+        with db.get_conn() as conn:
+            bk = conn.execute('SELECT * FROM word_books WHERE id=?', (book_id,)).fetchone()
+        p = os.path.join(TMP, 'wordbooks', appmod._safe_filename(bk['name']) + '.xlsx')
+        if not os.path.exists(p):
+            return None
+        ws = openpyxl.load_workbook(p).active
+        for row in ws.iter_rows(values_only=True):
+            cells = [str(v) for v in row if v is not None]
+            if word in cells:
+                return cells
+        return None
+
+    check('源词书的 Excel 回写了改动',
+          (row_of(src['id'], 'apple') or ['']) and any('源书改的' in c for c in row_of(src['id'], 'apple')),
+          row_of(src['id'], 'apple'))
+    check('蒙版词书的 Excel 也回写了改动',
+          (row_of(built['book_id'], 'apple') or ['']) and any('源书改的' in c for c in row_of(built['book_id'], 'apple')),
+          row_of(built['book_id'], 'apple'))
+
+
 def main():
     try:
         test_reimport_keeps_personal_state()
         test_patch_is_atomic()
         test_patch_notification_rules()
         test_patch_version_source()
+        test_mask_edit_syncs_source_book()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)
     print('\n%d 项通过，%d 项失败' % (len(PASSED), len(FAILED)))
