@@ -3,9 +3,13 @@
 
 词性写在释义开头，形如「n. 减少，减轻」「vi. 停留…\\nvt. 忍受…」；
 一个词可能命中多个词性，所以它会同时落进多个筛选桶（多义即多重对应）。
-ECDICT 的 pos 列实测全为空，所以只能从释义文本解析。
+ECDICT 的 pos 列实测全为空，只能从文本解析；有些词书（如雅思）的释义是纯中文
+（"岩浆"），本身没标词性，这时去离线词典借一把 —— ECDICT 的 translation /
+definition 同样带 n. / a. / vt. 这类标记。
 """
+import os
 import re
+import sqlite3
 
 from . import db
 
@@ -29,14 +33,58 @@ _TAG_RE = re.compile(
 
 def pos_of(meaning):
     """返回该释义涉及的规范词性（按 ORDER 排序，认不出则归 other）。"""
-    found = set()
-    for m in _TAG_RE.finditer(meaning or ''):
-        key = _ALIAS.get(m.group(1).lower())
-        if key:
-            found.add(key)
+    found = _tags_from_text(meaning)
     if not found:
         return ['other']
     return [k for k in ORDER if k in found]
+
+
+def pos_of_word(meaning, word):
+    """先看释义，释义没标就去离线词典借（雅思这类纯中文释义靠这个补）；都没有才算 other。"""
+    found = _tags_from_text(meaning) or _POS_CACHE.get((word or '').strip().lower(), set())
+    if not found:
+        return ['other']
+    return [k for k in ORDER if k in found]
+
+
+def _tags_from_text(text):
+    """从一段文本里抽词性标记（n. / a. / vt. 等），返回规范 key 集合。"""
+    found = set()
+    for m in _TAG_RE.finditer(text or ''):
+        key = _ALIAS.get(m.group(1).lower())
+        if key:
+            found.add(key)
+    return found
+
+
+_POS_CACHE = {}      # word → 从离线词典借来的词性集合（空集合 = 查过，没有）
+
+
+def _load_dict_pos(rows):
+    """释义没标词性的词，批量去离线词典借（一次查一批，别逐词开连接）。"""
+    need = set()
+    for r in rows:
+        if _tags_from_text(r['meaning']):
+            continue
+        key = (r['word'] or '').strip().lower()
+        if key and key not in _POS_CACHE:
+            need.add(key)
+    if not need or not os.path.exists(db.DICT_DB_PATH):
+        return
+    words = sorted(need)
+    try:
+        conn = sqlite3.connect(db.DICT_DB_PATH)
+        for i in range(0, len(words), 800):
+            chunk = words[i:i + 800]
+            sql = ('SELECT word, translation, definition FROM dict WHERE word IN (%s)'
+                   % ','.join('?' * len(chunk)))
+            for word, translation, definition in conn.execute(sql, chunk):
+                _POS_CACHE[word] = _tags_from_text(translation) or _tags_from_text(definition)
+        conn.close()
+    except Exception:
+        return
+    for w in words:
+        _POS_CACHE.setdefault(w, set())     # 词典里也没有：记空，下次不再查
 
 
 def _rows(conn, book_id, list_no=None):
@@ -53,10 +101,11 @@ def stats(book_id, list_no=None):
     """统计某本词书（可选某个 List）里各词性的词条数。"""
     with db.get_conn() as conn:
         rows = _rows(conn, book_id, list_no)
+    _load_dict_pos(rows)
     counts = {k: 0 for k in ORDER}
     multi = 0
     for r in rows:
-        hit = pos_of(r['meaning'])
+        hit = pos_of_word(r['meaning'], r['word'])
         if len(hit) > 1:
             multi += 1
         for k in hit:
@@ -83,7 +132,9 @@ def build(book_id, list_no, poss, name=''):
         src = conn.execute('SELECT id, name, language FROM word_books WHERE id=?', (book_id,)).fetchone()
         if src is None:
             raise RuntimeError('词书不存在')
-        picked = [r for r in _rows(conn, book_id, list_no) if want & set(pos_of(r['meaning']))]
+        rows = _rows(conn, book_id, list_no)
+        _load_dict_pos(rows)
+        picked = [r for r in rows if want & set(pos_of_word(r['meaning'], r['word']))]
         if not picked:
             raise RuntimeError('这个范围内没有符合条件的词')
         book_name = (name or '').strip() or (src['name'] + '·' + '+'.join(LABELS[p] for p in poss))
