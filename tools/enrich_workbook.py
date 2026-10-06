@@ -10,7 +10,7 @@ KTRT 词库补全工具
 用法示例：
     python tools/enrich_workbook.py --file wordbooks/IELTS_Wordbook.xlsx --book 雅思词汇真经 --update-db
     python tools/enrich_workbook.py --file wordbooks/KAOYAN_Wordbook.xlsx --book 考研英语词汇词根+联想记忆法 --update-db
-    python tools/enrich_workbook.py --file xxx.xlsx --book 外部单词收藏册 --update-db
+    python tools/enrich_workbook.py --file xxx.xlsx --book 自定义单词收藏册 --update-db
 
 说明：
 - 已含中文的条目原样保留，不会被重复翻译。

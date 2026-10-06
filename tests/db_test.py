@@ -331,6 +331,28 @@ def test_mask_edit_syncs_source_book():
           row_of(built['book_id'], 'apple'))
 
 
+def test_default_book_rename():
+    """旧库的默认收藏册要跟着改名；已经有新名字时不乱动。"""
+    with db.get_conn() as conn:
+        conn.execute("INSERT INTO word_books(name, language, source) VALUES('外部单词收藏册','英语','')")
+        legacy_id = conn.execute("SELECT id FROM word_books WHERE name='外部单词收藏册'").fetchone()['id']
+    db.init_db()
+    with db.get_conn() as conn:
+        names = [r['name'] for r in conn.execute('SELECT name FROM word_books')]
+    check('旧名自动改成「自定义单词收藏册」',
+          '外部单词收藏册' not in names and '自定义单词收藏册' in names, names)
+
+    # 已经有新名字时，旧的同名行不该被合并掉（用户自己导入过同名书的情况）
+    with db.get_conn() as conn:
+        conn.execute("INSERT INTO word_books(name, language, source) VALUES('外部单词收藏册','英语','')")
+    db.init_db()
+    with db.get_conn() as conn:
+        names = [r['name'] for r in conn.execute('SELECT name FROM word_books')]
+        conn.execute('DELETE FROM word_books WHERE id=?', (legacy_id,))
+        conn.execute("DELETE FROM word_books WHERE name='外部单词收藏册'")
+    check('已有新名字时旧名行保持原样', '外部单词收藏册' in names, names)
+
+
 def main():
     try:
         test_reimport_keeps_personal_state()
@@ -339,6 +361,7 @@ def main():
         test_patch_version_source()
         test_mask_edit_syncs_source_book()
         test_pos_falls_back_to_dictionary()
+        test_default_book_rename()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)
     print('\n%d 项通过，%d 项失败' % (len(PASSED), len(FAILED)))
