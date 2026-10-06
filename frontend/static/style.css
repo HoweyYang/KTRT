@@ -802,6 +802,15 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .btn.active { background: var(--green); border-color: var(--green); color: var(--active-ink, #fff); }
 .btn.active-fav { background: var(--amber); border-color: var(--amber); color: var(--active-ink, #fff); }
 .btn.danger { color: var(--red); }
+/* 只剩图标按钮（删除 / 下载）：收紧内边距并让图标居中，不留文字空隙 */
+.btn.icon-only {
+  padding: 8px;
+  line-height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn.icon-only svg { display: block; }
 
 .sentences { margin-top: 22px; }
 .sentences h3 { font-size: 16px; margin: 0 0 10px; }
@@ -816,7 +825,8 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .sentence-item .en mark { background: var(--mark); color: var(--mark-ink, inherit); border-radius: 3px; padding: 0 2px; }
 .sentence-item .zh { color: var(--muted); font-size: 13px; margin-top: 4px; }
 .sentence-item .meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
-.sentence-item .del { float: right; color: var(--red); background: none; border: none; cursor: pointer; font-size: 13px; }
+.sentence-item .del { float: right; color: var(--red); background: none; border: none; cursor: pointer; padding: 2px; line-height: 0; }
+.sentence-item .del svg { display: block; }
 .make-sentence { display: flex; gap: 8px; }
 #sentence-prompt { flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 14px; }
 
