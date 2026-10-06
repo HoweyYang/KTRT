@@ -1666,7 +1666,9 @@ async function loadPosStats() {
     const s = await api(`/api/pos/stats?book_id=${bookId}` + (listNo ? `&list_no=${listNo}` : ''));
     if (!s.items.length) { box.innerHTML = '<span class="muted">这本书没解析出词性</span>'; return; }
     box.innerHTML = `<span class="muted">共 ${s.total} 词 · 其中 ${s.multi} 个一词多性</span>`
-      + s.items.map((i) => `<label class="pos-item"><input type="checkbox" value="${i.key}">`
+      + s.items.map((i) => `<label class="pos-item"${i.key === 'other'
+        ? ' data-tip="释义里没标词性、离线词典也没查到——多为专有名词、词组或拼写变体。"' : ''}>`
+        + `<input type="checkbox" value="${i.key}">`
         + ` ${escapeHtml(i.label)} <b>${i.count}</b></label>`).join('');
   } catch (e) {
     box.innerHTML = `<span class="muted">${escapeHtml(e.message)}</span>`;
