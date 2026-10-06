@@ -253,6 +253,32 @@ def test_patch_version_source():
         updater.VERSION = real_ver
 
 
+def test_pos_falls_back_to_dictionary():
+    """释义是纯中文（雅思那种"岩浆"）时，词性去离线词典借；词典也没有才算「其他」。"""
+    import sqlite3
+    from backend import pos as poslib
+
+    conn = sqlite3.connect(os.path.join(TMP, 'dictionary.db'))
+    conn.execute('CREATE TABLE IF NOT EXISTS dict (word TEXT PRIMARY KEY, phonetic TEXT, '
+                 'definition TEXT, translation TEXT, pos TEXT, exchange TEXT, collins TEXT, '
+                 'oxford TEXT, tag TEXT, bnc TEXT, frq TEXT)')
+    conn.execute("INSERT OR REPLACE INTO dict(word, translation, definition) "
+                 "VALUES('magma', 'n. 岩浆, 糊剂', 'n. molten rock')")
+    conn.commit()
+    conn.close()
+
+    path = os.path.join(TMP, 'ielts_like.csv')
+    write_csv(path, [['magma', '岩浆'], ['zzznotindict', '某种东西']])
+    importer.import_book(path)
+    with db.get_conn() as conn:
+        bid = conn.execute('SELECT id FROM word_books ORDER BY id DESC LIMIT 1').fetchone()['id']
+
+    poslib._POS_CACHE.clear()
+    got = {i['key']: i['count'] for i in poslib.stats(bid)['items']}
+    check('纯中文释义的词性从离线词典借到（岩浆 → 名词）', got.get('n') == 1, got)
+    check('词典也查不到才算「其他」', got.get('other') == 1, got)
+
+
 def test_mask_edit_syncs_source_book():
     """蒙版词书与源词书是母子关系：改任意一边，另一边跟着改（DB 与两边 Excel 都跟上）。"""
     import openpyxl
@@ -312,6 +338,7 @@ def main():
         test_patch_notification_rules()
         test_patch_version_source()
         test_mask_edit_syncs_source_book()
+        test_pos_falls_back_to_dictionary()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)
     print('\n%d 项通过，%d 项失败' % (len(PASSED), len(FAILED)))
