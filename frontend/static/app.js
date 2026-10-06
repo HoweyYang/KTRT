@@ -14,6 +14,8 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 const DEFAULT_BOOK = '自定义单词收藏册';    // 默认收藏册：不可删除，导入页固定第一行
+const ICON_TRASH = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+const ICON_DOWNLOAD = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 const SPEAKER_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>';
 
 function applyTheme(theme) {
@@ -841,7 +843,7 @@ function renderSentences(list) {
   }
   $('sentence-list').innerHTML = list.map((s) => `
     <div class="sentence-item">
-      <button class="del" data-del="${s.id}">删除</button>
+      <button class="del" data-del="${s.id}" data-tip="删除这句造句（不可恢复）。">${ICON_TRASH}</button>
       <div class="en">${highlightWord(s.sentence, state.card.word.word, state.card.word.root_words)}</div>
       <div class="zh">${escapeHtml(s.translation || '')}</div>
       <div class="meta">${escapeHtml(s.prompt || '')} · ${s.created_at || ''}</div>
@@ -1304,7 +1306,7 @@ function renderStormList() {
             : '<span class="pos-none">不在词书</span>')}
       </span>
       <button class="btn" data-open="${s.id}" data-tip="展开该词的风暴词卡全文；生成后离线也可查看。">查看</button>
-      <button class="btn danger" data-del="${s.id}" data-tip="删除这张风暴词卡；不影响任何单词书内容。">删除</button>
+      <button class="btn danger icon-only" data-del="${s.id}" data-tip="删除这张风暴词卡；不影响任何单词书内容。">${ICON_TRASH}</button>
     </div>`).join('');
   el.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => openStorm(Number(b.dataset.open))));
   wirePosChips(el);
@@ -1575,7 +1577,7 @@ function renderManage(rows) {
           <td>${escapeHtml(r.phonetic || '')}</td>
           <td>${tags.join('')}</td>
           <td>${r.sent_count}${r.sent_count ? ` <a href="#" data-sees="${r.id}">查看</a>` : ''}</td>
-          <td><button class="btn danger" data-delstatus="${r.id}">删除记录</button></td>
+          <td><button class="btn danger icon-only" data-delstatus="${r.id}" data-tip="删除这个单词的进度 / 收藏 / 造句状态记录（已收藏的句子不受影响）。">${ICON_TRASH}</button></td>
         </tr>
         <tr class="sent-row hidden" data-sentrow="${r.id}"><td colspan="6" id="sent-${r.id}"></td></tr>`;
       }
@@ -1600,7 +1602,7 @@ function renderManage(rows) {
       if (row.classList.contains('hidden')) return;
       const sents = await api('/api/sentences?word_id=' + id).catch(() => null);
       cell.innerHTML = sents && sents.length
-        ? sents.map((s) => `<div class="sentence-line">${escapeHtml(s.sentence)}<button class="btn danger" data-sdel="${s.id}">删除</button></div>`).join('')
+        ? sents.map((s) => `<div class="sentence-line">${escapeHtml(s.sentence)}<button class="btn danger icon-only" data-sdel="${s.id}" data-tip="删除这句造句（不可恢复）。">${ICON_TRASH}</button></div>`).join('')
         : '（句子加载失败）';
       cell.querySelectorAll('[data-sdel]').forEach((b) => {
         b.addEventListener('click', async () => {
@@ -1778,7 +1780,7 @@ function renderBookList() {
       <span><b>${escapeHtml(b.name)}</b>（${b.language}，${b.word_count} 词）</span>
       ${b.name === DEFAULT_BOOK
         ? '<span class="tag learn">默认</span>'
-        : `<button class="btn danger" data-delbook="${b.id}" data-name="${escapeAttr(b.name)}">删除</button>`}
+        : `<button class="btn danger icon-only" data-delbook="${b.id}" data-name="${escapeAttr(b.name)}" data-tip="删除这本词书：它的进度、收藏与造句会一并删除，不可恢复。">${ICON_TRASH}</button>`}
     </div>`).join('');
   box.querySelectorAll('[data-delbook]').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -1853,7 +1855,7 @@ function renderResources() {
   box.innerHTML = BOOK_RESOURCES.map((b) => `
     <div class="resource-item">
       <span>${b.name}</span>
-      <a class="btn" href="${REPO_URL}/raw/main/wordbooks/${b.file}">下载</a>
+      <a class="btn icon-only" href="${REPO_URL}/raw/main/wordbooks/${b.file}" data-tip="下载《${b.name}》的 Excel，下载后回到上方导入。">${ICON_DOWNLOAD}</a>
     </div>`).join('') + `
     <div class="resource-item">
       <span>词书目录（GitHub 仓库，持续补充）</span>
