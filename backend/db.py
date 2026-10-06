@@ -132,6 +132,12 @@ def init_db():
             # 旧库补列：该词来自哪本词书的哪个位置（词性筛选生成的定向词书用，格式 书id|List|序号）
             if 'source_ref' not in cols:
                 conn.execute("ALTER TABLE words ADD COLUMN source_ref TEXT DEFAULT ''")
+            # 旧库改名：默认收藏册「外部单词收藏册」→「自定义单词收藏册」
+            renamed = conn.execute("SELECT id FROM word_books WHERE name=?",
+                                   ('自定义单词收藏册',)).fetchone()
+            if renamed is None:
+                conn.execute("UPDATE word_books SET name=? WHERE name=?",
+                             ('自定义单词收藏册', '外部单词收藏册'))
 
 
 def get_setting(key, default=None):
