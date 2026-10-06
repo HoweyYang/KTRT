@@ -13,6 +13,7 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+const DEFAULT_BOOK = '自定义单词收藏册';    // 默认收藏册：不可删除，导入页固定第一行
 const SPEAKER_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>';
 
 function applyTheme(theme) {
@@ -1038,7 +1039,7 @@ function cdWireButtons() {
   const addBtn = $('cd-add');
   if (addBtn) addBtn.addEventListener('click', async () => {
     const phrase = !!(cdState && cdState.isPhrase);
-    const idleLabel = phrase ? '＋ AI 翻译并加入收藏册' : '＋ 添加到外部单词收藏册';
+    const idleLabel = phrase ? '＋ AI 翻译并加入收藏册' : '＋ 添加到自定义单词收藏册';
     addBtn.disabled = true;
     addBtn.textContent = '生成中…';
     try {
@@ -1046,8 +1047,8 @@ function cdWireButtons() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ word: cdWordForQuery() }),
       });
-      toast(phrase ? '已用 AI 翻译并加入收藏册' : '已按原形添加到「外部单词收藏册」');
-      $('cd-result').innerHTML = `<span class="ok">已加入「外部单词收藏册」：<b>${escapeHtml(res.word || cdWordForQuery())}</b>（${phrase ? 'AI 翻译' : '按原形'}）；当前背诵进度不受影响，可在书单里随时切换到它。</span>`;
+      toast(phrase ? '已用 AI 翻译并加入收藏册' : '已按原形添加到「自定义单词收藏册」');
+      $('cd-result').innerHTML = `<span class="ok">已加入「自定义单词收藏册」：<b>${escapeHtml(res.word || cdWordForQuery())}</b>（${phrase ? 'AI 翻译' : '按原形'}）；当前背诵进度不受影响，可在书单里随时切换到它。</span>`;
       await refreshBooksUI();
     } catch (e) {
       $('cd-result').innerHTML = `<span class="err">${e.message}</span>`;
@@ -1137,10 +1138,10 @@ async function cdLookup() {
     } else {
       html += '<br><span style="color:var(--muted)">'
         + (cdState.isPhrase
-          ? '词书未收录该短语；可用 AI 按组成词翻译并加入「外部单词收藏册」'
-          : '不在任何已导入词书中（会按原形添加到「外部单词收藏册」）')
+          ? '词书未收录该短语；可用 AI 按组成词翻译并加入「自定义单词收藏册」'
+          : '不在任何已导入词书中（会按原形添加到「自定义单词收藏册」）')
         + '</span>'
-        + `<br><button id="cd-add" class="btn primary">${cdState.isPhrase ? '＋ 加入词库（只存释义）' : '＋ 添加到外部单词收藏册'}</button>`;
+        + `<br><button id="cd-add" class="btn primary">${cdState.isPhrase ? '＋ 加入词库（只存释义）' : '＋ 添加到自定义单词收藏册'}</button>`;
     }
     out.innerHTML = html;
     cdWireButtons();
@@ -1169,7 +1170,7 @@ async function cdLookup() {
 function cdAppendSaveAiButton(text) {
   const out = $('cd-result');
   if (!cdState || !text || (cdState.books && cdState.books.length)) return;
-  out.innerHTML += '<div style="margin-top:8px"><button id="cd-save-ai" class="btn primary" data-tip="把这份 AI 整理结果作为词条写入「外部单词收藏册」，完整文本同时存入该词笔记。">＋ 把这份 AI 释义加入外部收藏册</button><span id="cd-save-ai-msg" style="margin-left:8px;font-size:13px"></span></div>';
+  out.innerHTML += '<div style="margin-top:8px"><button id="cd-save-ai" class="btn primary" data-tip="把这份 AI 整理结果作为词条写入「自定义单词收藏册」，完整文本同时存入该词笔记。">＋ 把这份 AI 释义加入自定义收藏册</button><span id="cd-save-ai-msg" style="margin-left:8px;font-size:13px"></span></div>';
   $('cd-save-ai').addEventListener('click', async () => {
     const b = $('cd-save-ai');
     b.disabled = true;
@@ -1185,7 +1186,7 @@ function cdAppendSaveAiButton(text) {
     } catch (e) {
       $('cd-save-ai-msg').innerHTML = `<span class="err">${escapeHtml(e.message)}</span>`;
       b.disabled = false;
-      b.textContent = '＋ 把这份 AI 释义加入外部收藏册';
+      b.textContent = '＋ 把这份 AI 释义加入自定义收藏册';
     }
   });
 }
@@ -1766,10 +1767,16 @@ function renderBookList() {
     box.innerHTML = '<p style="color:var(--muted)">暂无单词书，先导入一本吧。</p>';
     return;
   }
-  box.innerHTML = state.books.map((b) => `
+  // 默认收藏册固定第一行（它是默认书，不该夹在导入的书中间）
+  const books = [...state.books].sort((a, b) => {
+    if (a.name === DEFAULT_BOOK) return -1;
+    if (b.name === DEFAULT_BOOK) return 1;
+    return 0;
+  });
+  box.innerHTML = books.map((b) => `
     <div class="book-row">
       <span><b>${escapeHtml(b.name)}</b>（${b.language}，${b.word_count} 词）</span>
-      ${b.name === '外部单词收藏册'
+      ${b.name === DEFAULT_BOOK
         ? '<span class="tag learn">默认</span>'
         : `<button class="btn danger" data-delbook="${b.id}" data-name="${escapeAttr(b.name)}">删除</button>`}
     </div>`).join('');

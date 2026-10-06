@@ -957,7 +957,7 @@ def edit_word(word_id: int, body: EditBody):
             for row, main in [(w, True)] + [(lw, False) for lw in linked]:
                 bk = book if main else conn.execute(
                     'SELECT * FROM word_books WHERE id=?', (row['book_id'],)).fetchone()
-                if bk is None or bk['name'] == '外部单词收藏册':
+                if bk is None or bk['name'] == '自定义单词收藏册':
                     continue
                 item = {'book': bk['name'], 'ok': False, 'path': '', 'created': False, 'message': ''}
                 try:
@@ -984,8 +984,8 @@ def delete_book(book_id: int):
             book = conn.execute('SELECT * FROM word_books WHERE id=?', (book_id,)).fetchone()
             if book is None:
                 raise HTTPException(404, '单词书不存在')
-            if book['name'] == '外部单词收藏册':
-                raise HTTPException(400, '外部单词收藏册 为默认单词书，不可删除')
+            if book['name'] == '自定义单词收藏册':
+                raise HTTPException(400, '自定义单词收藏册 为默认单词书，不可删除')
             conn.execute('DELETE FROM word_books WHERE id=?', (book_id,))
     return {'ok': True, 'deleted': book['name']}
 
@@ -1831,7 +1831,7 @@ def custom_dict_lookup(body: CustomDictBody):
         'dict': dict_result,
         'in_books': in_books,
         'favorite': favorite,
-        'in_fav_book': any(b['book_name'] == '外部单词收藏册' for b in in_books),
+        'in_fav_book': any(b['book_name'] == '自定义单词收藏册' for b in in_books),
     }
 
 
@@ -1853,12 +1853,12 @@ def custom_dict_favorite(body: CustomDictBody):
 
 
 def _insert_external_word(word, phon, meaning, colloc, phras, syns, ants, roots, note_text=''):
-    """把词条写入「外部单词收藏册」：每 50 词一个 List；可选把完整 AI 文本存入笔记。"""
+    """把词条写入「自定义单词收藏册」：每 50 词一个 List；可选把完整 AI 文本存入笔记。"""
     with db._lock:
         with db.get_conn() as conn:
-            book = conn.execute("SELECT id FROM word_books WHERE name='外部单词收藏册'").fetchone()
+            book = conn.execute("SELECT id FROM word_books WHERE name='自定义单词收藏册'").fetchone()
             if book is None:
-                cur = conn.execute("INSERT INTO word_books(name, language, source) VALUES('外部单词收藏册','英语','')")
+                cur = conn.execute("INSERT INTO word_books(name, language, source) VALUES('自定义单词收藏册','英语','')")
                 book_id = cur.lastrowid
             else:
                 book_id = book['id']
@@ -1886,7 +1886,7 @@ def _insert_external_word(word, phon, meaning, colloc, phras, syns, ants, roots,
                     'updated_at=excluded.updated_at',
                     (_note_key(word), note_text),
                 )
-    return {'book_name': '外部单词收藏册', 'list_no': list_no, 'seq': seq, 'word_id': wid}
+    return {'book_name': '自定义单词收藏册', 'list_no': list_no, 'seq': seq, 'word_id': wid}
 
 
 class SaveAiBody(BaseModel):
@@ -1914,7 +1914,7 @@ def _parse_ai_sections(text):
 
 @app.post('/api/custom-dict/save-ai')
 def custom_dict_save_ai(body: SaveAiBody):
-    """把 AI 整理/翻译的结果直接存入「外部单词收藏册」，不重复调用 AI。"""
+    """把 AI 整理/翻译的结果直接存入「自定义单词收藏册」，不重复调用 AI。"""
     word = (body.word or '').strip()
     text = (body.ai_text or '').strip()
     if not word or len(word) > 200:

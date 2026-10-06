@@ -1,6 +1,7 @@
 """初始化默认词书与 ECDICT 词典（幂等）。"""
 import csv
 import os
+import shutil
 import sqlite3
 import sys
 
@@ -10,12 +11,18 @@ from backend import db
 from backend.importer import parse_xlsx
 
 
-DEFAULT_BOOK = '外部单词收藏册'
+DEFAULT_BOOK = '自定义单词收藏册'
 
 
 def seed_default_book():
-    """确保默认「外部单词收藏册」存在（空书也算存在）。"""
+    """确保默认「自定义单词收藏册」存在（空书也算存在）。"""
     db.init_db()
+    # 旧版把这本叫「外部单词收藏册」，本地托管的 Excel 副本跟着改名，别留一份孤儿文件
+    book_dir = os.path.join(db.DATA_DIR, 'wordbooks')
+    old_copy = os.path.join(book_dir, '外部单词收藏册.xlsx')
+    new_copy = os.path.join(book_dir, '自定义单词收藏册.xlsx')
+    if os.path.exists(old_copy) and not os.path.exists(new_copy):
+        shutil.move(old_copy, new_copy)
     with db.get_conn() as conn:
         exists = conn.execute('SELECT id FROM word_books WHERE name=?', (DEFAULT_BOOK,)).fetchone()
         if exists:
