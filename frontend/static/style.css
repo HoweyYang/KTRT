@@ -367,12 +367,26 @@ body[data-page="cyber"][data-theme="dark"] .wordmark b {
   font-family: Impact, "Haettenschweiler", "Bahnschrift", "Arial Black", sans-serif;
   font-style: italic;
   font-weight: 900;
+  font-size: 25px;
   letter-spacing: .02em;
   transform: skewX(-7deg);
   color: var(--accent);
   text-shadow: 3px 2px 0 rgba(194, 67, 71, .9), -2px -2px 0 rgba(53, 182, 224, .6);
 }
-body[data-page="cyber"][data-theme="dark"] .wordmark i { color: var(--accent-2); letter-spacing: .28em; }
+/* 三种科幻配色统一：中文名隐藏，副标题用英文全称（和霓虹一致） */
+body[data-page="cyber"] .wordmark i { display: none; }
+body[data-page="cyber"] .wordmark u {
+  display: inline;
+  font-size: 9px;
+  letter-spacing: .34em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+body[data-page="cyber"][data-theme="dark"] .wordmark u { color: var(--accent); }
+body[data-page="cyber"][data-theme="dark-blue"] .wordmark u {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  color: var(--accent);
+}
 /* ③ 矩阵 · 黑客帝国：等宽、绿色数字雨渐变 + 光晕 */
 body[data-page="cyber"][data-theme="dark-blue"] .wordmark b {
   font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
@@ -383,11 +397,6 @@ body[data-page="cyber"][data-theme="dark-blue"] .wordmark b {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   filter: drop-shadow(0 0 12px rgba(0, 255, 65, .55));
-}
-body[data-page="cyber"][data-theme="dark-blue"] .wordmark i {
-  font-family: "Cascadia Mono", Consolas, monospace;
-  color: var(--accent);
-  letter-spacing: .2em;
 }
 /* 词条大标题：轻微色散，保持可读 */
 body[data-page="cyber"] .word {
@@ -567,10 +576,33 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .mg-label { color: var(--muted); font-weight: 700; font-size: 12px; min-width: 52px; }
 .manage-group select, .manage-group input { padding: 6px 8px; }
 .manage-group .btn { padding: 5px 10px; font-size: 13px; }
-.pos-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--th); margin-bottom: 8px; font-size: 13px; }
-.pos-item { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: var(--ink); font-weight: 400; }
-.pos-item input { width: auto; margin: 0; accent-color: var(--accent); }
-.pos-item b { color: var(--muted); font-weight: 600; }
+/* 词性列表：一行一个 + Apple 风格自绘勾选框 */
+.pos-box {
+  display: flex; flex-direction: column; align-items: stretch; gap: 1px;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--th); margin-bottom: 8px; font-size: 13px;
+}
+.pos-item {
+  display: flex; align-items: center; gap: 9px; cursor: pointer; color: var(--ink);
+  font-weight: 400; padding: 5px 8px; border-radius: 8px;
+  transition: background .15s ease;
+}
+.pos-item:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.pos-item input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; width: 16px; height: 16px;
+  border: 1px solid var(--line); border-radius: 5px; background: var(--card);
+  position: relative; margin: 0; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, transform .12s ease;
+}
+.pos-item input[type="checkbox"]:active { transform: scale(.92); }
+.pos-item input[type="checkbox"]:checked {
+  background: var(--accent); border-color: var(--accent);
+}
+.pos-item input[type="checkbox"]:checked::after {
+  content: ''; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px;
+  border: solid var(--on-accent, #fff); border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.pos-item b { margin-left: auto; color: var(--muted); font-weight: 600; }
 /* 卡片上的词性芯片与英文原文释义 */
 .pos-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .pos-tag {
