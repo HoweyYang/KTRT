@@ -376,40 +376,34 @@ body[data-page="cyber"][data-theme="dark"] .wordmark b {
 /* 三种科幻配色统一：中文名隐藏，副标题用英文全称；每种配色配自己的字体与配色 */
 body[data-page="cyber"] .wordmark i { display: none; }
 body[data-page="cyber"] .wordmark u {
-  display: block;
-  flex: 1 0 100%;
-  margin-top: 3px;
-  font-size: 8.5px;
   font-weight: 500;
-  line-height: 1.5;
-  letter-spacing: .20em;
   text-transform: uppercase;
-  white-space: normal;
-  max-width: 190px;
 }
-body[data-page="cyber"] .wordmark { flex-wrap: wrap; row-gap: 0; }
-/* 霓虹：银翼杀手的窄体字标配冷调小字 */
+/* 霓虹：完全维持最初的样子（副标题跟在 KTRT 后面一行，冷调小字） */
 body[data-page="cyber"][data-theme="light"] .wordmark u {
+  display: inline;
   font-family: "Bahnschrift", "Segoe UI Variable Text", sans-serif;
-  display: block;
-  flex: 1 0 100%;
-  margin-top: 3px;
-  font-size: 8.5px;
-  letter-spacing: .20em;
+  font-size: 9px;
+  letter-spacing: .34em;
   color: var(--accent);
   text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
 }
-/* 酸黄 · 赛博朋克：与 KTRT 同角度倾斜，副标题用第二色（青/品红） */
+/* 酸黄 · 赛博朋克：排版跟霓虹一致，字体/颜色按自己的风格（倾斜 + 红青错位） */
 body[data-page="cyber"][data-theme="dark"] .wordmark u {
+  display: inline;
   font-family: "Bahnschrift", "Segoe UI Variable Text", sans-serif;
+  font-size: 9px;
+  letter-spacing: .22em;
   color: var(--accent-2);
   transform: skewX(-7deg);
-  text-shadow: 0 0 7px color-mix(in srgb, var(--accent-2) 45%, transparent);
+  text-shadow: 1.5px 0 0 rgba(194, 67, 71, .55), -1.5px 0 0 rgba(53, 182, 224, .45);
 }
-/* 矩阵：等宽终端感 + 绿光 */
+/* 矩阵：排版跟霓虹一致，等宽终端字体 + 绿光 */
 body[data-page="cyber"][data-theme="dark-blue"] .wordmark u {
+  display: inline;
   font-family: "Cascadia Mono", Consolas, monospace;
-  letter-spacing: .26em;
+  font-size: 8.5px;
+  letter-spacing: .24em;
   color: #7dffa8;
   text-shadow: 0 0 8px rgba(0, 255, 65, .55);
 }
