@@ -41,7 +41,9 @@ def pos_of(meaning):
 
 def pos_of_word(meaning, word):
     """先看释义，释义没标就去离线词典借（雅思这类纯中文释义靠这个补）；都没有才算 other。"""
-    tags = _subtags_from_text(meaning) or _POS_CACHE.get((word or '').strip().lower(), set())
+    key = (word or '').strip().lower()
+    tags = (_subtags_from_text(meaning) or _POS_CACHE.get(key, set())
+            or _PACK_POS.get(key, set()))
     found = _base_of(tags)
     if not found:
         return ['other']
