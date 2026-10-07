@@ -27,7 +27,7 @@ from backend import webpos
 
 db.init_db()
 
-APP_VERSION = '0.2.1b'
+APP_VERSION = '0.2.2'
 GITHUB_REPO = 'HoweyYang/KTRT'
 FRONTEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'static')
 updater.configure(APP_VERSION, sys.executable, bool(getattr(sys, 'frozen', False)))
