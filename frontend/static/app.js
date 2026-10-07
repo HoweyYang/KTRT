@@ -21,6 +21,8 @@ const POS_LABELS = {
   'v:modal': '情态', 'v:aux': '助动词', 'v:caus': '使役',
   a: '形容词', ad: '副词', prep: '介词', conj: '连词', pron: '代词',
   num: '数词', art: '冠词', int: '感叹词', abbr: '缩写', phr: '短语', todo: '待确认',
+  'form:past': '过去式', 'form:pp': '过去分词', 'form:ing': '现在分词',
+  'form:3s': '第三人称单数', 'form:plur': '复数', 'form:comp': '比较级', 'form:sup': '最高级',
 };
 
 function posChips(tags) {
@@ -34,8 +36,11 @@ function posChips(tags) {
   if (vsub.length) out.push(...vsub);
   else if (list.includes('v')) out.push('v');
   for (const t of list) {
-    if (t.startsWith('n') || t.startsWith('v')) continue;
+    if (t.startsWith('n') || t.startsWith('v') || t.startsWith('form:')) continue;
     out.push(t);
+  }
+  for (const t of list) {          // 形态（过去分词/现在分词/复数…）附在最后
+    if (t.startsWith('form:')) out.push(t);
   }
   return out;
 }
@@ -566,7 +571,9 @@ function renderCard() {
       <div class="field">
         <span class="label">词性</span>
         <span class="value pos-chips">${chips.map((t) =>
-          `<span class="pos-tag" data-tip="判定依据：${escapeAttr(from || '—')}">${escapeHtml(POS_LABELS[t] || t)}</span>`).join('')}
+          `<span class="pos-tag${t.startsWith('form:') ? ' form-tag' : ''}" data-tip="${
+            t.startsWith('form:') ? '词形变化（不是独立词性）' : '判定依据：' + escapeAttr(from || '—')}">${
+            escapeHtml(POS_LABELS[t] || t)}</span>`).join('')}
           ${from ? `<span class="muted" style="font-size:12px">来自${escapeHtml(from)}</span>` : ''}
         </span>
       </div>`);
@@ -1898,6 +1905,7 @@ async function openTodoList(bookId) {
   }
   const unsure = r.items.filter((it) => !it.coarse);
   const coarse = r.items.filter((it) => it.coarse);
+  const conflicts = unsure.filter((it) => it.conflict);
   const GROUP_OF_TAG = { n: 'noun', v: 'verb', a: 'adj', ad: 'adv', prep: 'func', conj: 'func' };
   const currentGroup = (tags) => {
     const base = String(tags || '').split('|').map((t) => t.split(':')[0]);
@@ -1917,7 +1925,10 @@ async function openTodoList(bookId) {
       </div>`;
   };
   box.innerHTML = `<p class="muted">待确认 <b>${unsure.length}</b> 个（判不出词性）· 笼统 <b>${coarse.length}</b> 个（只判到动词/名词，可再细分）：改完只存在本程序里，不会动你的词书。</p>`
-    + (unsure.length ? `<p class="muted" style="margin-top:6px">— 待确认 —</p>` + unsure.map(rowHtml).join('') : '')
+    + (conflicts.length ? `<p class="muted" style="margin-top:6px">— 词书与词典冲突（已按词典纠正，请过一眼）—</p>`
+        + conflicts.map(rowHtml).join('') : '')
+    + (unsure.length - conflicts.length ? `<p class="muted" style="margin-top:6px">— 待确认 —</p>`
+        + unsure.filter((it) => !it.conflict).map(rowHtml).join('') : '')
     + (coarse.length ? `<p class="muted" style="margin-top:8px">— 笼统（可再细分）—</p>` + coarse.map(rowHtml).join('') : '')
     + '<div class="row" style="margin-top:8px"><button class="btn primary" id="btn-todo-save">保存这些修正</button>'
     + `<button class="btn" id="btn-todo-ai" data-tip="先查免费在线词典定词性，查不到的再交给 AI；断网或没配 Key 会自动跳过。结果同样只落程序。">联网判定（在线词典 + AI）</button>`
