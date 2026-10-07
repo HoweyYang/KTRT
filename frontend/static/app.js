@@ -1728,6 +1728,67 @@ async function loadPosStats() {
   }
 }
 
+/* ---------- 导入体检 + 待确认清单 ---------- */
+const POS_GROUP_CHOICES = [['noun', '名词性'], ['verb', '动词'], ['adj', '形容词'],
+  ['adv', '副词'], ['func', '虚词'], ['misc', '其他']];
+const GROUP_TAG = { noun: 'n', verb: 'v', adj: 'a', adv: 'ad', func: 'prep', misc: 'phr' };
+const SOURCE_LABELS = { book: '书里标注', dict: '词典补全', pack: '增强包', rule: '词形规则',
+  table: '语法表', user: '你改的', ai: 'AI', todo: '待确认' };
+
+function importHealthHtml(r) {
+  const p = r.pos;
+  if (!p) return '';
+  const parts = Object.entries(p.by_source || {})
+    .map(([k, v]) => `${SOURCE_LABELS[k] || k} ${v}`).join(' · ');
+  const todo = p.todo
+    ? `<p class="muted">还有 <b>${p.todo}</b> 个词没判出来（多为词组 / 拼写变体）：
+       <a href="#" data-todo-book="${r.book_id}">打开待确认清单</a></p>`
+    : '<p class="muted">全部词条都判出了词性。</p>';
+  return `<div class="health-card"><p class="muted">词性体检：${parts}</p>${todo}</div>`;
+}
+
+async function openTodoList(bookId) {
+  const box = $('pos-todo-box');
+  if (!box || !bookId) return;
+  box.classList.remove('hidden');
+  box.innerHTML = '<p class="muted">读取中…</p>';
+  let r;
+  try {
+    r = await api(`/api/pos/todo?book_id=${bookId}`);
+  } catch (e) {
+    box.innerHTML = `<p class="err">${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  if (!r.items.length) {
+    box.innerHTML = '<p class="muted">没有待确认的词了。</p>';
+    return;
+  }
+  box.innerHTML = `<p class="muted">待确认 ${r.items.length} 个：改完只存在本程序里，不会动你的词书。</p>`
+    + r.items.map((it) => `<div class="todo-row" data-word="${escapeAttr(it.word)}">
+        <b>${escapeHtml(it.word)}</b><span class="muted">${escapeHtml(it.meaning || '')}</span>
+        <select>${POS_GROUP_CHOICES.map(([k, label]) =>
+          `<option value="${k}">${label}</option>`).join('')}</select>
+      </div>`).join('')
+    + '<div class="row" style="margin-top:8px"><button class="btn primary" id="btn-todo-save">保存这些修正</button>'
+    + '<span class="muted" id="todo-msg"></span></div>';
+  $('btn-todo-save').addEventListener('click', async () => {
+    const items = [...box.querySelectorAll('.todo-row')].map((row) => {
+      const v = row.querySelector('select').value;
+      return { word: row.dataset.word, tags: [GROUP_TAG[v] || v] };
+    });
+    try {
+      const res = await api('/api/pos/override', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ book_id: bookId, items }),
+      });
+      $('todo-msg').textContent = `已保存 ${res.count} 条（只存在本程序里）`;
+      loadPosStats();
+    } catch (e) {
+      $('todo-msg').textContent = '保存失败：' + e.message;
+    }
+  });
+}
+
 async function buildPosBook() {
   const bookId = Number($('pos-book').value || 0);
   if (!bookId) { toast('先选一本词书'); return; }
@@ -1752,6 +1813,25 @@ async function buildPosBook() {
 $('pos-book').addEventListener('change', refreshPosLists);
 $('pos-list').addEventListener('change', loadPosStats);
 $('btn-pos-build').addEventListener('click', buildPosBook);
+$('btn-pos-todo').addEventListener('click', () => {
+  const bookId = Number($('pos-book').value || 0);
+  if (!bookId) { toast('先选一本词书'); return; }
+  openTodoList(bookId);
+});
+document.addEventListener('click', async (e) => {
+  const a = e.target && e.target.closest ? e.target.closest('[data-todo-book]') : null;
+  if (!a) return;
+  e.preventDefault();
+  const bookId = Number(a.dataset.todoBook);
+  switchView('mask');
+  const sel = $('pos-book');
+  if (sel) {
+    if (![...sel.options].some((o) => Number(o.value) === bookId)) await refreshBooksUI();
+    sel.value = String(bookId);
+  }
+  await refreshPosLists();
+  await openTodoList(bookId);
+});
 
 async function refreshExportLists() {
   const ls = $('export-list');
@@ -1880,7 +1960,8 @@ $('btn-import').addEventListener('click', async () => {
   $('btn-import').disabled = true;
   try {
     const r = await api('/api/import', { method: 'POST', body: fd });
-    $('import-result').innerHTML = `<p class="ok">导入成功：${r.book_name}（${r.language}），${r.rows} 词</p>`;
+    $('import-result').innerHTML = `<p class="ok">导入成功：${r.book_name}（${r.language}），${r.rows} 词</p>`
+      + importHealthHtml(r);
     await refreshBooksUI();
     toast('导入成功');
   } catch (e) {

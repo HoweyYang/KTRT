@@ -404,6 +404,33 @@ def test_import_fills_pos_tags():
     check('书里显式标记优先（abstruse → a）', rows['abstruse'][0].startswith('a'), rows)
 
 
+def test_todo_override_is_program_only():
+    """待确认清单的修正只落程序：词条判定立刻变，词书文件不动。"""
+    from backend import pos as poslib
+
+    path = os.path.join(TMP, 'todo_src.csv')
+    write_csv(path, [['zxqv', '某种东西']])
+    importer.import_book(path)
+    with db.get_conn() as conn:
+        bk = conn.execute("SELECT id FROM word_books WHERE name='todo_src'").fetchone()
+        bid = bk['id']
+        tags = conn.execute('SELECT pos_tags FROM words WHERE book_id=?', (bid,)).fetchone()['pos_tags']
+    check('生造词导入后是待确认', tags == 'todo', tags)
+
+    exc = os.path.join(TMP, 'wordbooks', 'todo_src.xlsx')
+    before = os.path.getmtime(exc) if os.path.exists(exc) else None
+    n = poslib.apply_overrides(bid, [{'word': 'zxqv', 'tags': ['n']}])
+    with db.get_conn() as conn:
+        after = conn.execute('SELECT pos_tags, pos_source FROM words WHERE book_id=?', (bid,)).fetchone()
+        ov = conn.execute("SELECT tags FROM word_pos_override WHERE word='zxqv'").fetchone()
+    check('修正写进程序（pos_tags=user）', n == 1 and after['pos_tags'] == 'n',
+          (n, dict(after)))
+    check('修正同时记进覆盖表', bool(ov) and ov['tags'] == 'n', ov['tags'] if ov else None)
+    now = os.path.getmtime(exc) if os.path.exists(exc) else None
+    check('词书文件一个字节没动', before == now, (before, now))
+    poslib.set_override('zxqv', [])          # 清理，别影响后续用例
+
+
 def test_lookup_layer():
     """统一检索层：多源合并、来源标注、缺源/坏源不阻断、未命中给建议。"""
     import sqlite3
@@ -465,6 +492,7 @@ def main():
         test_pos_judge_chain()
         test_import_fills_pos_tags()
         test_lookup_layer()
+        test_todo_override_is_program_only()
         test_default_book_rename()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)

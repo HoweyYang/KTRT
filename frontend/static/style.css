@@ -579,6 +579,16 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 }
 .gloss-line { margin: 2px 0; }
 .gloss-line b { color: var(--muted); font-weight: 600; margin-right: 6px; }
+/* 导入体检卡 + 待确认清单 */
+.health-card { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: var(--th); margin-top: 8px; }
+.health-card p { margin: 3px 0; }
+.todo-row {
+  display: flex; align-items: center; gap: 10px; padding: 5px 0;
+  border-bottom: 1px dashed var(--line); font-size: 13px;
+}
+.todo-row b { min-width: 110px; }
+.todo-row .muted { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.todo-row select { padding: 4px 6px; font-size: 13px; }
 .toolbar select, .toolbar input {
   padding: 8px 10px;
   border: 1px solid var(--line);

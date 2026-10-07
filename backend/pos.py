@@ -384,6 +384,50 @@ def backfill_all():
     return total
 
 
+def book_summary(book_id):
+    """导入体检：这本书的词性判定分布（自带/词典/增强包/规则/待确认）。"""
+    with db.get_conn() as conn:
+        total = conn.execute('SELECT COUNT(*) c FROM words WHERE book_id=?', (book_id,)).fetchone()['c']
+        rows = conn.execute('SELECT pos_source, COUNT(*) c FROM words WHERE book_id=? '
+                            'GROUP BY pos_source', (book_id,)).fetchall()
+        st = stats(book_id)
+    return {
+        'total': total,
+        'by_source': {r['pos_source'] or 'todo': r['c'] for r in rows},
+        'groups': st['items'],
+        'multi': st['multi'],
+        'todo': (st['items'] and next((i['count'] for i in st['items'] if i['key'] == 'todo'), 0)) or 0,
+    }
+
+
+def todo_words(book_id, limit=500):
+    """待确认清单：这部分词判不出来，列给用户改（只落程序，不碰词书）。"""
+    with db.get_conn() as conn:
+        return [{'word': r['word'], 'meaning': (r['meaning'] or '')[:120],
+                 'tags': r['pos_tags'] or '', 'source': r['pos_source'] or ''}
+                for r in conn.execute(
+                    "SELECT word, meaning, pos_tags, pos_source FROM words "
+                    "WHERE book_id=? AND (pos_tags='todo' OR pos_tags='') ORDER BY word LIMIT ?",
+                    (book_id, limit))]
+
+
+def apply_overrides(book_id, items):
+    """批量写入手动修正：items = [{word, tags:[...]}]，同时刷新该词在本程序里的判定。"""
+    done = 0
+    for it in items or []:
+        word = (it.get('word') or '').strip()
+        tags = it.get('tags') or []
+        if not word:
+            continue
+        set_override(word, tags)
+        with db._lock:
+            with db.get_conn() as conn:
+                conn.execute('UPDATE words SET pos_tags=?, pos_source=? WHERE book_id=? AND word=?',
+                             ('|'.join(tags), 'user' if tags else '', book_id, word))
+        done += 1
+    return done
+
+
 def _load_dict_pos(rows):
     """释义没标词性的词，批量去离线词典借（一次查一批，别逐词开连接）。"""
     need = set()

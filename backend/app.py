@@ -770,6 +770,31 @@ def pos_build(body: PosBuildBody):
         raise HTTPException(400, str(e))
 
 
+@app.get('/api/pos/summary')
+def pos_summary(book_id: int = Query(...)):
+    """导入体检：这本书的词性判定分布（自带 / 词典 / 增强包 / 规则 / 待确认）。"""
+    return poslib.book_summary(book_id)
+
+
+@app.get('/api/pos/todo')
+def pos_todo(book_id: int = Query(...), limit: int = Query(500)):
+    """待确认清单：列给用户改（只落程序，不写回词书）。"""
+    return {'items': poslib.todo_words(book_id, limit)}
+
+
+class PosOverrideBody(BaseModel):
+    book_id: int = 0
+    items: list = []
+
+
+@app.post('/api/pos/override')
+def pos_override(body: PosOverrideBody):
+    """手动修正词性：写程序内的覆盖表（不回写词书），立即影响卡片与蒙版。"""
+    if not body.items:
+        raise HTTPException(400, '没有要保存的修正')
+    return {'ok': True, 'count': poslib.apply_overrides(body.book_id, body.items)}
+
+
 # ---------- 词书本地副本与词条编辑 ----------
 
 EDIT_FIELDS = ('word', 'phonetic', 'meaning', 'collocations', 'phrases',
@@ -905,6 +930,15 @@ async def import_book(
             _keep_uploaded_book(path, result['book_name'], suffix)
         except Exception:
             pass  # 留副本失败不影响导入本身
+        # 导入体检：词性判定分布（自带 / 词典 / 增强包 / 规则 / 待确认）
+        try:
+            with db.get_conn() as conn:
+                bid = conn.execute('SELECT id FROM word_books WHERE name=?',
+                                   (result['book_name'],)).fetchone()['id']
+            result['pos'] = poslib.book_summary(bid)
+            result['book_id'] = bid
+        except Exception:
+            pass
         return result
     except Exception as e:
         raise HTTPException(400, str(e))
