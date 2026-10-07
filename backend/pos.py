@@ -50,6 +50,10 @@ def pos_of(meaning):
 def pos_of_word(meaning, word):
     """粗桶：释义 → 离线词典 → 增强包 → 词缀规则；都没有算「待确认」。"""
     key = (word or '').strip().lower()
+    ov = _overrides().get(key)          # 手动 / AI 改过的判定优先，蒙版也要跟着变
+    if ov:
+        groups = {_GROUP_OF[b] for b in _base_of(ov) if b in _GROUP_OF}
+        return [k for k in ORDER if k in groups] or ['todo']
     tags = (_subtags_from_text(meaning) or _POS_CACHE.get(key, set())
             or _PACK_POS.get(key, set()) or _affix_tags(word))
     groups = {_GROUP_OF[b] for b in _base_of(tags) if b in _GROUP_OF}
