@@ -589,6 +589,16 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .todo-row b { min-width: 110px; }
 .todo-row .muted { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .todo-row select { padding: 4px 6px; font-size: 13px; }
+/* 待确认清单的"空"状态：只留一个疑问小人，不啰嗦 */
+.todo-empty { display: inline-flex; color: var(--muted); cursor: help; }
+.todo-empty:hover { color: var(--accent); }
+/* 介绍性文字收进「?」气泡，页面保持干净 */
+.hint-q {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%; font-size: 11px;
+  border: 1px solid var(--line); color: var(--muted); cursor: help; margin-left: 2px;
+}
+.hint-q:hover { color: var(--accent); border-color: var(--accent); }
 .toolbar select, .toolbar input {
   padding: 8px 10px;
   border: 1px solid var(--line);

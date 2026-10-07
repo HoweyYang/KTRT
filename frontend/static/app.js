@@ -1523,6 +1523,28 @@ async function prefetchTts(text) {
   } catch (e) { /* 预取失败不影响使用 */ }
 }
 
+/* 朗读断句：先按句末标点切，长句再按逗号切一刀（原文释义那种连着读就是一整句） */
+function ttsSplit(text) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return [];
+  const out = [];
+  for (const seg of clean.split(/(?<=[.!?;。！？；])\s*/)) {
+    const s = seg.trim();
+    if (!s) continue;
+    if (s.length > 90) {
+      for (const piece of s.split(/,\s*/)) {
+        const p = piece.trim();
+        if (p) out.push(p.endsWith('.') || p.endsWith(';') ? p : p + ',');
+      }
+    } else {
+      out.push(s);
+    }
+  }
+  return out.length ? out : [clean];
+}
+
+const ttsSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function speak(text, btn) {
   const lang = bookLang();
   const s = state.settings || {};
@@ -1534,46 +1556,66 @@ async function speak(text, btn) {
     btn.classList.add('speaking');
     ttsBtnActive = btn;
   }
+  const parts = ttsSplit(clean);          // 断句后逐句播，避免"连着读"
   if (s.tts_provider === 'browser') {
-    const u = new SpeechSynthesisUtterance(clean);
-    u.rate = Math.min(2, Math.max(0.5, ttsNum(s.tts_rate, 0) / 100 + 1));
-    u.pitch = Math.min(2, Math.max(0, ttsNum(s.tts_pitch, 0) / 50 + 1));
-    u.volume = Math.min(1, Math.max(0, ttsNum(s.tts_volume, 100) / 100));
-    if (lang === '法语') {
-      u.lang = 'fr-FR';
-    } else {
-      const voiceKey = s.tts_voice_en || '美音·男';
-      const uk = voiceKey.includes('英音');
-      const male = voiceKey.includes('男');
-      u.lang = uk ? 'en-GB' : 'en-US';
-      const voices = speechSynthesis.getVoices();
-      let v = voices.find((x) => x.lang.toLowerCase().startsWith(u.lang) &&
-        (male ? /male/i.test(x.name) : /female/i.test(x.name)));
-      if (!v) v = voices.find((x) => x.lang.toLowerCase().startsWith(u.lang));
-      if (v) u.voice = v;
-    }
-    u.onend = () => { if (token === ttsToken) _ttsClear(); };
-    u.onerror = () => { if (token === ttsToken) { _ttsClear(); toast('浏览器语音播放失败'); } };
-    speechSynthesis.speak(u);
+    const makeUtterance = (piece) => {
+      const u = new SpeechSynthesisUtterance(piece);
+      u.rate = Math.min(2, Math.max(0.5, ttsNum(s.tts_rate, 0) / 100 + 1));
+      u.pitch = Math.min(2, Math.max(0, ttsNum(s.tts_pitch, 0) / 50 + 1));
+      u.volume = Math.min(1, Math.max(0, ttsNum(s.tts_volume, 100) / 100));
+      if (lang === '法语') {
+        u.lang = 'fr-FR';
+      } else {
+        const voiceKey = s.tts_voice_en || '美音·男';
+        const uk = voiceKey.includes('英音');
+        const male = voiceKey.includes('男');
+        u.lang = uk ? 'en-GB' : 'en-US';
+        const voices = speechSynthesis.getVoices();
+        let v = voices.find((x) => x.lang.toLowerCase().startsWith(u.lang) &&
+          (male ? /male/i.test(x.name) : /female/i.test(x.name)));
+        if (!v) v = voices.find((x) => x.lang.toLowerCase().startsWith(u.lang));
+        if (v) u.voice = v;
+      }
+      return u;
+    };
+    let idx = 0;
+    const next = () => {
+      if (token !== ttsToken) return;
+      if (idx >= parts.length) { _ttsClear(); return; }
+      const u = makeUtterance(parts[idx++]);
+      u.onend = () => setTimeout(next, 160);      // 句间留一点停顿
+      u.onerror = () => { if (token === ttsToken) { _ttsClear(); toast('浏览器语音播放失败'); } };
+      speechSynthesis.speak(u);
+    };
+    next();
     return;
   }
-  const key = _ttsKey(lang, clean);
   try {
-    let url = ttsCache.get(key);
-    if (!url) {
-      const ctrl = new AbortController();
-      ttsAbort = ctrl;
-      const blob = await _ttsFetchBlob(lang, clean, ctrl.signal);
-      if (token !== ttsToken) return;          // 期间又点了别的
-      ttsAbort = null;
-      url = URL.createObjectURL(blob);
-      _ttsCachePut(key, url);
+    for (const piece of parts) {
+      if (token !== ttsToken) return;
+      const key = _ttsKey(lang, piece);
+      let url = ttsCache.get(key);
+      if (!url) {
+        const ctrl = new AbortController();
+        ttsAbort = ctrl;
+        const blob = await _ttsFetchBlob(lang, piece, ctrl.signal);
+        if (token !== ttsToken) return;        // 期间又点了别的
+        ttsAbort = null;
+        url = URL.createObjectURL(blob);
+        _ttsCachePut(key, url);
+      }
+      if (token !== ttsToken) return;
+      const audio = new Audio(url);
+      ttsAudio = audio;
+      await new Promise((resolve) => {
+        audio.onended = resolve;
+        audio.onerror = resolve;
+        audio.play().catch(resolve);
+      });
+      if (token !== ttsToken) return;
+      await ttsSleep(160);                     // 句间停顿
     }
-    if (token !== ttsToken) return;
-    ttsAudio = new Audio(url);
-    ttsAudio.onended = () => { if (token === ttsToken) _ttsClear(); };
-    ttsAudio.onerror = () => { if (token === ttsToken) { _ttsClear(); toast('播放失败'); } };
-    await ttsAudio.play();
+    if (token === ttsToken) _ttsClear();
   } catch (e) {
     if (token !== ttsToken) return;            // 被更晚的点击取消了，静默退出
     ttsAbort = null;
@@ -1768,7 +1810,10 @@ async function openTodoList(bookId) {
     return;
   }
   if (!r.items.length) {
-    box.innerHTML = '<p class="muted">没有待确认的词了。</p>';
+    box.innerHTML = '<span class="todo-empty" data-tip="这本书没有待确认的词了 —— 词性全部判出来了。">'
+      + '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+      + 'stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/>'
+      + '<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>';
     return;
   }
   box.innerHTML = `<p class="muted">待确认 ${r.items.length} 个：改完只存在本程序里，不会动你的词书。</p>`
