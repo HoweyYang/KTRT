@@ -9,8 +9,9 @@
 源文件从哪来（本机自取，仓库里不放）：
   WordNet（含英文释义，约 10 MB）：
     https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/corpora/wordnet.zip
-  Moby Part-of-Speech II（公有领域；Gutenberg 上的文本到 H 就断了，能拿到完整版更好）：
-    https://www.gutenberg.org/files/3203/files/mobypos.txt
+  Moby Part-of-Speech II（公有领域，完整版 232128 行；Gutenberg 上那份只到字母 H，别用）：
+    https://raw.githubusercontent.com/kraison/nlp/master/data/moby/mobypos.txt
+  注：本机若无直连，走本地代理（如 http://127.0.0.1:7890）下载这两个文件再传路径进来。
 
 产物结构：
   pos(word TEXT PRIMARY KEY, tags TEXT, source TEXT)   # tags 形如 n|v:vt|a|ad
