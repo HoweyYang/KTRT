@@ -33,9 +33,10 @@ _ALIAS = {
     'adv': 'ad', 'ad': 'ad', 'prep': 'prep', 'conj': 'conj', 'pron': 'pron',
     'num': 'num', 'art': 'art', 'int': 'int', 'interj': 'int', 'aux': 'aux',
     'abbr': 'abbr', 'phr': 'phr', 'phrase': 'phr',
+    'pl': 'n', 'plur': 'n', 'plural': 'n',      # criteria → pl. 标准（复数=名词）
 }
 _TAG_RE = re.compile(
-    r'(?<![A-Za-z])(n|v|vt|vi|adj|a|adv|ad|prep|conj|pron|num|art|int|interj|aux|abbr|phr)\.(?![A-Za-z])',
+    r'(?<![A-Za-z])(n|v|vt|vi|adj|a|adv|ad|prep|conj|pron|num|art|int|interj|aux|abbr|phr|pl|plur|plural)\.(?![A-Za-z])',
     re.I)
 
 
@@ -122,7 +123,7 @@ def _load_wiki(rows):
 def reset_wiki_cache():
     _WIKI_POS.clear()
     _WIKI_MISS.clear()
-RULE_VERSION = 'r9'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
+RULE_VERSION = 'r10'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
 
 
 def _load_pack(rows):
@@ -382,7 +383,7 @@ def judge(meaning, word='', extra=''):
     """五级判定 → (tags, source)：① 书里显式标记 ② 词典按行义项 ③ 关键词 ④ 闭集表 ⑤ 待确认。"""
     ov = override_tags(word)
     if ov:
-        return ov, 'user'
+        return ov, override_source(word)
     _ensure_word(word)
     book = _subtags_from_text(meaning)
     if book:
@@ -436,7 +437,8 @@ def _ensure_word(word):
     _load_dict_pos([{'word': word, 'meaning': ''}])
 
 
-_OVERRIDE = None    # word → 手动修正标签（懒加载，判词时不再逐词查库）
+_OVERRIDE = None    # word → (标签, 来源)（懒加载，判词时不再逐词查库）
+_OVERRIDE_SRC = {}
 
 
 def _overrides():
@@ -445,9 +447,10 @@ def _overrides():
         _OVERRIDE = {}
         try:
             with db.get_conn() as conn:
-                for r in conn.execute('SELECT word, tags FROM word_pos_override'):
+                for r in conn.execute('SELECT word, tags, source FROM word_pos_override'):
                     if r['tags']:
                         _OVERRIDE[r['word']] = r['tags'].split('|')
+                        _OVERRIDE_SRC[r['word']] = r['source'] or 'user'
         except Exception:
             _OVERRIDE = {}
     return _OVERRIDE
@@ -458,7 +461,12 @@ def override_tags(word):
     return _overrides().get((word or '').strip().lower()) or []
 
 
-def set_override(word, tags):
+def override_source(word):
+    _overrides()
+    return _OVERRIDE_SRC.get((word or '').strip().lower(), 'user')
+
+
+def set_override(word, tags, source='user'):
     """写入/清除手动修正（tags 为空 = 清除）。"""
     global _OVERRIDE
     key = (word or '').strip().lower()
@@ -467,11 +475,12 @@ def set_override(word, tags):
     with db._lock:
         with db.get_conn() as conn:
             if tags:
-                conn.execute('INSERT OR REPLACE INTO word_pos_override(word, tags) VALUES(?,?)',
-                             (key, '|'.join(tags)))
+                conn.execute('INSERT OR REPLACE INTO word_pos_override(word, tags, source) '
+                             'VALUES(?,?,?)', (key, '|'.join(tags), source))
             else:
                 conn.execute('DELETE FROM word_pos_override WHERE word=?', (key,))
     _OVERRIDE = None
+    _OVERRIDE_SRC.clear()
     return list(tags or [])
 
 
@@ -684,7 +693,7 @@ def apply_overrides(book_id, items, source='user'):
         tags = it.get('tags') or []
         if not word:
             continue
-        set_override(word, tags)
+        set_override(word, tags, source)
         with db._lock:
             with db.get_conn() as conn:
                 conn.execute('UPDATE words SET pos_tags=?, pos_source=? WHERE book_id=? AND word=?',
