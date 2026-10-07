@@ -1898,12 +1898,24 @@ async function openTodoList(bookId) {
   }
   const unsure = r.items.filter((it) => !it.coarse);
   const coarse = r.items.filter((it) => it.coarse);
-  const rowHtml = (it) => `<div class="todo-row" data-word="${escapeAttr(it.word)}">
+  const GROUP_OF_TAG = { n: 'noun', v: 'verb', a: 'adj', ad: 'adv', prep: 'func', conj: 'func' };
+  const currentGroup = (tags) => {
+    const base = String(tags || '').split('|').map((t) => t.split(':')[0]);
+    for (const b of base) {
+      if (GROUP_OF_TAG[b]) return GROUP_OF_TAG[b];
+    }
+    return '';
+  };
+  const rowHtml = (it) => {
+    const cur = currentGroup(it.tags);
+    const curLabel = (POS_GROUP_CHOICES.find(([k]) => k === cur) || [])[1] || '未判';
+    return `<div class="todo-row" data-word="${escapeAttr(it.word)}">
         <b>${escapeHtml(it.word)}</b><span class="muted">${escapeHtml(it.meaning || '')}</span>
-        ${it.coarse ? '<span class="tag none" data-tip="引擎只判到「动词 / 名词」这一层：多半是词书没写全、或词书写错了词性。">笼统</span>' : ''}
-        <select>${POS_GROUP_CHOICES.map(([k, label]) =>
+        <span class="tag none" data-tip="当前判定">${escapeHtml(curLabel)}</span>
+        <select><option value="">改成…</option>${POS_GROUP_CHOICES.map(([k, label]) =>
           `<option value="${k}">${label}</option>`).join('')}</select>
       </div>`;
+  };
   box.innerHTML = `<p class="muted">待确认 <b>${unsure.length}</b> 个（判不出词性）· 笼统 <b>${coarse.length}</b> 个（只判到动词/名词，可再细分）：改完只存在本程序里，不会动你的词书。</p>`
     + (unsure.length ? `<p class="muted" style="margin-top:6px">— 待确认 —</p>` + unsure.map(rowHtml).join('') : '')
     + (coarse.length ? `<p class="muted" style="margin-top:8px">— 笼统（可再细分）—</p>` + coarse.map(rowHtml).join('') : '')
@@ -1934,10 +1946,16 @@ async function openTodoList(bookId) {
     }
   });
   $('btn-todo-save').addEventListener('click', async () => {
-    const items = [...box.querySelectorAll('.todo-row')].map((row) => {
-      const v = row.querySelector('select').value;
-      return { word: row.dataset.word, tags: [GROUP_TAG[v] || v] };
-    });
+    const items = [...box.querySelectorAll('.todo-row')]
+      .map((row) => {
+        const v = row.querySelector('select').value;
+        return v ? { word: row.dataset.word, tags: [GROUP_TAG[v] || v] } : null;
+      })
+      .filter(Boolean);
+    if (!items.length) {
+      $('todo-msg').textContent = '没有要改的（下拉框默认是"改成…"，选一个再保存）';
+      return;
+    }
     try {
       const res = await api('/api/pos/override', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },

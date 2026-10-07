@@ -132,6 +132,7 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS word_pos_override(
                   word TEXT PRIMARY KEY,
                   tags TEXT NOT NULL DEFAULT '',
+                  source TEXT NOT NULL DEFAULT 'user',
                   updated_at TEXT DEFAULT (datetime('now','localtime'))
                 );
                 """
@@ -148,6 +149,10 @@ def init_db():
                 conn.execute("ALTER TABLE words ADD COLUMN pos_tags TEXT DEFAULT ''")
             if 'pos_source' not in cols:
                 conn.execute("ALTER TABLE words ADD COLUMN pos_source TEXT DEFAULT ''")
+            # 旧库补列：手动修正的来源（user / ai / web），卡片上能看清是谁定的
+            ocols = {r[1] for r in conn.execute('PRAGMA table_info(word_pos_override)')}
+            if 'source' not in ocols:
+                conn.execute("ALTER TABLE word_pos_override ADD COLUMN source TEXT DEFAULT 'user'")
             # 旧库改名：默认收藏册「外部单词收藏册」→「自定义单词收藏册」
             renamed = conn.execute("SELECT id FROM word_books WHERE name=?",
                                    ('自定义单词收藏册',)).fetchone()

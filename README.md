@@ -77,7 +77,7 @@ Electron 会把整个 Chromium 浏览器内核打包进安装包，光内核就�
 
 从 [GitHub Releases](https://github.com/HoweyYang/KTRT/releases) 下载安装包，双击安装即可：
 
-- `KTRTSetup-lite-0.2.2.exe`：纯净版安装包，不含任何词库；词库在程序内「导入 → 词书资源」一键下载，或从仓库 `wordbooks/` 目录下载后到「导入」页导入。
+- `KTRTSetup-lite-0.2.2b.exe`：纯净版安装包，不含任何词库；词库在程序内「导入 → 词书资源」一键下载，或从仓库 `wordbooks/` 目录下载后到「导入」页导入。
 
 安装后自动创建桌面快捷方式，启动即自动打开使用页面。
 
