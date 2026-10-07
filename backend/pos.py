@@ -123,7 +123,7 @@ def _load_wiki(rows):
 def reset_wiki_cache():
     _WIKI_POS.clear()
     _WIKI_MISS.clear()
-RULE_VERSION = 'r10'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
+RULE_VERSION = 'r11'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
 
 
 def _load_pack(rows):
@@ -383,7 +383,12 @@ def judge(meaning, word='', extra=''):
     """五级判定 → (tags, source)：① 书里显式标记 ② 词典按行义项 ③ 关键词 ④ 闭集表 ⑤ 待确认。"""
     ov = override_tags(word)
     if ov:
-        return ov, override_source(word)
+        # 手动 / AI / 网页判定只覆盖"大类"，词典里更细的信息（及物性、可数性、专有名词）
+        # 仍然补上——否则会出现"标了名词却看不到可数/专有"的粗糙结果
+        _ensure_word(word)
+        tags, _ = _finish(_merge_detail(set(ov), (word or '').strip().lower()),
+                          word, meaning, 'user')
+        return tags, override_source(word)
     _ensure_word(word)
     book = _subtags_from_text(meaning)
     if book:
