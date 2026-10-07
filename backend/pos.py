@@ -79,6 +79,49 @@ _PACK_POS = {}       # word → 增强包（WordNet / Moby）的词性
 _PACK_GLOSS = {}     # word → {词性: 英文原文释义}
 _PACK_MISS = set()   # 增强包里查过没有的词
 _PACK_PATH = os.path.join(db.DATA_DIR, 'reflib', 'refpos.db')
+WIKI_PATH = os.path.join(db.DATA_DIR, 'reflib', 'wiktionary.db')
+_WIKI_POS = {}
+_WIKI_MISS = set()
+
+
+def wiki_enabled():
+    """Wiktionary 拓展包是否启用（可选下载，默认关）。"""
+    try:
+        return (db.get_setting('reflib_wiki_enabled', '0') == '1'
+                and os.path.exists(WIKI_PATH))
+    except Exception:
+        return False
+
+
+def _load_wiki(rows):
+    """Wiktionary 索引：词 → 词性（含专有名词、词组），只在启用时读。"""
+    if not wiki_enabled():
+        return
+    need = set()
+    for r in rows:
+        key = (r['word'] or '').strip().lower()
+        if key and key not in _WIKI_POS and key not in _WIKI_MISS:
+            need.add(key)
+    if not need:
+        return
+    words = sorted(need)
+    try:
+        conn = sqlite3.connect(WIKI_PATH)
+        for i in range(0, len(words), 800):
+            chunk = words[i:i + 800]
+            sql = ('SELECT word, tags FROM pos WHERE word IN (%s)' % ','.join('?' * len(chunk)))
+            for word, tags in conn.execute(sql, chunk):
+                _WIKI_POS[word] = set(t for t in (tags or '').split('|') if t)
+        conn.close()
+    except Exception:
+        return
+    for w in words:
+        _WIKI_MISS.add(w)
+
+
+def reset_wiki_cache():
+    _WIKI_POS.clear()
+    _WIKI_MISS.clear()
 RULE_VERSION = 'r9'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
 
 
@@ -138,6 +181,12 @@ def reset_pack_cache():
     _PACK_POS.clear()
     _PACK_MISS.clear()
     _PACK_GLOSS.clear()
+
+
+def reset_all_caches():
+    """参考库开关变化后，把三套缓存都清掉，重算一次。"""
+    reset_pack_cache()
+    reset_wiki_cache()
 
 # ---------- 细分判定（0.2.2）：闭集表 + 关键词信号 ----------
 
@@ -346,6 +395,10 @@ def judge(meaning, word='', extra=''):
     pk = _PACK_POS.get((word or '').strip().lower(), set())
     if pk:
         tags, src = _finish(pk, word, meaning, 'pack')
+        return _add_pattern(tags, word, extra), src
+    wk = _WIKI_POS.get((word or '').strip().lower(), set())
+    if wk:
+        tags, src = _finish(wk, word, meaning, 'wiki')
         return _add_pattern(tags, word, extra), src
     tbl = _table_tags((word or '').strip().lower())
     if tbl:
@@ -651,6 +704,7 @@ def _load_dict_pos(rows):
             need.add(key)
     if not need or not os.path.exists(db.DICT_DB_PATH):
         _load_pack(rows)
+        _load_wiki(rows)
         return
     words = sorted(need)
     try:
@@ -672,6 +726,7 @@ def _load_dict_pos(rows):
     for w in words:
         _POS_CACHE.setdefault(w, set())     # 词典里也没有：记空，下次不再查
     _load_pack(rows)
+    _load_wiki(rows)
 
 
 def _rows(conn, book_id, list_no=None):
