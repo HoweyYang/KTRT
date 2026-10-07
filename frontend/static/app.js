@@ -1783,13 +1783,82 @@ async function loadPosStats() {
         btn.dataset.book = String(bookId);
         btn.dataset.tip = `待确认清单：${sum.todo || 0} 个判不出、${sum.coarse || 0} 个只判到动词/名词这一层；点开逐条改（只落程序，不动词书）。`;
       }
+      // 词条体检：发现可疑条目时才亮出按钮
+      const chk = await api(`/api/pos/suspicious?book_id=${bookId}`);
+      const cbtn = $('btn-pos-check');
+      if (cbtn) {
+        cbtn.classList.toggle('hidden', !chk.items.length);
+        cbtn.dataset.book = String(bookId);
+        cbtn.dataset.tip = `词条体检：${chk.items.length} 条疑似扫描/错行弄坏的条目，点开可改可删。`;
+      }
     } catch (e) { /* 体检失败就不显示按钮 */ }
   } catch (e) {
     box.innerHTML = `<span class="muted">${escapeHtml(e.message)}</span>`;
   }
 }
 
-/* ---------- 导入体检 + 待确认清单 ---------- */
+/* ---------- 导入体检 + 待确认清单 + 词条体检 ---------- */
+async function openBookCheck(bookId) {
+  const box = $('pos-check-box');
+  if (!box || !bookId) return;
+  box.classList.remove('hidden');
+  box.innerHTML = '<p class="muted">体检中…</p>';
+  let r;
+  try {
+    r = await api(`/api/pos/suspicious?book_id=${bookId}`);
+  } catch (e) {
+    box.innerHTML = `<p class="err">${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  if (!r.items.length) {
+    box.innerHTML = '<p class="muted">没有发现可疑条目。</p>';
+    return;
+  }
+  box.innerHTML = `<p class="muted">可疑条目 ${r.items.length} 条（多半是扫描/错行弄坏的）：改或删都行，删除会同步到词书 Excel。</p>`
+    + r.items.map((it) => `<div class="check-row" data-id="${it.id}" data-word="${escapeAttr(it.word)}">
+        <span class="muted chk-why">${escapeHtml(it.reason)}</span>
+        <input class="chk-word" value="${escapeAttr(it.word)}">
+        <input class="chk-mean" value="${escapeAttr(it.meaning)}">
+        <button class="btn icon-only chk-save" data-tip="把修正写回词书">${ICON_DOWNLOAD}</button>
+        <button class="btn danger icon-only chk-del" data-tip="删除这条（程序库 + 词书 Excel）">${ICON_TRASH}</button>
+      </div>`).join('')
+    + '<div class="row" style="margin-top:6px"><span class="muted" id="chk-msg"></span></div>';
+  box.querySelectorAll('.chk-save').forEach((b) => {
+    b.addEventListener('click', async () => {
+      const row = b.closest('.check-row');
+      try {
+        await api('/api/word/' + row.dataset.id + '/edit', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word: row.querySelector('.chk-word').value,
+                                 meaning: row.querySelector('.chk-mean').value }),
+        });
+        $('chk-msg').textContent = '已保存（并回写词书）';
+        row.remove();
+      } catch (e) {
+        $('chk-msg').textContent = '保存失败：' + e.message;
+      }
+    });
+  });
+  box.querySelectorAll('.chk-del').forEach((b) => {
+    b.addEventListener('click', async () => {
+      const row = b.closest('.check-row');
+      if (!confirm(`删除「${row.dataset.word}」？会从程序库和词书 Excel 里一起删掉。`)) return;
+      try {
+        const res = await api('/api/word/' + row.dataset.id + '/delete', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ book_id: bookId }),
+        });
+        $('chk-msg').textContent = res.excel && res.excel.updated
+          ? '已删除（词书 Excel 同步完成）' : `已从程序里删除${res.excel && res.excel.message ? '：' + res.excel.message : ''}`;
+        row.remove();
+        loadPosStats();
+      } catch (e) {
+        $('chk-msg').textContent = '删除失败：' + e.message;
+      }
+    });
+  });
+}
+
 const POS_GROUP_CHOICES = [['noun', '名词性'], ['verb', '动词'], ['adj', '形容词'],
   ['adv', '副词'], ['func', '虚词'], ['misc', '其他']];
 const GROUP_TAG = { noun: 'n', verb: 'v', adj: 'a', adv: 'ad', func: 'prep', misc: 'phr' };
@@ -1901,6 +1970,11 @@ $('btn-pos-todo').addEventListener('click', () => {
   const bookId = Number($('pos-book').value || 0);
   if (!bookId) { toast('先选一本词书'); return; }
   openTodoList(bookId);
+});
+$('btn-pos-check').addEventListener('click', () => {
+  const bookId = Number($('pos-book').value || 0);
+  if (!bookId) { toast('先选一本词书'); return; }
+  openBookCheck(bookId);
 });
 document.addEventListener('click', async (e) => {
   const a = e.target && e.target.closest ? e.target.closest('[data-todo-book]') : null;

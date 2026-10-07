@@ -825,6 +825,53 @@ def pos_todo(book_id: int = Query(...), limit: int = Query(500)):
     return {'items': poslib.todo_words(book_id, limit)}
 
 
+@app.get('/api/pos/suspicious')
+def pos_suspicious(book_id: int = Query(...), limit: int = Query(200)):
+    """词条体检：疑似扫描/错行弄坏的条目（只判断，不改数据）。"""
+    return {'items': poslib.suspicious_words(book_id, limit)}
+
+
+class WordDeleteBody(BaseModel):
+    book_id: int = 0
+
+
+@app.post('/api/word/{word_id}/delete')
+def word_delete(word_id: int, body: WordDeleteBody = Body(default=WordDeleteBody())):
+    """删除一条词条（程序库 + 词书 Excel 副本尽力同步）；用于清掉坏条目。"""
+    excel = {'updated': False, 'message': ''}
+    with db._lock:
+        with db.get_conn() as conn:
+            w = conn.execute('SELECT * FROM words WHERE id=?', (word_id,)).fetchone()
+            if w is None:
+                raise HTTPException(404, '词条不存在')
+            book = conn.execute('SELECT * FROM word_books WHERE id=?', (w['book_id'],)).fetchone()
+            conn.execute('DELETE FROM words WHERE id=?', (word_id,))
+            if book is not None and book['name'] != '自定义单词收藏册':
+                try:
+                    path, _created = _book_excel_path(conn, book)
+                    if path.lower().endswith(('.xlsx', '.xlsm')):
+                        from openpyxl import load_workbook
+                        wb = load_workbook(path)
+                        ws = wb.active
+                        col = 1
+                        for c in range(1, ws.max_column + 1):
+                            head = ws.cell(1, c).value
+                            if head and str(head).strip() == '【单词】':
+                                col = c
+                                break
+                        for r in range(2, ws.max_row + 1):
+                            if str(ws.cell(r, col).value or '').strip() == w['word']:
+                                ws.delete_rows(r)
+                                wb.save(path)
+                                excel = {'updated': True, 'message': '词书 Excel 里也删掉了这一行'}
+                                break
+                except PermissionError:
+                    excel = {'updated': False, 'message': '词书 Excel 正被占用，只删了程序里的副本'}
+                except Exception as e:
+                    excel = {'updated': False, 'message': 'Excel 同步失败：%s' % e}
+    return {'ok': True, 'deleted': word_id, 'word': w['word'], 'excel': excel}
+
+
 class PosOverrideBody(BaseModel):
     book_id: int = 0
     items: list = []

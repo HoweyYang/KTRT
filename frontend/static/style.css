@@ -645,6 +645,14 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .todo-row b { min-width: 110px; }
 .todo-row .muted { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .todo-row select { padding: 4px 6px; font-size: 13px; }
+/* 词条体检行：原因 + 单词/释义可改 + 保存/删除 */
+.check-row {
+  display: grid; grid-template-columns: 1fr 1.1fr 1.4fr auto auto;
+  gap: 6px; align-items: center; padding: 5px 0;
+  border-bottom: 1px dashed var(--line); font-size: 13px;
+}
+.check-row .chk-why { font-size: 12px; }
+.check-row input { padding: 4px 6px; font-size: 13px; min-width: 0; }
 /* 待确认清单的"空"状态：只留一个疑问小人，不啰嗦 */
 .todo-empty { display: inline-flex; color: var(--muted); cursor: help; }
 .todo-empty:hover { color: var(--accent); }
