@@ -1817,7 +1817,7 @@ async function openBookCheck(bookId) {
   box.innerHTML = `<p class="muted">可疑条目 ${r.items.length} 条（多半是扫描/错行弄坏的）：改或删都行，删除会同步到词书 Excel。</p>`
     + r.items.map((it) => `<div class="check-row" data-id="${it.id}" data-word="${escapeAttr(it.word)}">
         <span class="muted chk-why">${escapeHtml(it.reason)}</span>
-        <input class="chk-word" value="${escapeAttr(it.word)}">
+        <input class="chk-word" value="${escapeAttr(it.suggest || it.word)}">
         <input class="chk-mean" value="${escapeAttr(it.meaning)}">
         <button class="btn icon-only chk-save" data-tip="把修正写回词书">${ICON_DOWNLOAD}</button>
         <button class="btn danger icon-only chk-del" data-tip="删除这条（程序库 + 词书 Excel）">${ICON_TRASH}</button>
@@ -1909,19 +1909,24 @@ async function openTodoList(bookId) {
   $('btn-todo-ai').addEventListener('click', async () => {
     const btn = $('btn-todo-ai');
     btn.disabled = true;
-    $('todo-msg').textContent = '正在联网判定…';
+    const msg = $('todo-msg');
+    msg.textContent = '正在联网判定…（每批 10 个，边判边写入）';
+    let done = 0;
     try {
-      const res = await api('/api/pos/ai_fill', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ book_id: bookId, limit: 200 }), timeout: 120000,
-      });
-      $('todo-msg').textContent = res.message || '完成';
-      await openTodoList(bookId);
-      loadPosStats();
+      for (let round = 0; round < 20; round++) {
+        const res = await api('/api/pos/ai_fill', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ book_id: bookId, limit: 10 }), timeout: 150000,
+        });
+        done += res.count || 0;
+        msg.textContent = `已判 ${done} 个 · ${res.message || ''}`;
+        if (!res.count || res.ok === false) break;
+      }
     } catch (e) {
-      $('todo-msg').textContent = '失败：' + e.message;
+      msg.textContent = `已判 ${done} 个；失败：` + e.message;
     } finally {
       btn.disabled = false;
+      loadPosStats();
     }
   });
   $('btn-todo-save').addEventListener('click', async () => {

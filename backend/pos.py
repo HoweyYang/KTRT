@@ -506,6 +506,54 @@ def _in_dict(phrase):
         return False
 
 
+def _gloss_chars(text):
+    """取释义里的中文字（做相似度比对用）。"""
+    return {c for c in str(text or '') if '\u4e00' <= c <= '\u9fff'}
+
+
+def repair_suggestion(word, meaning):
+    """疑似被截断/打错的词，去词典里找最像的候选。
+
+    判据（实测很准）：截断词在 ECDICT 里要么查不到、要么 frq=0（无词频）且释义多为
+    领域标注（[医]/[法]/[地名]…）；而正确的完整词一定是有词频的常用词。
+    再用中文释义重合度确认它俩说的是同一件事。
+    """
+    w = (word or '').strip().lower()
+    if len(w) < 5 or ' ' in w or not os.path.exists(db.DICT_DB_PATH):
+        return ''
+    mine = _gloss_chars(meaning)
+    if len(mine) < 2:          # 释义没有中文就没法比对，别乱猜
+        return ''
+    cands = []
+    try:
+        conn = sqlite3.connect(db.DICT_DB_PATH)
+        row = conn.execute('SELECT frq FROM dict WHERE word=?', (w,)).fetchone()
+        if row and int(row[0] or 0) > 0:
+            conn.close()
+            return ''                      # 有词频 = 正经词，不做截断推断
+        for pattern in (w + '%', w[:4] + '%'):
+            for cw, tr, frq in conn.execute(
+                    'SELECT word, translation, frq FROM dict WHERE word LIKE ? AND length(word)<=? '
+                    'AND CAST(frq AS INTEGER)>0 ORDER BY CAST(frq AS INTEGER) LIMIT 15',
+                    (pattern, len(w) + 4)):
+                cands.append((cw, tr or ''))
+        conn.close()
+    except Exception:
+        return ''
+    best, best_score = '', 0.0
+    for cw, tr in cands:
+        if cw.lower() == w or ' ' in cw or len(cw) < len(w):
+            continue
+        other = _gloss_chars(tr)
+        if not other:
+            continue
+        share = len(mine & other) / max(1, len(mine))
+        score = share if len(mine & other) >= 2 else 0.0
+        if score > best_score:
+            best, best_score = cw, score
+    return best if best_score >= 0.34 else ''
+
+
 def suspicious_words(book_id, limit=200):
     """词条体检：找出疑似被扫描/错行弄坏的条目（headword 拼了两个词、释义里混进别的词或音标…）。
 
@@ -525,6 +573,16 @@ def suspicious_words(book_id, limit=200):
             continue
         if re.search(r'[\u4e00-\u9fff]', word) or re.search(r'\d', word):
             why = '单词列混进了中文/数字'
+        elif (not word[:1].isupper() and not _in_dict(word) and len(word) >= 5
+              and ' ' not in word):
+            guess = repair_suggestion(word, mean)
+            if guess:
+                why = '词典里查不到，疑似被截断/打错（建议：%s）' % guess
+                out.append({'id': r['id'], 'word': word, 'meaning': mean[:120],
+                            'reason': why, 'suggest': guess})
+                if len(out) >= limit:
+                    break
+                continue
         elif ' ' in word:
             head = word.split()[0].lower()
             if ph_noise.search(mean):
