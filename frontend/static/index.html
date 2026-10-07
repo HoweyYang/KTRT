@@ -166,7 +166,7 @@
         <select id="export-book"><option value="">全部词书</option></select>
         <select id="export-list"><option value="">全部 List</option></select>
         <button id="btn-export-go" class="btn primary" data-tip="按当前范围与词书 / List 导出 Excel。">Excel</button>
-        <button id="btn-export-notes" class="btn" data-tip="导出词条及其 Markdown 笔记。">笔记</button>
+        <button id="btn-export-notes" class="btn" data-tip="导出笔记：词条 + Markdown 笔记（导出文件就是 Markdown）。">Markdown</button>
       </div>
       <div class="manage-group">
         <span class="mg-label">清空</span>
@@ -184,7 +184,7 @@
         <h2>风暴词卡</h2>
         <div class="row">
           <input id="storm-word" type="text" placeholder="单词，如 phenomenon…" style="flex:1">
-          <button id="btn-storm-gen" class="btn primary">生成</button>
+          <button id="btn-storm-gen" class="btn primary" data-tip="生成这张风暴词卡（需联网与 AI Key）。">Storm</button>
         </div>
         <div class="row" style="margin-top:8px">
           <input id="storm-search" type="text" placeholder="搜索已生成词卡的单词…" style="flex:1">
@@ -205,11 +205,11 @@
         <div class="row">
           <select id="pos-book" style="flex:1"><option value="">选词书</option></select>
           <select id="pos-list" style="flex:1"><option value="">全部 List</option></select>
-          <button id="btn-pos-build" class="btn primary" data-tip="按勾选的词性生成一本新词书：按字母排序、按首字母分 List，学词 / 杀词直接可用，卡片上可跳回原书位置（说白了就是重新筛选、排列、整合）。">生成词性蒙版</button>
+          <button id="btn-pos-build" class="btn primary" data-tip="按勾选的词性生成一本新词书：按字母排序、按首字母分 List，学词 / 杀词直接可用，卡片上可跳回原书位置（说白了就是重新筛选、排列、整合）。">Mask</button>
         </div>
         <div id="pos-box" class="pos-box" style="margin-top:14px"></div>
         <div class="row" style="margin-top:10px">
-          <button id="btn-pos-todo" class="btn" data-tip="列出这本书里「判不出词性」的词，逐条改成你认得的那一类。改完只存在本程序里，不动你的词书文件。">待确认清单</button>
+          <button id="btn-pos-todo" class="btn icon-only hidden" data-tip="待确认清单：列出这本书里判不出、或只判到「动词 / 名词」这一层的词，逐条改成你认得的那一类。改完只存在本程序里，不动你的词书文件。"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="8" r="3.2"/><path d="M4.2 20a6.3 6.3 0 0 1 12.6 0"/><path d="M18.6 2.6a2.2 2.2 0 1 1 1.5 3.8c-.6.4-.9.8-.9 1.5"/><circle cx="19.2" cy="9.9" r=".7" fill="currentColor" stroke="none"/></svg></button>
         </div>
         <div id="pos-todo-box" class="hidden" style="margin-top:10px"></div>
       </div>
@@ -264,9 +264,9 @@
         <h2>AI 与语音设置</h2>
         <label>页面质感
           <span class="seg">
-          <button type="button" id="page-normal" class="btn active">简约</button>
-          <button type="button" id="page-paper" class="btn">纸质</button>
-          <button type="button" id="page-cyber" class="btn">科幻</button>
+          <button type="button" id="page-normal" class="btn active">Minimal</button>
+          <button type="button" id="page-paper" class="btn">Paper</button>
+          <button type="button" id="page-cyber" class="btn">Cyber</button>
           </span>
         </label>
         <label>主题色

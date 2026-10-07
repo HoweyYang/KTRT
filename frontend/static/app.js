@@ -1774,6 +1774,16 @@ async function loadPosStats() {
         ? ' data-tip="释义里没标词性、离线词典也没查到——多为专有名词、词组或拼写变体。"' : ''}>`
         + `<input type="checkbox" value="${i.key}">`
         + ` ${escapeHtml(i.label)} <b>${i.count}</b></label>`).join('');
+    // 只有存在「待确认 / 笼统」的词时才亮出疑问小人按钮
+    try {
+      const sum = await api(`/api/pos/summary?book_id=${bookId}`);
+      const btn = $('btn-pos-todo');
+      if (btn) {
+        btn.classList.toggle('hidden', !(sum.todo || sum.coarse));
+        btn.dataset.book = String(bookId);
+        btn.dataset.tip = `待确认清单：${sum.todo || 0} 个判不出、${sum.coarse || 0} 个只判到动词/名词这一层；点开逐条改（只落程序，不动词书）。`;
+      }
+    } catch (e) { /* 体检失败就不显示按钮 */ }
   } catch (e) {
     box.innerHTML = `<span class="muted">${escapeHtml(e.message)}</span>`;
   }
