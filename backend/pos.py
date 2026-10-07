@@ -75,7 +75,7 @@ _PACK_POS = {}       # word → 增强包（WordNet / Moby）的词性
 _PACK_GLOSS = {}     # word → {词性: 英文原文释义}
 _PACK_MISS = set()   # 增强包里查过没有的词
 _PACK_PATH = os.path.join(db.DATA_DIR, 'reflib', 'refpos.db')
-RULE_VERSION = 'r2'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
+RULE_VERSION = 'r4'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
 
 
 def _load_pack(rows):
@@ -159,6 +159,22 @@ _SUF_ADJ = ('ous', 'ive', 'able', 'ible', 'al', 'ial', 'ic', 'ical', 'ful', 'les
             'ant', 'ary', 'ish', 'like', 'worthy', 'proof', 'tight', 'free', 'tolerant',
             'friendly', 'based', 'driven', 'aware', 'proofed', 'resistant', 'dependent')
 _SUF_VERB = ('ize', 'ise', 'ify', 'ate', 'en')
+_COUNT_RE = re.compile(r'[\[（(]\s*C\s*[\]）)]')      # n. [C] / (C) / （可数）
+
+
+def _merge_detail(tags, key):
+    """书里只写 v. / n. 这类粗信息时，用词典与增强包里更细的补上（vt / vi / 系动词 / 专有 / 可数）。
+
+    这是"词卡优先显示最底层性质"的关键：原书词库常常只写一个 v.，
+    但内置词典和 WordNet 往往知道它是及物还是不及物。
+    """
+    out = set(tags)
+    base = _base_of(out)
+    for src in (_POS_CACHE.get(key, set()), _PACK_POS.get(key, set())):
+        for t in src:
+            if ':' in t and t.split(':', 1)[0] in base:
+                out.add(t)
+    return out
 
 
 def _affix_tags(word):
@@ -270,7 +286,7 @@ def _finish(tags, word, text, source):
     if 'n' in base:
         if _is_proper(word, text):
             tags.add('n:proper')
-        if _countable(word):
+        if _countable(word) or _COUNT_RE.search(text or ''):
             tags.add('n:countable')
     order = ['n', 'n:proper', 'n:countable', 'v', 'v:vt', 'v:vi', 'v:link', 'v:modal',
              'v:aux', 'v:caus', 'a', 'ad', 'prep', 'conj', 'pron', 'num', 'art', 'int',
@@ -286,7 +302,7 @@ def judge(meaning, word=''):
     _ensure_word(word)
     book = _subtags_from_text(meaning)
     if book:
-        return _finish(book, word, meaning, 'book')
+        return _finish(_merge_detail(book, (word or '').strip().lower()), word, meaning, 'book')
     dt = _POS_CACHE.get((word or '').strip().lower(), set())
     if dt:
         return _finish(dt, word, _DICT_TEXT.get((word or '').strip().lower()) or meaning, 'dict')
@@ -463,8 +479,12 @@ def _load_dict_pos(rows):
             sql = ('SELECT word, translation, definition FROM dict WHERE word IN (%s)'
                    % ','.join('?' * len(chunk)))
             for word, translation, definition in conn.execute(sql, chunk):
-                _POS_CACHE[word] = _subtags_from_text(translation) or _subtags_from_text(definition)
-                _DICT_TEXT[word] = (translation or definition or '').strip()
+                # ECDICT 的换行是字面量 \n（两个字符），先还原成真换行再解析，
+                # 否则 "…连续\nvi. 跑" 里的 vi. 会被"前一个字符是字母"挡掉。
+                tr = (translation or '').replace('\\n', '\n').replace('\\r', '')
+                df = (definition or '').replace('\\n', '\n').replace('\\r', '')
+                _POS_CACHE[word] = _subtags_from_text(tr) or _subtags_from_text(df)
+                _DICT_TEXT[word] = (tr or df).strip()
         conn.close()
     except Exception:
         return

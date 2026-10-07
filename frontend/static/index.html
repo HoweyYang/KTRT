@@ -100,7 +100,7 @@
           <button id="btn-note-save" class="btn primary">保存</button>
         </div>
         <div id="note-editor" class="note-md" contenteditable="true" spellcheck="false"
-          data-placeholder="记录想法…：行首输入 # 或 ## 变标题；Ctrl+B 加粗、Ctrl+I 斜体；选中文字右键可高亮"></div>
+          data-placeholder="以 Markdown 格式记录你的想法…"></div>
       </div>
       </aside>
       </div>
@@ -199,8 +199,9 @@
     <!-- ============ 词性蒙版 ============ -->
     <section id="view-mask" class="view">
       <div class="panel">
-        <h2>词性蒙版</h2>
-        <p class="muted" style="margin-top:-2px">选词书 → 勾词性 → 生成。出来就是一本普通词书：按字母排、按首字母分 List，学词 / 杀词 / 进度 / 错题 / 笔记 / 导出全都照常；卡片上标着原书位置，点一下跳回去。</p>
+        <h2>词性蒙版
+          <span class="hint-q" data-tip="选词书 → 勾词性 → 生成。出来就是一本普通词书：按字母排、按首字母分 List，学词 / 杀词 / 进度 / 错题 / 笔记 / 导出全都照常；卡片上标着原书位置，点一下跳回去。">?</span>
+        </h2>
         <div class="row">
           <select id="pos-book" style="flex:1"><option value="">选词书</option></select>
           <select id="pos-list" style="flex:1"><option value="">全部 List</option></select>
