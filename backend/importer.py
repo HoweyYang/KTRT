@@ -216,6 +216,11 @@ def import_book(path, forced_book='', forced_language=''):
                 'root_words=excluded.root_words, phrasal_keys=excluded.phrasal_keys',
                 insert_rows,
             )
+            # 重新导入 = 与文件彻底对齐：把旧文件多出来的"尾巴"删掉
+            # （否则新文件删了几条，库里还会留着旧行，造成条目数对不上）
+            for list_no, n in seq_counter.items():
+                conn.execute('DELETE FROM words WHERE book_id=? AND list_no=? AND seq>?',
+                             (book_id, list_no, n))
     # 导入后按这本书的词条算一次词性（在写事务之外做，避免和上面的写锁抢）
     try:
         pos.fill_book_pos(book_id)
