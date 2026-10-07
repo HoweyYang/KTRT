@@ -27,6 +27,12 @@ add_data = [
     '--add-data=' + p('docs') + os.pathsep + 'docs',
     '--add-data=' + p('assets') + os.pathsep + 'assets',
 ]
+# 词性增强包（Moby POS + WordNet）内置：判定链与「原文释义」都依赖它，随安装包发布
+if os.path.exists(p(os.path.join('data', 'reflib', 'refpos.db'))):
+    add_data.append(
+        '--add-data=' + p(os.path.join('data', 'reflib', 'refpos.db'))
+        + os.pathsep + os.path.join('data', 'reflib')
+    )
 if os.path.exists(p(os.path.join('data', 'phrasal_verbs.json'))):
     add_data.append(
         '--add-data=' + p(os.path.join('data', 'phrasal_verbs.json')) + os.pathsep + 'data'

@@ -786,12 +786,20 @@ def reflib_list():
     pack_size = os.path.getsize(pack) if os.path.exists(pack) else 0
     dict_size = os.path.getsize(db.DICT_DB_PATH) if os.path.exists(db.DICT_DB_PATH) else 0
     return {'download_url': REFPACK_URL, 'items': [
-        {'key': 'ecdict', 'name': '内置离线词典（ECDICT）', 'kind': 'builtin',
-         'size': dict_size, 'enabled': True, 'removable': False,
-         'note': '77 万词条：中英释义、词形变化、词频排名、考试标签'},
-        {'key': 'pack', 'name': '词性增强包（WordNet + Moby）', 'kind': 'download',
+        {'key': 'ecdict', 'name': '离线词典（ECDICT）', 'kind': 'download',
+         'size': dict_size, 'enabled': bool(dict_size), 'removable': False,
+         'badge': '内置' if dict_size else '未安装',
+         'note': '77 万词条：中英释义、词形变化、词频排名、考试标签（纯净版安装包不含，'
+                 '和词书一样单独下载后导入）'},
+        {'key': 'pack', 'name': '词性增强包（Moby POS + WordNet）', 'kind': 'builtin',
          'size': pack_size, 'enabled': poslib.pack_enabled(), 'removable': True,
-         'note': '20 万词的词性 + 9 万条英文原文释义；装了它能少一大批「待确认」'},
+         'badge': '随安装包内置',
+         'note': '30 万词的词性 + 9 万条英文原文释义；卡片上的「及物/不及物/系动词/可数」'
+                 '和原文释义都靠它。装上后若想省空间可以禁用。'},
+        {'key': 'kaikki', 'name': 'Wiktionary 索引（可选拓展包）', 'kind': 'planned',
+         'size': 0, 'enabled': False, 'removable': False, 'badge': '未推出',
+         'note': '覆盖最全，含专有名词与词组；体积较大（约 20–40 MB）、CC BY-SA 需致谢，'
+                 '以后作为可下载可选的拓展包提供'},
     ]}
 
 
