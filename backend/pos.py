@@ -123,7 +123,7 @@ def _load_wiki(rows):
 def reset_wiki_cache():
     _WIKI_POS.clear()
     _WIKI_MISS.clear()
-RULE_VERSION = 'r11'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
+RULE_VERSION = 'r14'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
 
 
 def _load_pack(rows):
@@ -392,7 +392,16 @@ def judge(meaning, word='', extra=''):
     _ensure_word(word)
     book = _subtags_from_text(meaning)
     if book:
-        tags, src = _finish(_merge_detail(book, (word or '').strip().lower()), word, meaning, 'book')
+        key = (word or '').strip().lower()
+        dict_tags = (_POS_CACHE.get(key, set()) | _PACK_POS.get(key, set())
+                     | _WIKI_POS.get(key, set()))
+        base_book, base_dict = _base_of(book), _base_of(dict_tags)
+        if base_dict and not (base_book & base_dict):
+            # 词书与词典说的不是一回事（典型：扫描件把 plaudit 标成 v.，词典是 n.）
+            # —— 以词典为准，但把来源标成 conflict，让它进「待确认」由人确认
+            tags, _ = _finish(_merge_detail(dict_tags, key), word, meaning, 'dict')
+            return _add_pattern(tags, word, extra), 'conflict'
+        tags, src = _finish(_merge_detail(book, key), word, meaning, 'book')
         return _add_pattern(tags, word, extra), src
     dt = _POS_CACHE.get((word or '').strip().lower(), set())
     if dt:
@@ -679,6 +688,14 @@ def todo_words(book_id, limit=500):
                      "SELECT word, meaning, pos_tags, pos_source FROM words "
                      "WHERE book_id=? AND (pos_tags='todo' OR pos_tags='') ORDER BY word LIMIT ?",
                      (book_id, limit))]
+        # 词书与词典冲突的词（我们已按词典纠正，但要让人过一眼）
+        items += [{'word': r['word'], 'meaning': (r['meaning'] or '')[:120],
+                   'tags': r['pos_tags'] or '', 'source': 'conflict', 'coarse': False,
+                   'conflict': True}
+                  for r in conn.execute(
+                      "SELECT word, meaning, pos_tags, pos_source FROM words "
+                      "WHERE book_id=? AND pos_source='conflict' ORDER BY word LIMIT ?",
+                      (book_id, limit))]
         # 只判到「动词 / 名词」这一层、还没细分的词也一并列出来（多为词书缺信息或写错）
         marks = ','.join('?' * len(coarse_keys))
         items += [{'word': r['word'], 'meaning': (r['meaning'] or '')[:120],

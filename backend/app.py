@@ -805,7 +805,7 @@ def reflib_list():
          'size': wiki_size, 'enabled': poslib.wiki_enabled(), 'removable': True,
          'badge': '已安装' if wiki_size else '未安装',
          'url': WIKIPACK_URL,
-         'note': '86 万个词（含专有名词与词组）：装上是 65 MB（下载包 30 MB），'
+         'note': '115 万条记录（86 万个词头，含专有名词、词组，以及义项里的及物/不及物、可数/不可数标签）：装上是 87 MB（下载包 40 MB），'
                  '用来补「哪本词典都查不到」的生僻词与词组；CC BY-SA，致谢见发布说明'},
     ]}
 
