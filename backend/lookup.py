@@ -144,7 +144,7 @@ def lookup(word, depth='quick'):
     # ④ 词性（书 → 词典 → 增强包 → 规则 → 待确认）
     try:
         meaning = out['books'][0]['meaning'] if out['books'] else ''
-        tags, src = poslib.judge(meaning or out['translation'], raw)
+        tags, src = poslib.judge_with_form(meaning or out['translation'], raw)
         out['pos'] = tags
         out['pos_source'] = src
     except Exception as e:
