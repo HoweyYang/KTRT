@@ -493,6 +493,57 @@ def book_summary(book_id):
     }
 
 
+def _in_dict(phrase):
+    """整条短语在离线词典里是否存在（判断"错行拼出来的假词"用）。"""
+    try:
+        if not os.path.exists(db.DICT_DB_PATH):
+            return False
+        conn = sqlite3.connect(db.DICT_DB_PATH)
+        row = conn.execute('SELECT 1 FROM dict WHERE word=?', (phrase.strip().lower(),)).fetchone()
+        conn.close()
+        return bool(row)
+    except Exception:
+        return False
+
+
+def suspicious_words(book_id, limit=200):
+    """词条体检：找出疑似被扫描/错行弄坏的条目（headword 拼了两个词、释义里混进别的词或音标…）。
+
+    只做判断，不改数据；界面上让用户自己决定修正还是删除。
+    """
+    out = []
+    ph_noise = re.compile(r'[\[/][^\]/]{2,40}[\]/]')          # 释义里混进音标 [fəˈsɪlɪteɪt]
+    other_word = re.compile(r'[A-Za-z]{3,}\s?(v|n|a|adj|adv|vt|vi)\.')   # 关联词 + 词性
+    with db.get_conn() as conn:
+        rows = conn.execute('SELECT id, word, meaning FROM words WHERE book_id=? ORDER BY word',
+                            (book_id,)).fetchall()
+    for r in rows:
+        word = (r['word'] or '').strip()
+        mean = (r['meaning'] or '').strip()
+        why = ''
+        if not word:
+            continue
+        if re.search(r'[\u4e00-\u9fff]', word) or re.search(r'\d', word):
+            why = '单词列混进了中文/数字'
+        elif ' ' in word:
+            head = word.split()[0].lower()
+            if ph_noise.search(mean):
+                why = '释义里混进了音标（多半错行）'
+            elif other_word.search(mean) and not re.match(r'^(no|in|on|at|of|for|to|with|by|the|a|an)\b', word, re.I):
+                why = '释义里出现别的单词+词性（多半错行）'
+            elif head and mean.lower().startswith(head) and len(head) > 3:
+                why = '释义开头又重复了单词列的第一个词（多半拼接）'
+            elif (not re.search(r'\b(sb|sth|doing|to do|one\'s)\b', word, re.I)
+                  and not all(t[:1].isupper() for t in word.split() if t[:1].isalpha())
+                  and not _in_dict(word)):
+                why = '整个短语在离线词典里查不到（多半是错行拼出来的）'
+        if why:
+            out.append({'id': r['id'], 'word': word, 'meaning': mean[:120], 'reason': why})
+            if len(out) >= limit:
+                break
+    return out
+
+
 def todo_words(book_id, limit=500):
     """待确认清单：这部分词判不出来，列给用户改（只落程序，不碰词书）。"""
     coarse_keys = ('v', 'n')      # 只判到"动词/名词"、还没细分到及物性/可数性的词
