@@ -275,8 +275,8 @@ def test_pos_falls_back_to_dictionary():
 
     poslib._POS_CACHE.clear()
     got = {i['key']: i['count'] for i in poslib.stats(bid)['items']}
-    check('纯中文释义的词性从离线词典借到（岩浆 → 名词）', got.get('n') == 1, got)
-    check('词典也查不到才算「其他」', got.get('other') == 1, got)
+    check('纯中文释义的词性从离线词典借到（岩浆 → 名词性）', got.get('noun') == 1, got)
+    check('词典也查不到才算「待确认」', got.get('todo') == 1, got)
 
 
 def test_mask_edit_syncs_source_book():
@@ -292,7 +292,7 @@ def test_mask_edit_syncs_source_book():
         mother = conn.execute("SELECT * FROM words WHERE book_id=? AND word='apple'",
                               (src['id'],)).fetchone()
 
-    built = poslib.build(src['id'], None, ['n'], '蒙版测试书')
+    built = poslib.build(src['id'], None, ['noun'], '蒙版测试书')
     with db.get_conn() as conn:
         child = conn.execute('SELECT * FROM words WHERE book_id=? AND word=\'apple\'',
                              (built['book_id'],)).fetchone()
