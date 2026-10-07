@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from backend import db, ai, tts, importer, phrasal, updater, net, pos as poslib
 from backend import lookup as lookuplib
+from backend import webpos
 
 db.init_db()
 
@@ -786,11 +787,11 @@ def reflib_list():
     pack_size = os.path.getsize(pack) if os.path.exists(pack) else 0
     dict_size = os.path.getsize(db.DICT_DB_PATH) if os.path.exists(db.DICT_DB_PATH) else 0
     return {'download_url': REFPACK_URL, 'items': [
-        {'key': 'ecdict', 'name': '离线词典（ECDICT）', 'kind': 'download',
+        {'key': 'ecdict', 'name': '离线词典（ECDICT）', 'kind': 'builtin',
          'size': dict_size, 'enabled': bool(dict_size), 'removable': False,
-         'badge': '内置' if dict_size else '未安装',
-         'note': '77 万词条：中英释义、词形变化、词频排名、考试标签（纯净版安装包不含，'
-                 '和词书一样单独下载后导入）'},
+         'badge': '随安装包内置' if dict_size else '内置（首次启动自动建库）',
+         'note': '77 万词条：中英释义、词形变化、词频排名、考试标签；断网也能查词，'
+                 '首次启动会自动建库（约几十秒）'},
         {'key': 'pack', 'name': '词性增强包（Moby POS + WordNet）', 'kind': 'builtin',
          'size': pack_size, 'enabled': poslib.pack_enabled(), 'removable': True,
          'badge': '随安装包内置',
@@ -855,12 +856,31 @@ def pos_ai_fill(body: PosAiBody):
     items = poslib.todo_words(body.book_id, limit)
     if not items:
         return {'ok': True, 'count': 0, 'message': '没有待确认的词了'}
+    # ① 先试免费在线词典（不花 token）：能查到的直接定；查不到的再交给 AI
+    from_web, web_errors = [], 0
+    words = [it['word'] for it in items]
+    try:
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            results = list(pool.map(lambda w: webpos.lookup_pos(w), words))
+        for it, tags in zip(items, results):
+            if tags:
+                from_web.append({'word': it['word'], 'tags': tags})
+            elif not tags:
+                web_errors += 1
+    except Exception:
+        pass
+    if from_web:
+        poslib.apply_overrides(body.book_id, from_web, source='web')
+    left = [it for it in items if it['word'] not in {x['word'] for x in from_web}]
+    if not left:
+        return {'ok': True, 'count': len(from_web), 'source': 'web',
+                'message': '在线词典判了 %d 个词（可再人工核对）' % len(from_web)}
     prompt = (
         '你是英语词典编辑。给下面每个词条标注词性，只输出 JSON，不要解释：'
         '{"items":[{"word":"原词","pos":"n 或 v 或 a 或 ad 或 prep 或 conj 或 pron 或 num 或 art 或 int 或 phr","reason":"10 字以内"}]}'
         '。词性含义：n 名词、v 动词、a 形容词、ad 副词、prep 介词、conj 连词、pron 代词、'
         'num 数词、art 冠词、int 感叹词、phr 短语；确实判不出就给空字符串。\n'
-        '词条：' + json.dumps([{'word': it['word'], 'meaning': it['meaning']} for it in items],
+        '词条：' + json.dumps([{'word': it['word'], 'meaning': it['meaning']} for it in left],
                              ensure_ascii=False)[:3000]
     )
     try:
@@ -879,7 +899,8 @@ def pos_ai_fill(body: PosAiBody):
     if not mapping:
         return {'ok': False, 'count': 0, 'message': 'AI 没给出可用结果，稍后再试'}
     n = poslib.apply_overrides(body.book_id, mapping, source='ai')
-    return {'ok': True, 'count': n, 'message': 'AI 判了 %d 个词（可在清单里再改）' % n}
+    return {'ok': True, 'count': len(from_web) + n, 'source': 'web+ai',
+            'message': '在线词典 %d 个 + AI %d 个（可在清单里再改）' % (len(from_web), n)}
 
 
 # ---------- 词书本地副本与词条编辑 ----------
