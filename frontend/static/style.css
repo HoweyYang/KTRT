@@ -373,19 +373,45 @@ body[data-page="cyber"][data-theme="dark"] .wordmark b {
   color: var(--accent);
   text-shadow: 3px 2px 0 rgba(194, 67, 71, .9), -2px -2px 0 rgba(53, 182, 224, .6);
 }
-/* 三种科幻配色统一：中文名隐藏，副标题用英文全称（和霓虹一致） */
+/* 三种科幻配色统一：中文名隐藏，副标题用英文全称；每种配色配自己的字体与配色 */
 body[data-page="cyber"] .wordmark i { display: none; }
 body[data-page="cyber"] .wordmark u {
-  display: inline;
-  font-size: 9px;
-  letter-spacing: .34em;
+  display: block;
+  flex: 1 0 100%;
+  margin-top: 3px;
+  font-size: 8.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: .20em;
   text-transform: uppercase;
-  color: var(--accent);
+  white-space: normal;
+  max-width: 190px;
 }
-body[data-page="cyber"][data-theme="dark"] .wordmark u { color: var(--accent); }
+body[data-page="cyber"] .wordmark { flex-wrap: wrap; row-gap: 0; }
+/* 霓虹：银翼杀手的窄体字标配冷调小字 */
+body[data-page="cyber"][data-theme="light"] .wordmark u {
+  font-family: "Bahnschrift", "Segoe UI Variable Text", sans-serif;
+  display: block;
+  flex: 1 0 100%;
+  margin-top: 3px;
+  font-size: 8.5px;
+  letter-spacing: .20em;
+  color: var(--accent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+/* 酸黄 · 赛博朋克：与 KTRT 同角度倾斜，副标题用第二色（青/品红） */
+body[data-page="cyber"][data-theme="dark"] .wordmark u {
+  font-family: "Bahnschrift", "Segoe UI Variable Text", sans-serif;
+  color: var(--accent-2);
+  transform: skewX(-7deg);
+  text-shadow: 0 0 7px color-mix(in srgb, var(--accent-2) 45%, transparent);
+}
+/* 矩阵：等宽终端感 + 绿光 */
 body[data-page="cyber"][data-theme="dark-blue"] .wordmark u {
   font-family: "Cascadia Mono", Consolas, monospace;
-  color: var(--accent);
+  letter-spacing: .26em;
+  color: #7dffa8;
+  text-shadow: 0 0 8px rgba(0, 255, 65, .55);
 }
 /* ③ 矩阵 · 黑客帝国：等宽、绿色数字雨渐变 + 光晕 */
 body[data-page="cyber"][data-theme="dark-blue"] .wordmark b {
