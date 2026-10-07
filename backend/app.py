@@ -28,7 +28,7 @@ from backend import webpos
 
 db.init_db()
 
-APP_VERSION = '0.2.2'
+APP_VERSION = '0.2.2b'
 GITHUB_REPO = 'HoweyYang/KTRT'
 FRONTEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'static')
 updater.configure(APP_VERSION, sys.executable, bool(getattr(sys, 'frozen', False)))
@@ -846,7 +846,7 @@ def reflib_fetch(body: ReflibFetchBody):
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     tmp = dest + '.gz'
     try:
-        req = urllib.request.Request(WIKIPACK_URL, headers={'User-Agent': 'KTRT/0.2.2'})
+        req = urllib.request.Request(WIKIPACK_URL, headers={'User-Agent': 'KTRT/0.2.2b'})
         with updater._opener().open(req, timeout=120) as r, open(tmp, 'wb') as f:
             shutil.copyfileobj(r, f)
         with gzip.open(tmp, 'rb') as src, open(dest, 'wb') as out:
