@@ -1896,13 +1896,17 @@ async function openTodoList(bookId) {
       + '<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>';
     return;
   }
-  box.innerHTML = `<p class="muted">待确认 ${r.items.length} 个：改完只存在本程序里，不会动你的词书。</p>`
-    + r.items.map((it) => `<div class="todo-row" data-word="${escapeAttr(it.word)}">
+  const unsure = r.items.filter((it) => !it.coarse);
+  const coarse = r.items.filter((it) => it.coarse);
+  const rowHtml = (it) => `<div class="todo-row" data-word="${escapeAttr(it.word)}">
         <b>${escapeHtml(it.word)}</b><span class="muted">${escapeHtml(it.meaning || '')}</span>
         ${it.coarse ? '<span class="tag none" data-tip="引擎只判到「动词 / 名词」这一层：多半是词书没写全、或词书写错了词性。">笼统</span>' : ''}
         <select>${POS_GROUP_CHOICES.map(([k, label]) =>
           `<option value="${k}">${label}</option>`).join('')}</select>
-      </div>`).join('')
+      </div>`;
+  box.innerHTML = `<p class="muted">待确认 <b>${unsure.length}</b> 个（判不出词性）· 笼统 <b>${coarse.length}</b> 个（只判到动词/名词，可再细分）：改完只存在本程序里，不会动你的词书。</p>`
+    + (unsure.length ? `<p class="muted" style="margin-top:6px">— 待确认 —</p>` + unsure.map(rowHtml).join('') : '')
+    + (coarse.length ? `<p class="muted" style="margin-top:8px">— 笼统（可再细分）—</p>` + coarse.map(rowHtml).join('') : '')
     + '<div class="row" style="margin-top:8px"><button class="btn primary" id="btn-todo-save">保存这些修正</button>'
     + `<button class="btn" id="btn-todo-ai" data-tip="先查免费在线词典定词性，查不到的再交给 AI；断网或没配 Key 会自动跳过。结果同样只落程序。">联网判定（在线词典 + AI）</button>`
     + '<span class="muted" id="todo-msg"></span></div>';
@@ -2174,7 +2178,9 @@ async function renderReflib() {
       ? `<button class="btn" data-reflib="${it.key}" data-on="${it.enabled ? '1' : '0'}">${it.enabled ? '禁用' : '启用'}</button>`
       : `<span class="tag ${it.enabled ? 'learn' : 'none'}">${escapeHtml(it.badge || (it.enabled ? '内置' : '未安装'))}</span>`;
     const dl = it.removable && !it.size
-      ? `<a class="btn icon-only" href="${data.download_url}" data-tip="下载增强包，放到数据目录的 reflib 文件夹即可生效">${ICON_DOWNLOAD}</a>`
+      ? (it.key === 'wiki'
+        ? `<button class="btn icon-only" data-reflib-fetch="${it.key}" data-tip="一键下载并启用（下载 30 MB，装好后 65 MB）">${ICON_DOWNLOAD}</button>`
+        : `<a class="btn icon-only" href="${data.download_url}" data-tip="下载增强包，放到数据目录的 reflib 文件夹即可生效">${ICON_DOWNLOAD}</a>`)
       : '';
     return `<div class="resource-item">
         <span><b>${escapeHtml(it.name)}</b>：${escapeHtml(it.note)}<span class="muted">（${mb}）</span></span>
@@ -2194,6 +2200,23 @@ async function renderReflib() {
         renderReflib();
       } catch (e) {
         toast('操作失败：' + e.message);
+        b.disabled = false;
+      }
+    });
+  });
+  box.querySelectorAll('[data-reflib-fetch]').forEach((b) => {
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      toast('正在下载 Wiktionary 拓展包（约 30 MB）…');
+      try {
+        const r = await api('/api/reflib/fetch', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: b.dataset.reflibFetch }), timeout: 600000,
+        });
+        toast(r.message || '已启用');
+        renderReflib();
+      } catch (e) {
+        toast('下载失败：' + e.message);
         b.disabled = false;
       }
     });

@@ -1,3 +1,4 @@
+import gzip
 import json
 import os
 import random
@@ -778,13 +779,16 @@ def pos_summary(book_id: int = Query(...)):
 
 
 REFPACK_URL = ('https://github.com/HoweyYang/KTRT/releases/latest/download/refpos.db')
+WIKIPACK_URL = ('https://github.com/HoweyYang/KTRT/releases/latest/download/wiktionary.db.gz')
 
 
 @app.get('/api/reflib')
 def reflib_list():
     """离线参考库：内置词典 + 可下载的增强包（可启用/禁用）。"""
     pack = os.path.join(db.DATA_DIR, 'reflib', 'refpos.db')
+    wiki = poslib.WIKI_PATH
     pack_size = os.path.getsize(pack) if os.path.exists(pack) else 0
+    wiki_size = os.path.getsize(wiki) if os.path.exists(wiki) else 0
     dict_size = os.path.getsize(db.DICT_DB_PATH) if os.path.exists(db.DICT_DB_PATH) else 0
     return {'download_url': REFPACK_URL, 'items': [
         {'key': 'ecdict', 'name': '离线词典（ECDICT）', 'kind': 'builtin',
@@ -797,10 +801,12 @@ def reflib_list():
          'badge': '随安装包内置',
          'note': '30 万词的词性 + 9 万条英文原文释义；卡片上的「及物/不及物/系动词/可数」'
                  '和原文释义都靠它。装上后若想省空间可以禁用。'},
-        {'key': 'kaikki', 'name': 'Wiktionary 索引（可选拓展包）', 'kind': 'planned',
-         'size': 0, 'enabled': False, 'removable': False, 'badge': '未推出',
-         'note': '覆盖最全，含专有名词与词组；体积较大（约 20–40 MB）、CC BY-SA 需致谢，'
-                 '以后作为可下载可选的拓展包提供'},
+        {'key': 'wiki', 'name': 'Wiktionary 索引（可选拓展包）', 'kind': 'download',
+         'size': wiki_size, 'enabled': poslib.wiki_enabled(), 'removable': True,
+         'badge': '已安装' if wiki_size else '未安装',
+         'url': WIKIPACK_URL,
+         'note': '86 万个词（含专有名词与词组）：装上是 65 MB（下载包 30 MB），'
+                 '用来补「哪本词典都查不到」的生僻词与词组；CC BY-SA，致谢见发布说明'},
     ]}
 
 
@@ -811,12 +817,48 @@ class ReflibToggleBody(BaseModel):
 
 @app.post('/api/reflib/toggle')
 def reflib_toggle(body: ReflibToggleBody):
-    if body.key != 'pack':
+    if body.key not in ('pack', 'wiki'):
         raise HTTPException(400, '这个参考库不能开关')
-    db.set_setting('reflib_pack_enabled', '1' if body.enabled else '0')
-    poslib.reset_pack_cache()
+    if body.key == 'pack':
+        db.set_setting('reflib_pack_enabled', '1' if body.enabled else '0')
+    else:
+        db.set_setting('reflib_wiki_enabled', '1' if body.enabled else '0')
+    poslib.reset_all_caches()
     n = poslib.backfill_all()
     return {'ok': True, 'recomputed': n, 'enabled': poslib.pack_enabled()}
+
+
+class ReflibFetchBody(BaseModel):
+    key: str = ''
+
+
+@app.post('/api/reflib/fetch')
+def reflib_fetch(body: ReflibFetchBody):
+    """一键下载可选拓展包（目前只有 Wiktionary）：下载 .gz 并解压到数据目录后自动启用。"""
+    if body.key != 'wiki':
+        raise HTTPException(400, '只有 Wiktionary 拓展包支持在线下载')
+    dest = poslib.WIKI_PATH
+    if os.path.exists(dest):
+        poslib.reset_wiki_cache()
+        db.set_setting('reflib_wiki_enabled', '1')
+        poslib.backfill_all()
+        return {'ok': True, 'size': os.path.getsize(dest), 'message': '本机已有该拓展包，已启用'}
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    tmp = dest + '.gz'
+    try:
+        req = urllib.request.Request(WIKIPACK_URL, headers={'User-Agent': 'KTRT/0.2.2'})
+        with updater._opener().open(req, timeout=120) as r, open(tmp, 'wb') as f:
+            shutil.copyfileobj(r, f)
+        with gzip.open(tmp, 'rb') as src, open(dest, 'wb') as out:
+            shutil.copyfileobj(src, out)
+        os.remove(tmp)
+    except Exception as e:
+        raise HTTPException(400, net.describe(e, '下载 Wiktionary 拓展包'))
+    db.set_setting('reflib_wiki_enabled', '1')
+    poslib.reset_all_caches()
+    n = poslib.backfill_all()
+    return {'ok': True, 'size': os.path.getsize(dest), 'recomputed': n,
+            'message': '已下载并启用（重算 %d 条词性）' % n}
 
 
 @app.get('/api/pos/todo')
