@@ -404,6 +404,34 @@ def test_import_fills_pos_tags():
     check('书里显式标记优先（abstruse → a）', rows['abstruse'][0].startswith('a'), rows)
 
 
+def test_lookup_layer():
+    """统一检索层：多源合并、来源标注、缺源/坏源不阻断、未命中给建议。"""
+    import sqlite3
+    from backend import lookup as lk, pos as poslib
+
+    conn = sqlite3.connect(os.path.join(TMP, 'dictionary.db'))
+    conn.execute("INSERT OR REPLACE INTO dict(word, translation, definition, exchange) "
+                 "VALUES('alleviation', 'n. 减轻, 缓和', 'n. the act of alleviating', 's:alleviations')")
+    conn.commit()
+    conn.close()
+    refdir = os.path.join(TMP, 'reflib')
+    os.makedirs(refdir, exist_ok=True)
+    with open(os.path.join(refdir, 'refpos.db'), 'wb') as f:
+        f.write(b'not a database')          # 故意弄坏：模拟增强包文件损坏
+    poslib._PACK_PATH = os.path.join(refdir, 'refpos.db')
+    for cache in (poslib._PACK_POS, poslib._PACK_GLOSS):
+        cache.clear()
+    poslib._PACK_MISS.clear()
+
+    r = lk.lookup('alleviation', depth='full')
+    check('统一检索：命中内置词典并标来源', r['found'] and 'ECDICT' in r['sources'], r['sources'])
+    check('统一检索：中文释义与英文定义同时给出',
+          '减轻' in r['translation'] and 'act of' in r['definition'], (r['translation'], r['definition']))
+    check('增强包损坏不影响出结果（也不报错）', r['found'] and not r['errors'], r['errors'])
+    r2 = lk.lookup('zzqwx')
+    check('未命中：给建议而不是报错', r2['found'] is False and r2['pos'] == ['todo'], r2['pos'])
+
+
 def test_default_book_rename():
     """旧库的默认收藏册要跟着改名；已经有新名字时不乱动。"""
     with db.get_conn() as conn:
@@ -436,6 +464,7 @@ def main():
         test_pos_falls_back_to_dictionary()
         test_pos_judge_chain()
         test_import_fills_pos_tags()
+        test_lookup_layer()
         test_default_book_rename()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)
