@@ -43,7 +43,7 @@ def pos_of_word(meaning, word):
     """先看释义，释义没标就去离线词典借（雅思这类纯中文释义靠这个补）；都没有才算 other。"""
     key = (word or '').strip().lower()
     tags = (_subtags_from_text(meaning) or _POS_CACHE.get(key, set())
-            or _PACK_POS.get(key, set()))
+            or _PACK_POS.get(key, set()) or _affix_tags(word))
     found = _base_of(tags)
     if not found:
         return ['other']
@@ -67,6 +67,7 @@ _PACK_POS = {}       # word → 增强包（WordNet / Moby）的词性
 _PACK_GLOSS = {}     # word → {词性: 英文原文释义}
 _PACK_MISS = set()   # 增强包里查过没有的词
 _PACK_PATH = os.path.join(db.DATA_DIR, 'reflib', 'refpos.db')
+RULE_VERSION = 'r2'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
 
 
 def _load_pack(rows):
@@ -127,6 +128,40 @@ CAUSATIVE = {'make', 'let', 'have', 'get', 'cause', 'force', 'enable', 'allow', 
              'encourage', 'inspire', 'induce', 'prompt', 'urge'}
 _CAUS_PREFIX = ('使', '让', '令')          # 首个中文释义以这些字开头 → 使役
 _LINK_PREFIX = ('变成', '变得', '成为', '显得', '看起来', '听起来', '闻起来', '尝起来', '保持')
+
+# 词缀规则（只在前四级都判不出时用，来源标 rule）
+_SUF_NOUN = ('tion', 'sion', 'ment', 'ness', 'ity', 'ty', 'ance', 'ence', 'ship', 'hood',
+             'ism', 'ist', 'ure', 'age', 'ery', 'ory', 'ary', 'ology', 'graphy', 'meter')
+_SUF_ADJ = ('ous', 'ive', 'able', 'ible', 'al', 'ial', 'ic', 'ical', 'ful', 'less', 'ent',
+            'ant', 'ary', 'ish', 'like', 'worthy', 'proof', 'tight', 'free', 'tolerant',
+            'friendly', 'based', 'driven', 'aware', 'proofed', 'resistant', 'dependent')
+_SUF_VERB = ('ize', 'ise', 'ify', 'ate', 'en')
+
+
+def _affix_tags(word):
+    """词形/结构兜底：带连字符的复合词、词组、常见词缀。"""
+    w = (word or '').strip().lower()
+    if len(w) < 4:
+        return set()
+    if '-' in w:                       # shade-tolerant / state-of-the-art
+        tail = w.rsplit('-', 1)[-1]
+        if tail.endswith(_SUF_ADJ) or tail.endswith(('ed', 'ing')):
+            return {'a'}
+        return set()
+    if ' ' in w:                       # 词组：按中心词判
+        head = w.split()[-1]
+        if head.endswith(_SUF_ADJ) or head.endswith('ed'):
+            return {'a'}
+        return {'n'}
+    if w.endswith(_SUF_ADJ):
+        return {'a'}
+    if w.endswith(_SUF_NOUN):
+        return {'n'}
+    if w.endswith('ly'):
+        return {'ad'}
+    if w.endswith(_SUF_VERB) and len(w) > 5:
+        return {'v'}
+    return set()
 
 
 def _subtags_from_text(text):
@@ -241,6 +276,9 @@ def judge(meaning, word=''):
     base = _base_of(_subtags_from_text(meaning)) if meaning else set()
     if base:
         return _finish(base, word, meaning, 'rule')
+    affix = _affix_tags(word)
+    if affix:
+        return _finish(affix, word, meaning, 'rule')
     return ['todo'], 'todo'
 
 
@@ -318,10 +356,10 @@ def backfill_all():
     """老库补扫：所有还没判过词性的词条（静默失败，不挡启动）。"""
     total = 0
     try:
-        stamp = ''
+        stamp = RULE_VERSION
         if os.path.exists(_PACK_PATH):
             st = os.stat(_PACK_PATH)
-            stamp = '%d-%d' % (st.st_size, int(st.st_mtime))
+            stamp += '|%d-%d' % (st.st_size, int(st.st_mtime))
         pack_changed = db.get_setting('pos_pack_stamp', '') != stamp
         with db.get_conn() as conn:
             ids = [r['id'] for r in conn.execute('SELECT id FROM word_books ORDER BY id')]
