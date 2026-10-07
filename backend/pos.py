@@ -61,6 +61,53 @@ def _tags_from_text(text):
 _POS_CACHE = {}      # word → 从离线词典借来的词性集合（空集合 = 查过，没有）
 _DICT_TEXT = {}      # word → 词典原文（translation 优先，其次 definition）
 _EXCH_CACHE = {}     # word → exchange 字段（判断可数性用）
+_PACK_POS = {}       # word → 增强包（WordNet / Moby）的词性
+_PACK_GLOSS = {}     # word → {词性: 英文原文释义}
+_PACK_MISS = set()   # 增强包里查过没有的词
+_PACK_PATH = os.path.join(db.DATA_DIR, 'reflib', 'refpos.db')
+
+
+def _load_pack(rows):
+    """增强包：批量取词性；文件不存在就直接跳过（没装包也能跑）。"""
+    if not os.path.exists(_PACK_PATH):
+        return
+    need = set()
+    for r in rows:
+        key = (r['word'] or '').strip().lower()
+        if key and key not in _PACK_POS and key not in _PACK_MISS:
+            need.add(key)
+    if not need:
+        return
+    words = sorted(need)
+    try:
+        conn = sqlite3.connect(_PACK_PATH)
+        for i in range(0, len(words), 800):
+            chunk = words[i:i + 800]
+            sql = ('SELECT word, tags FROM pos WHERE word IN (%s)' % ','.join('?' * len(chunk)))
+            for word, tags in conn.execute(sql, chunk):
+                _PACK_POS[word] = set(t for t in (tags or '').split('|') if t)
+        conn.close()
+    except Exception:
+        return
+    for w in words:
+        _PACK_MISS.add(w)
+
+
+def pack_gloss(word):
+    """增强包里的英文原文释义（每词每词性第一条），给高阶学习者看原文用。"""
+    key = (word or '').strip().lower()
+    if not key or not os.path.exists(_PACK_PATH):
+        return {}
+    if key not in _PACK_GLOSS:
+        _PACK_GLOSS[key] = {}
+        try:
+            conn = sqlite3.connect(_PACK_PATH)
+            for pos_, text in conn.execute('SELECT pos, text FROM gloss WHERE word=?', (key,)):
+                _PACK_GLOSS[key][pos_] = text
+            conn.close()
+        except Exception:
+            pass
+    return _PACK_GLOSS[key]
 
 # ---------- 细分判定（0.2.2）：闭集表 + 关键词信号 ----------
 
@@ -176,12 +223,16 @@ def judge(meaning, word=''):
     ov = override_tags(word)
     if ov:
         return ov, 'user'
+    _ensure_word(word)
     book = _subtags_from_text(meaning)
     if book:
         return _finish(book, word, meaning, 'book')
     dt = _POS_CACHE.get((word or '').strip().lower(), set())
     if dt:
         return _finish(dt, word, _DICT_TEXT.get((word or '').strip().lower()) or meaning, 'dict')
+    pk = _PACK_POS.get((word or '').strip().lower(), set())
+    if pk:
+        return _finish(pk, word, meaning, 'pack')
     tbl = _table_tags((word or '').strip().lower())
     if tbl:
         return _finish(tbl, word, meaning, 'table')
@@ -189,6 +240,14 @@ def judge(meaning, word=''):
     if base:
         return _finish(base, word, meaning, 'rule')
     return ['todo'], 'todo'
+
+
+def _ensure_word(word):
+    """单个词懒加载：词典 / 增强包都没查过就先查一次（judge 单独调用也准）。"""
+    key = (word or '').strip().lower()
+    if not key or key in _POS_CACHE or key in _PACK_POS or key in _PACK_MISS:
+        return
+    _load_dict_pos([{'word': word, 'meaning': ''}])
 
 
 _OVERRIDE = None    # word → 手动修正标签（懒加载，判词时不再逐词查库）
@@ -257,14 +316,21 @@ def backfill_all():
     """老库补扫：所有还没判过词性的词条（静默失败，不挡启动）。"""
     total = 0
     try:
+        stamp = ''
+        if os.path.exists(_PACK_PATH):
+            st = os.stat(_PACK_PATH)
+            stamp = '%d-%d' % (st.st_size, int(st.st_mtime))
+        pack_changed = db.get_setting('pos_pack_stamp', '') != stamp
         with db.get_conn() as conn:
             ids = [r['id'] for r in conn.execute('SELECT id FROM word_books ORDER BY id')]
             pending = conn.execute(
                 "SELECT COUNT(*) c FROM words WHERE pos_tags IS NULL OR pos_tags=''").fetchone()['c']
-        if not pending:
+        if not pending and not pack_changed:
             return 0
         for bid in ids:
-            total += fill_book_pos(bid)
+            total += fill_book_pos(bid, only_empty=not pack_changed)
+        if stamp:
+            db.set_setting('pos_pack_stamp', stamp)
     except Exception:
         return total
     return total
@@ -280,6 +346,7 @@ def _load_dict_pos(rows):
         if key and key not in _POS_CACHE:
             need.add(key)
     if not need or not os.path.exists(db.DICT_DB_PATH):
+        _load_pack(rows)
         return
     words = sorted(need)
     try:
@@ -296,6 +363,7 @@ def _load_dict_pos(rows):
         return
     for w in words:
         _POS_CACHE.setdefault(w, set())     # 词典里也没有：记空，下次不再查
+    _load_pack(rows)
 
 
 def _rows(conn, book_id, list_no=None):

@@ -366,6 +366,29 @@ def test_pos_judge_chain():
           tags_of('abstruse', 'a. 难懂的'))
     check('生造词 → 待确认', tags_of('zzzqwerty') == ['todo'], tags_of('zzzqwerty'))
 
+    # 增强包（WordNet / Moby）：词典也没有时兜底，并标来源 pack
+    refdir = os.path.join(TMP, 'reflib')
+    os.makedirs(refdir, exist_ok=True)
+    ref = sqlite3.connect(os.path.join(refdir, 'refpos.db'))
+    ref.executescript('CREATE TABLE IF NOT EXISTS pos(word TEXT PRIMARY KEY, tags TEXT, source TEXT);'
+                      'CREATE TABLE IF NOT EXISTS gloss(word TEXT, pos TEXT, text TEXT, '
+                      'PRIMARY KEY(word, pos));')
+    ref.execute("INSERT OR REPLACE INTO pos(word, tags, source) VALUES('el nino','n','pack')")
+    ref.execute("INSERT OR REPLACE INTO gloss(word, pos, text) "
+                "VALUES('el nino','n','the Christ child')")
+    ref.commit()
+    ref.close()
+    poslib._PACK_PATH = os.path.join(refdir, 'refpos.db')
+    for cache in (poslib._POS_CACHE, poslib._PACK_POS, poslib._PACK_GLOSS):
+        cache.clear()
+    poslib._PACK_MISS.clear()
+    pack_tags, pack_src = poslib.judge('', 'El Nino')
+    check('增强包兜底：El Nino → 名词（来源 pack）',
+          'n' in pack_tags and pack_src == 'pack', (pack_tags, pack_src))
+    check('增强包给出专有名词标记', 'n:proper' in pack_tags, pack_tags)
+    check('增强包能取英文原文释义', poslib.pack_gloss('El Nino').get('n', '').startswith('the Christ'),
+          poslib.pack_gloss('El Nino'))
+
 
 def test_import_fills_pos_tags():
     """导入后词性要落到词条上（卡片与蒙版都读它）。"""
