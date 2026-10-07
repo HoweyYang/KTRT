@@ -2074,7 +2074,7 @@ async function renderReflib() {
     const mb = it.size ? (it.size / 1048576).toFixed(1) + ' MB' : '未安装';
     const btn = it.removable
       ? `<button class="btn" data-reflib="${it.key}" data-on="${it.enabled ? '1' : '0'}">${it.enabled ? '禁用' : '启用'}</button>`
-      : '<span class="tag learn">内置</span>';
+      : `<span class="tag ${it.enabled ? 'learn' : 'none'}">${escapeHtml(it.badge || (it.enabled ? '内置' : '未安装'))}</span>`;
     const dl = it.removable && !it.size
       ? `<a class="btn icon-only" href="${data.download_url}" data-tip="下载增强包，放到数据目录的 reflib 文件夹即可生效">${ICON_DOWNLOAD}</a>`
       : '';
