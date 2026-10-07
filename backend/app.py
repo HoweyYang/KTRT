@@ -22,6 +22,7 @@ from starlette.staticfiles import StaticFiles as StarletteStaticFiles
 from pydantic import BaseModel
 
 from backend import db, ai, tts, importer, phrasal, updater, net, pos as poslib
+from backend import lookup as lookuplib
 
 db.init_db()
 
@@ -991,35 +992,30 @@ def delete_book(book_id: int):
 
 
 @app.get('/api/dict/{word}')
-def lookup(word: str):
-    import sqlite3
-    if not os.path.exists(db.DICT_DB_PATH):
+def card_dict(word: str):
+    """卡片查词典：走统一检索层，顺带给出细分词性与英文原文释义。"""
+    r = lookuplib.lookup(word, depth='full')
+    if not r['found'] and not os.path.exists(db.DICT_DB_PATH):
         return {'available': False, 'message': '离线词典未导入'}
-    try:
-        conn = sqlite3.connect(db.DICT_DB_PATH)
-        row = conn.execute(
-            'SELECT * FROM dict WHERE word=? COLLATE NOCASE', (word.lower(),)
-        ).fetchone()
-        conn.close()
-    except Exception:
-        return {'available': False, 'message': '词典读取失败'}
-    if row is None:
-        return {'available': True, 'found': False}
+    meta = r.get('meta') or {}
     return {
         'available': True,
-        'found': True,
-        'word': row[0],
-        'phonetic': row[1] or '',
-        'definition': row[2] or '',
-        'translation': row[3] or '',
-        'pos': row[4] or '',
-        'exchange': row[5] or '',
-        'exchange_text': _exchange_pretty(row[5] or ''),
-        'collins': row[6] or '',
-        'oxford': row[7] or '',
-        'tag': row[8] or '',
-        'bnc': row[9] or '',
-        'frq': row[10] or '',
+        'found': r['found'],
+        'word': word,
+        'phonetic': r.get('phonetic') or '',
+        'definition': r.get('definition') or '',
+        'translation': r.get('translation') or '',
+        'pos': '|'.join(r.get('pos') or []),
+        'pos_source': r.get('pos_source') or '',
+        'gloss': r.get('gloss') or {},
+        'sources': r.get('sources') or [],
+        'exchange': r.get('exchange') or '',
+        'exchange_text': r.get('exchange_text') or '',
+        'collins': meta.get('collins', ''),
+        'oxford': meta.get('oxford', ''),
+        'tag': meta.get('tag', ''),
+        'bnc': meta.get('bnc', ''),
+        'frq': meta.get('frq', ''),
     }
 
 
@@ -1428,25 +1424,19 @@ def _storm_fetch_online(q):
 
 
 def _storm_raw_material(word, q):
-    ecdict = {}
-    if os.path.exists(db.DICT_DB_PATH):
-        try:
-            dconn = sqlite3.connect(db.DICT_DB_PATH)
-            row = dconn.execute('SELECT * FROM dict WHERE word=? COLLATE NOCASE', (q,)).fetchone()
-            dconn.close()
-            if row:
-                ecdict = {
-                    'phonetic': row[1] or '',
-                    'translation': row[3] or '',
-                    'definition': row[2] or '',
-                    'pos': row[4] or '',
-                    'exchange': row[5] or '',
-                    'exchange_text': _exchange_pretty(row[5] or ''),
-                    'oxford': row[7] or '',
-                    'collins': row[6] or '',
-                }
-        except Exception:
-            pass
+    # 统一检索层：ECDICT + 增强包（英文原文）+ 词书；坏源自动跳过
+    hit = lookuplib.lookup(q, depth='full')
+    ecdict = {
+        'phonetic': hit.get('phonetic') or '',
+        'translation': hit.get('translation') or '',
+        'definition': hit.get('definition') or '',
+        'pos_tags': '|'.join(hit.get('pos') or []),
+        'exchange': hit.get('exchange') or '',
+        'exchange_text': hit.get('exchange_text') or '',
+        'sources': hit.get('sources') or [],
+    }
+    # 高阶学习者要看原文：只带每词性第一条 WordNet 释义，控制 prompt 预算
+    glossary = [{'pos': k, 'en': v} for k, v in list((hit.get('gloss') or {}).items())[:3]]
     books = []
     with db.get_conn() as conn:
         for r in conn.execute(
@@ -1458,6 +1448,7 @@ def _storm_raw_material(word, q):
         'word': word,
         'query': q,
         'ecdict': ecdict,
+        'original_gloss': glossary,
         'books': books,
         'reference_phrases': _storm_reference_phrases(q),
         'online': _storm_fetch_online(q),
@@ -1792,23 +1783,19 @@ def custom_dict_lookup(body: CustomDictBody):
     if not word:
         raise HTTPException(400, '请输入单词')
     canonical = _canonical_word(word)
-    dict_result = {'found': False, 'phonetic': '', 'translation': '', 'definition': '', 'exchange': ''}
-    if os.path.exists(db.DICT_DB_PATH):
-        try:
-            conn = sqlite3.connect(db.DICT_DB_PATH)
-            row = conn.execute('SELECT * FROM dict WHERE word=? COLLATE NOCASE', (word.lower(),)).fetchone()
-            conn.close()
-            if row:
-                dict_result = {
-                    'found': True,
-                    'phonetic': row[1] or '',
-                    'translation': row[3] or '',
-                    'definition': row[2] or '',
-                    'exchange': row[5] or '',
-                    'exchange_text': _exchange_pretty(row[5] or ''),
-                }
-        except Exception:
-            pass
+    found = lookuplib.lookup(word, depth='full')
+    dict_result = {
+        'found': found['found'],
+        'phonetic': found.get('phonetic') or '',
+        'translation': found.get('translation') or '',
+        'definition': found.get('definition') or '',
+        'exchange': found.get('exchange') or '',
+        'exchange_text': found.get('exchange_text') or '',
+        'pos': found.get('pos') or [],
+        'pos_source': found.get('pos_source') or '',
+        'gloss': found.get('gloss') or {},
+        'sources': found.get('sources') or [],
+    }
     in_books = []
     favorite = False
     with db.get_conn() as conn:

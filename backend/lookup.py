@@ -90,7 +90,7 @@ def lookup(word, depth='quick'):
     out = {
         'word': raw, 'canonical': '', 'found': False, 'sources': [], 'errors': [],
         'pos': [], 'pos_source': '', 'translation': '', 'definition': '',
-        'gloss': {}, 'exchange': '', 'exchange_text': '',
+        'phonetic': '', 'meta': {}, 'gloss': {}, 'exchange': '', 'exchange_text': '',
         'books': [], 'suggestions': [], 'variants': [],
     }
     if not raw:
@@ -104,6 +104,8 @@ def lookup(word, depth='quick'):
             out['sources'].append('ECDICT')
             out['translation'] = (row.get('translation') or '').replace('\\n', '\n')
             out['definition'] = (row.get('definition') or '').replace('\\n', '\n')
+            out['phonetic'] = row.get('phonetic') or ''
+            out['meta'] = {k: (row.get(k) or '') for k in ('collins', 'oxford', 'tag', 'bnc', 'frq')}
             out['exchange'] = row.get('exchange') or ''
             out['exchange_text'] = _exchange_pretty(out['exchange'])
     except Exception as e:
