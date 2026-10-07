@@ -1994,6 +1994,49 @@ function renderResources() {
     </div>`;
 }
 
+/* ---------- 离线参考库（和词书分开）---------- */
+async function renderReflib() {
+  const box = $('reflib-list');
+  if (!box) return;
+  let data;
+  try {
+    data = await api('/api/reflib');
+  } catch (e) {
+    box.innerHTML = `<p class="muted">${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  box.innerHTML = data.items.map((it) => {
+    const mb = it.size ? (it.size / 1048576).toFixed(1) + ' MB' : '未安装';
+    const btn = it.removable
+      ? `<button class="btn" data-reflib="${it.key}" data-on="${it.enabled ? '1' : '0'}">${it.enabled ? '禁用' : '启用'}</button>`
+      : '<span class="tag learn">内置</span>';
+    const dl = it.removable && !it.size
+      ? `<a class="btn icon-only" href="${data.download_url}" data-tip="下载增强包，放到数据目录的 reflib 文件夹即可生效">${ICON_DOWNLOAD}</a>`
+      : '';
+    return `<div class="resource-item">
+        <span><b>${escapeHtml(it.name)}</b>：${escapeHtml(it.note)}<span class="muted">（${mb}）</span></span>
+        <span style="display:flex;gap:6px;align-items:center">${dl}${btn}</span>
+      </div>`;
+  }).join('');
+  box.querySelectorAll('[data-reflib]').forEach((b) => {
+    b.addEventListener('click', async () => {
+      const on = b.dataset.on !== '1';
+      b.disabled = true;
+      try {
+        const r = await api('/api/reflib/toggle', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: b.dataset.reflib, enabled: on }),
+        });
+        toast(`${on ? '已启用' : '已禁用'}（重算 ${r.recomputed || 0} 条词性）`);
+        renderReflib();
+      } catch (e) {
+        toast('操作失败：' + e.message);
+        b.disabled = false;
+      }
+    });
+  });
+}
+
 $('btn-copy-prompt').addEventListener('click', async () => {
   const msg = $('prompt-msg');
   try {
@@ -2005,6 +2048,7 @@ $('btn-copy-prompt').addEventListener('click', async () => {
   }
 });
 renderResources();
+renderReflib();
 
 /* ---------- 设置页 ---------- */
 function populateSettings() {

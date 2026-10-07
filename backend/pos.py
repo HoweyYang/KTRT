@@ -80,7 +80,7 @@ RULE_VERSION = 'r2'   # 判定规则版本：改了规则就整体重扫一次�
 
 def _load_pack(rows):
     """增强包：批量取词性；文件不存在就直接跳过（没装包也能跑）。"""
-    if not os.path.exists(_PACK_PATH):
+    if not os.path.exists(_PACK_PATH) or not pack_enabled():
         return
     need = set()
     for r in rows:
@@ -107,7 +107,7 @@ def _load_pack(rows):
 def pack_gloss(word):
     """增强包里的英文原文释义（每词每词性第一条），给高阶学习者看原文用。"""
     key = (word or '').strip().lower()
-    if not key or not os.path.exists(_PACK_PATH):
+    if not key or not os.path.exists(_PACK_PATH) or not pack_enabled():
         return {}
     if key not in _PACK_GLOSS:
         _PACK_GLOSS[key] = {}
@@ -119,6 +119,21 @@ def pack_gloss(word):
         except Exception:
             pass
     return _PACK_GLOSS[key]
+
+
+def pack_enabled():
+    """增强包是否启用（离线参考库面板可开关）。"""
+    try:
+        return db.get_setting('reflib_pack_enabled', '1') != '0'
+    except Exception:
+        return True
+
+
+def reset_pack_cache():
+    """开关增强包后清缓存，让判定重新走一遍。"""
+    _PACK_POS.clear()
+    _PACK_MISS.clear()
+    _PACK_GLOSS.clear()
 
 # ---------- 细分判定（0.2.2）：闭集表 + 关键词信号 ----------
 
@@ -364,7 +379,7 @@ def backfill_all():
     """老库补扫：所有还没判过词性的词条（静默失败，不挡启动）。"""
     total = 0
     try:
-        stamp = RULE_VERSION
+        stamp = RULE_VERSION + ('|on' if pack_enabled() else '|off')
         if os.path.exists(_PACK_PATH):
             st = os.stat(_PACK_PATH)
             stamp += '|%d-%d' % (st.st_size, int(st.st_mtime))
@@ -411,7 +426,7 @@ def todo_words(book_id, limit=500):
                     (book_id, limit))]
 
 
-def apply_overrides(book_id, items):
+def apply_overrides(book_id, items, source='user'):
     """批量写入手动修正：items = [{word, tags:[...]}]，同时刷新该词在本程序里的判定。"""
     done = 0
     for it in items or []:
@@ -423,7 +438,7 @@ def apply_overrides(book_id, items):
         with db._lock:
             with db.get_conn() as conn:
                 conn.execute('UPDATE words SET pos_tags=?, pos_source=? WHERE book_id=? AND word=?',
-                             ('|'.join(tags), 'user' if tags else '', book_id, word))
+                             ('|'.join(tags), (source if tags else ''), book_id, word))
         done += 1
     return done
 
