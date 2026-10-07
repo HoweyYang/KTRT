@@ -603,6 +603,10 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
   border: solid var(--on-accent, #fff); border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 .pos-item b { margin-left: auto; color: var(--muted); font-weight: 600; }
+/* —— 全局排版微调（0.2.2）：标题收紧字距、数字用等宽数字，读起来更"贵"一点 —— */
+.panel h2, .word-head .word { letter-spacing: -0.011em; font-weight: 640; }
+.field .label { letter-spacing: .01em; }
+.pos-item b, #progress-text, #pos-text, .stat-row b { font-variant-numeric: tabular-nums; }
 /* 卡片上的词性芯片与英文原文释义 */
 .pos-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .pos-tag {
