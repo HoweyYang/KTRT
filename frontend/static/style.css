@@ -571,6 +571,14 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .pos-item { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: var(--ink); font-weight: 400; }
 .pos-item input { width: auto; margin: 0; accent-color: var(--accent); }
 .pos-item b { color: var(--muted); font-weight: 600; }
+/* 卡片上的词性芯片与英文原文释义 */
+.pos-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pos-tag {
+  border: 1px solid var(--line); border-radius: 6px; padding: 1px 7px;
+  font-size: 12px; color: var(--accent); background: var(--th);
+}
+.gloss-line { margin: 2px 0; }
+.gloss-line b { color: var(--muted); font-weight: 600; margin-right: 6px; }
 .toolbar select, .toolbar input {
   padding: 8px 10px;
   border: 1px solid var(--line);
