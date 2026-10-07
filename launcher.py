@@ -149,6 +149,13 @@ def ensure_bundled_resources():
         if os.path.exists(src) and not os.path.exists(dst):
             shutil.copy2(src, dst)
             print('[KTRT] 已初始化数据：' + name)
+    # 内置的词性增强包（Moby POS + WordNet）：第一次运行释放到数据目录
+    pack_src = os.path.join(RESOURCE_DIR, 'data', 'reflib', 'refpos.db')
+    pack_dst = os.path.join(db.DATA_DIR, 'reflib', 'refpos.db')
+    if os.path.exists(pack_src) and not os.path.exists(pack_dst):
+        os.makedirs(os.path.dirname(pack_dst), exist_ok=True)
+        shutil.copy2(pack_src, pack_dst)
+        print('[KTRT] 已释放内置词性增强包（refpos.db）')
 
 
 def start_server():
