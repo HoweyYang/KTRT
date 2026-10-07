@@ -1835,7 +1835,26 @@ async function openTodoList(bookId) {
           `<option value="${k}">${label}</option>`).join('')}</select>
       </div>`).join('')
     + '<div class="row" style="margin-top:8px"><button class="btn primary" id="btn-todo-save">保存这些修正</button>'
+    + `<button class="btn" id="btn-todo-ai" data-tip="先查免费在线词典定词性，查不到的再交给 AI；断网或没配 Key 会自动跳过。结果同样只落程序。">联网判定（在线词典 + AI）</button>`
     + '<span class="muted" id="todo-msg"></span></div>';
+  $('btn-todo-ai').addEventListener('click', async () => {
+    const btn = $('btn-todo-ai');
+    btn.disabled = true;
+    $('todo-msg').textContent = '正在联网判定…';
+    try {
+      const res = await api('/api/pos/ai_fill', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ book_id: bookId, limit: 200 }), timeout: 120000,
+      });
+      $('todo-msg').textContent = res.message || '完成';
+      await openTodoList(bookId);
+      loadPosStats();
+    } catch (e) {
+      $('todo-msg').textContent = '失败：' + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
   $('btn-todo-save').addEventListener('click', async () => {
     const items = [...box.querySelectorAll('.todo-row')].map((row) => {
       const v = row.querySelector('select').value;
