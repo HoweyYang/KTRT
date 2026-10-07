@@ -79,7 +79,7 @@ _PACK_POS = {}       # word → 增强包（WordNet / Moby）的词性
 _PACK_GLOSS = {}     # word → {词性: 英文原文释义}
 _PACK_MISS = set()   # 增强包里查过没有的词
 _PACK_PATH = os.path.join(db.DATA_DIR, 'reflib', 'refpos.db')
-RULE_VERSION = 'r4'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
+RULE_VERSION = 'r6'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
 
 
 def _load_pack(rows):
@@ -207,6 +207,21 @@ def _affix_tags(word):
     return set()
 
 
+def _pattern_verb_tags(word, extra):
+    """从搭配/短语列里推及物性：word + 宾语 → 及物；word + 介词 → 不及物。"""
+    w = (word or '').strip()
+    text = extra or ''
+    if not w or not text:
+        return set()
+    out = set()
+    stem = re.escape(w)
+    if re.search(stem + r"\s+(?:sb|sth|one's|the|a|an|it|his|her|their|your)\b", text, re.I):
+        out.add('v:vt')
+    if re.search(stem + r"\s+(?:to|at|for|with|on|in|of|about|from|into|upon|against)\b", text, re.I):
+        out.add('v:vi')
+    return out
+
+
 def _subtags_from_text(text):
     """从文本抽细分标记：vt → v:vt，vi → v:vi，adj → a…（比 base 版多一层）。"""
     out = set()
@@ -281,6 +296,8 @@ def _finish(tags, word, text, source):
     tags = set(tags)
     tags |= _table_tags((word or '').strip().lower())
     base = _base_of(tags)
+    key_in_sources = ((word or '').strip().lower() in _POS_CACHE
+                      or (word or '').strip().lower() in _PACK_POS)
     if 'v' in base:
         first = _first_gloss(text)
         if first.startswith(_CAUS_PREFIX):
@@ -290,15 +307,17 @@ def _finish(tags, word, text, source):
     if 'n' in base:
         if _is_proper(word, text):
             tags.add('n:proper')
-        if _countable(word) or _COUNT_RE.search(text or ''):
+        elif _countable(word) or _COUNT_RE.search(text or ''):
             tags.add('n:countable')
-    order = ['n', 'n:proper', 'n:countable', 'v', 'v:vt', 'v:vi', 'v:link', 'v:modal',
+        elif key_in_sources:
+            tags.add('n:uncountable')       # 有词典/增强包依据、又查不到复数形式 → 判不可数
+    order = ['n', 'n:proper', 'n:countable', 'n:uncountable', 'v', 'v:vt', 'v:vi', 'v:link', 'v:modal',
              'v:aux', 'v:caus', 'a', 'ad', 'prep', 'conj', 'pron', 'num', 'art', 'int',
              'aux', 'abbr', 'phr', 'todo']
     return [t for t in order if t in tags], source
 
 
-def judge(meaning, word=''):
+def judge(meaning, word='', extra=''):
     """五级判定 → (tags, source)：① 书里显式标记 ② 词典按行义项 ③ 关键词 ④ 闭集表 ⑤ 待确认。"""
     ov = override_tags(word)
     if ov:
@@ -306,13 +325,16 @@ def judge(meaning, word=''):
     _ensure_word(word)
     book = _subtags_from_text(meaning)
     if book:
-        return _finish(_merge_detail(book, (word or '').strip().lower()), word, meaning, 'book')
+        tags, src = _finish(_merge_detail(book, (word or '').strip().lower()), word, meaning, 'book')
+        return _add_pattern(tags, word, extra), src
     dt = _POS_CACHE.get((word or '').strip().lower(), set())
     if dt:
-        return _finish(dt, word, _DICT_TEXT.get((word or '').strip().lower()) or meaning, 'dict')
+        tags, src = _finish(dt, word, _DICT_TEXT.get((word or '').strip().lower()) or meaning, 'dict')
+        return _add_pattern(tags, word, extra), src
     pk = _PACK_POS.get((word or '').strip().lower(), set())
     if pk:
-        return _finish(pk, word, meaning, 'pack')
+        tags, src = _finish(pk, word, meaning, 'pack')
+        return _add_pattern(tags, word, extra), src
     tbl = _table_tags((word or '').strip().lower())
     if tbl:
         return _finish(tbl, word, meaning, 'table')
@@ -321,8 +343,23 @@ def judge(meaning, word=''):
         return _finish(base, word, meaning, 'rule')
     affix = _affix_tags(word)
     if affix:
-        return _finish(affix, word, meaning, 'rule')
+        tags, src = _finish(affix, word, meaning, 'rule')
+        return _add_pattern(tags, word, extra), src
     return ['todo'], 'todo'
+
+
+def _add_pattern(tags, word, extra):
+    """动词还没分及物/不及物时，用搭配/短语列再推一把。"""
+    tags = list(tags)
+    if 'v' in tags and not any(t in ('v:vt', 'v:vi') for t in tags):
+        extra_tags = _pattern_verb_tags(word, extra)
+        if extra_tags:
+            merged = set(tags) | extra_tags
+            order = ['n', 'n:proper', 'n:countable', 'n:uncountable', 'v', 'v:vt', 'v:vi',
+                     'v:link', 'v:modal', 'v:aux', 'v:caus', 'a', 'ad', 'prep', 'conj',
+                     'pron', 'num', 'art', 'int', 'aux', 'abbr', 'phr', 'todo']
+            return [t for t in order if t in merged]
+    return tags
 
 
 def _ensure_word(word):
@@ -374,7 +411,7 @@ def set_override(word, tags):
 
 def fill_book_pos(book_id, only_empty=True):
     """给某本书的词条算一次词性（导入后 / 启动补扫用）；只写程序库，不碰词书文件。"""
-    sql = 'SELECT id, word, meaning FROM words WHERE book_id=?'
+    sql = 'SELECT id, word, meaning, collocations, phrases FROM words WHERE book_id=?'
     if only_empty:
         sql += " AND (pos_tags IS NULL OR pos_tags='')"
     with db.get_conn() as conn:
@@ -382,7 +419,9 @@ def fill_book_pos(book_id, only_empty=True):
     if not rows:
         return 0
     _load_dict_pos(rows)
-    done = [(r['id'], r['word'], judge(r['meaning'], r['word'])) for r in rows]
+    done = [(r['id'], r['word'],
+             judge(r['meaning'], r['word'], (r['collocations'] or '') + ' ' + (r['phrases'] or '')))
+            for r in rows]
     with db._lock:
         with db.get_conn() as conn:
             for wid, word, (tags, source) in done:

@@ -16,7 +16,7 @@ const $ = (id) => document.getElementById(id);
 const DEFAULT_BOOK = '自定义单词收藏册';    // 默认收藏册：不可删除，导入页固定第一行
 /* 词性标签（细分）：芯片用。动词子类优先显示，名词显示专有/可数 */
 const POS_LABELS = {
-  n: '名词', 'n:proper': '专有名词', 'n:countable': '可数名词',
+  n: '名词', 'n:proper': '专有名词', 'n:countable': '可数', 'n:uncountable': '不可数',
   v: '动词', 'v:vt': '及物', 'v:vi': '不及物', 'v:link': '系动词',
   'v:modal': '情态', 'v:aux': '助动词', 'v:caus': '使役',
   a: '形容词', ad: '副词', prep: '介词', conj: '连词', pron: '代词',
@@ -29,6 +29,7 @@ function posChips(tags) {
   const vsub = list.filter((t) => t.startsWith('v:'));
   if (list.includes('n:proper')) out.push('n:proper');
   else if (list.includes('n:countable')) out.push('n:countable');
+  else if (list.includes('n:uncountable')) out.push('n:uncountable');
   else if (list.includes('n')) out.push('n');
   if (vsub.length) out.push(...vsub);
   else if (list.includes('v')) out.push('v');
