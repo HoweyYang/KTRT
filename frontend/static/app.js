@@ -14,6 +14,30 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 const DEFAULT_BOOK = '自定义单词收藏册';    // 默认收藏册：不可删除，导入页固定第一行
+/* 词性标签（细分）：芯片用。动词子类优先显示，名词显示专有/可数 */
+const POS_LABELS = {
+  n: '名词', 'n:proper': '专有名词', 'n:countable': '可数名词',
+  v: '动词', 'v:vt': '及物', 'v:vi': '不及物', 'v:link': '系动词',
+  'v:modal': '情态', 'v:aux': '助动词', 'v:caus': '使役',
+  a: '形容词', ad: '副词', prep: '介词', conj: '连词', pron: '代词',
+  num: '数词', art: '冠词', int: '感叹词', abbr: '缩写', phr: '短语', todo: '待确认',
+};
+
+function posChips(tags) {
+  const list = (tags || []).filter(Boolean);
+  const out = [];
+  const vsub = list.filter((t) => t.startsWith('v:'));
+  if (list.includes('n:proper')) out.push('n:proper');
+  else if (list.includes('n:countable')) out.push('n:countable');
+  else if (list.includes('n')) out.push('n');
+  if (vsub.length) out.push(...vsub);
+  else if (list.includes('v')) out.push('v');
+  for (const t of list) {
+    if (t.startsWith('n') || t.startsWith('v')) continue;
+    out.push(t);
+  }
+  return out;
+}
 const ICON_TRASH = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
 const ICON_DOWNLOAD = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 const SPEAKER_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>';
@@ -523,6 +547,20 @@ function renderCard() {
   $('word').textContent = c.word.word;
   $('phonetic').textContent = c.word.phonetic ? '/' + c.word.phonetic.replace(/\//g, '') + '/' : '';
   const rows = [];
+  // 词性芯片（细分：及物 / 不及物 / 系动词 / 使役 / 专有名词 …），来自 0.2.2 的判定链
+  const lk = c.lookup || {};
+  const chips = posChips(lk.pos);
+  if (chips.length) {
+    const from = { book: '书里标注', dict: '离线词典', pack: '增强包', table: '语法表', rule: '词形规则', user: '你改的', ai: 'AI', todo: '待确认' }[lk.pos_source] || '';
+    rows.push(`
+      <div class="field">
+        <span class="label">词性</span>
+        <span class="value pos-chips">${chips.map((t) =>
+          `<span class="pos-tag" data-tip="判定依据：${escapeAttr(from || '—')}">${escapeHtml(POS_LABELS[t] || t)}</span>`).join('')}
+          ${from ? `<span class="muted" style="font-size:12px">来自${escapeHtml(from)}</span>` : ''}
+        </span>
+      </div>`);
+  }
   if (c.word.meaning) {
     rows.push(`
       <div class="field">
@@ -548,6 +586,18 @@ function renderCard() {
         <span class="label">${label}</span>
         <span class="value">${escapeHtml(value)}</span>
         <button class="icon-btn" data-tts="${escapeAttr(label + '：' + value)}" title="朗读">${SPEAKER_ICON}</button>
+      </div>`);
+  }
+  // 原文释义（英文）：高阶学习者要原文，中文在上、原文在下，默认展开
+  const gloss = lk.gloss || {};
+  const glossLines = Object.entries(gloss);
+  if (glossLines.length) {
+    rows.push(`
+      <div class="field">
+        <span class="label">原文释义</span>
+        <div class="value">${glossLines.map(([p, text]) =>
+          `<div class="gloss-line"><b>${escapeHtml(POS_LABELS[p] || p)}</b> ${escapeHtml(text)}</div>`).join('')}</div>
+        <button class="icon-btn" data-tts="${escapeAttr(glossLines.map(([p, t]) => t).join('; '))}" title="朗读">${SPEAKER_ICON}</button>
       </div>`);
   }
   // 定向词书（词性筛选生成）里的词，标注它来自哪本书的哪个位置，可一键跳回去
