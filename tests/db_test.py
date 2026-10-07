@@ -364,7 +364,7 @@ def test_pos_judge_chain():
     check('Atlantic → 专有名词', 'n:proper' in tags_of('Atlantic'), tags_of('Atlantic'))
     check('abstruse → 形容词（书里显式标记）', tags_of('abstruse', 'a. 难懂的') == ['a'],
           tags_of('abstruse', 'a. 难懂的'))
-    check('生造词 → 待确认', tags_of('zzzqwerty') == ['todo'], tags_of('zzzqwerty'))
+    check('生造词 → 待确认', tags_of('zxqv') == ['todo'], tags_of('zxqv'))
 
     # 增强包（WordNet / Moby）：词典也没有时兜底，并标来源 pack
     refdir = os.path.join(TMP, 'reflib')
