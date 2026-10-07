@@ -776,6 +776,40 @@ def pos_summary(book_id: int = Query(...)):
     return poslib.book_summary(book_id)
 
 
+REFPACK_URL = ('https://github.com/HoweyYang/KTRT/releases/latest/download/refpos.db')
+
+
+@app.get('/api/reflib')
+def reflib_list():
+    """离线参考库：内置词典 + 可下载的增强包（可启用/禁用）。"""
+    pack = os.path.join(db.DATA_DIR, 'reflib', 'refpos.db')
+    pack_size = os.path.getsize(pack) if os.path.exists(pack) else 0
+    dict_size = os.path.getsize(db.DICT_DB_PATH) if os.path.exists(db.DICT_DB_PATH) else 0
+    return {'download_url': REFPACK_URL, 'items': [
+        {'key': 'ecdict', 'name': '内置离线词典（ECDICT）', 'kind': 'builtin',
+         'size': dict_size, 'enabled': True, 'removable': False,
+         'note': '77 万词条：中英释义、词形变化、词频排名、考试标签'},
+        {'key': 'pack', 'name': '词性增强包（WordNet + Moby）', 'kind': 'download',
+         'size': pack_size, 'enabled': poslib.pack_enabled(), 'removable': True,
+         'note': '20 万词的词性 + 9 万条英文原文释义；装了它能少一大批「待确认」'},
+    ]}
+
+
+class ReflibToggleBody(BaseModel):
+    key: str = ''
+    enabled: bool = True
+
+
+@app.post('/api/reflib/toggle')
+def reflib_toggle(body: ReflibToggleBody):
+    if body.key != 'pack':
+        raise HTTPException(400, '这个参考库不能开关')
+    db.set_setting('reflib_pack_enabled', '1' if body.enabled else '0')
+    poslib.reset_pack_cache()
+    n = poslib.backfill_all()
+    return {'ok': True, 'recomputed': n, 'enabled': poslib.pack_enabled()}
+
+
 @app.get('/api/pos/todo')
 def pos_todo(book_id: int = Query(...), limit: int = Query(500)):
     """待确认清单：列给用户改（只落程序，不写回词书）。"""
@@ -793,6 +827,51 @@ def pos_override(body: PosOverrideBody):
     if not body.items:
         raise HTTPException(400, '没有要保存的修正')
     return {'ok': True, 'count': poslib.apply_overrides(body.book_id, body.items)}
+
+
+class PosAiBody(BaseModel):
+    book_id: int = 0
+    limit: int = 100
+
+
+POS_AI_MAP = {'noun': 'n', 'n': 'n', 'verb': 'v', 'v': 'v', 'adj': 'a', 'adjective': 'a',
+              'a': 'a', 'adv': 'ad', 'adverb': 'ad', 'ad': 'ad', 'prep': 'prep',
+              'conj': 'conj', 'pron': 'pron', 'num': 'num', 'art': 'art', 'int': 'int',
+              'phr': 'phr'}
+
+
+@app.post('/api/pos/ai_fill')
+def pos_ai_fill(body: PosAiBody):
+    """AI 兜底：只对「待确认」的词批量判一次；没配 Key / 断网就直接给结论，不硬等。"""
+    limit = max(1, min(body.limit or 100, 200))
+    items = poslib.todo_words(body.book_id, limit)
+    if not items:
+        return {'ok': True, 'count': 0, 'message': '没有待确认的词了'}
+    prompt = (
+        '你是英语词典编辑。给下面每个词条标注词性，只输出 JSON，不要解释：'
+        '{"items":[{"word":"原词","pos":"n 或 v 或 a 或 ad 或 prep 或 conj 或 pron 或 num 或 art 或 int 或 phr","reason":"10 字以内"}]}'
+        '。词性含义：n 名词、v 动词、a 形容词、ad 副词、prep 介词、conj 连词、pron 代词、'
+        'num 数词、art 冠词、int 感叹词、phr 短语；确实判不出就给空字符串。\n'
+        '词条：' + json.dumps([{'word': it['word'], 'meaning': it['meaning']} for it in items],
+                             ensure_ascii=False)[:3000]
+    )
+    try:
+        reply = ai.chat([{'role': 'user', 'content': prompt}], max_tokens=1500, temperature=0.1)
+    except Exception as e:
+        raise HTTPException(400, net.describe(e, 'AI 判定'))
+    data = _extract_json(reply) or {}
+    rows = data.get('items') if isinstance(data, dict) else None
+    mapping = []
+    for it in rows or []:
+        w = str(it.get('word') or '').strip()
+        pos = str(it.get('pos') or '').strip().lower()
+        tag = POS_AI_MAP.get(pos)
+        if w and tag:
+            mapping.append({'word': w, 'tags': [tag]})
+    if not mapping:
+        return {'ok': False, 'count': 0, 'message': 'AI 没给出可用结果，稍后再试'}
+    n = poslib.apply_overrides(body.book_id, mapping, source='ai')
+    return {'ok': True, 'count': n, 'message': 'AI 判了 %d 个词（可在清单里再改）' % n}
 
 
 # ---------- 词书本地副本与词条编辑 ----------
