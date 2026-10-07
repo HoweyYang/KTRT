@@ -33,6 +33,9 @@ if os.path.exists(p(os.path.join('data', 'reflib', 'refpos.db'))):
         '--add-data=' + p(os.path.join('data', 'reflib', 'refpos.db'))
         + os.pathsep + os.path.join('data', 'reflib')
     )
+# ECDICT 离线词典（77 万词条）：内置 CSV，首次启动自动建 dictionary.db（README/教程承诺「内置」）
+if os.path.exists(p(os.path.join('data', 'ecdict.csv'))):
+    add_data.append('--add-data=' + p(os.path.join('data', 'ecdict.csv')) + os.pathsep + 'data')
 if os.path.exists(p(os.path.join('data', 'phrasal_verbs.json'))):
     add_data.append(
         '--add-data=' + p(os.path.join('data', 'phrasal_verbs.json')) + os.pathsep + 'data'

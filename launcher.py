@@ -149,6 +149,12 @@ def ensure_bundled_resources():
         if os.path.exists(src) and not os.path.exists(dst):
             shutil.copy2(src, dst)
             print('[KTRT] 已初始化数据：' + name)
+    # 内置 ECDICT 原始 CSV：复制到数据目录后由 seed_dictionary() 建 dictionary.db
+    ecdict_src = os.path.join(RESOURCE_DIR, 'data', 'ecdict.csv')
+    ecdict_dst = os.path.join(db.DATA_DIR, 'ecdict.csv')
+    if os.path.exists(ecdict_src) and not os.path.exists(ecdict_dst) and not os.path.exists(db.DICT_DB_PATH):
+        shutil.copy2(ecdict_src, ecdict_dst)
+        print('[KTRT] 已释放内置 ECDICT 词典数据（首次启动会建库）')
     # 内置的词性增强包（Moby POS + WordNet）：第一次运行释放到数据目录
     pack_src = os.path.join(RESOURCE_DIR, 'data', 'reflib', 'refpos.db')
     pack_dst = os.path.join(db.DATA_DIR, 'reflib', 'refpos.db')
