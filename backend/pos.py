@@ -79,7 +79,7 @@ _PACK_POS = {}       # word → 增强包（WordNet / Moby）的词性
 _PACK_GLOSS = {}     # word → {词性: 英文原文释义}
 _PACK_MISS = set()   # 增强包里查过没有的词
 _PACK_PATH = os.path.join(db.DATA_DIR, 'reflib', 'refpos.db')
-RULE_VERSION = 'r6'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
+RULE_VERSION = 'r9'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
 
 
 def _load_pack(rows):
@@ -225,7 +225,17 @@ def _pattern_verb_tags(word, extra):
 def _subtags_from_text(text):
     """从文本抽细分标记：vt → v:vt，vi → v:vi，adj → a…（比 base 版多一层）。"""
     out = set()
-    for m in _TAG_RE.finditer(text or ''):
+    src = text or ''
+    for m in _TAG_RE.finditer(src):
+        # 跳过"关联词"的标注：词书里常见 "destructive 破坏/有害的 destruct v. 毁坏"，
+        # 那个 v. 说的是 destruct，不是本条词。判据：标记前面紧挨着另一个英文单词。
+        j = m.start() - 1
+        while j >= 0 and src[j] in ' \t':
+            j -= 1
+        if j >= 0 and src[j].isascii() and src[j].isalpha():
+            continue
+        if j >= 0 and '\u4e00' <= src[j] <= '\u9fff':
+            continue          # "…装置. heat热v.变热" 这类：紧贴中文的标记说的是关联词
         raw = m.group(1).lower()
         key = _ALIAS.get(raw)
         if not key:
@@ -304,6 +314,8 @@ def _finish(tags, word, text, source):
             tags.add('v:caus')
         if first.startswith(_LINK_PREFIX):
             tags.add('v:link')
+        if re.search(r'[（(]\s*使\s*[）)]', text or ''):     # "（使）穿梭" → 及物兼不及物
+            tags |= {'v:vt', 'v:vi'}
     if 'n' in base:
         if _is_proper(word, text):
             tags.add('n:proper')
@@ -365,7 +377,8 @@ def _add_pattern(tags, word, extra):
 def _ensure_word(word):
     """单个词懒加载：词典 / 增强包都没查过就先查一次（judge 单独调用也准）。"""
     key = (word or '').strip().lower()
-    if not key or key in _POS_CACHE or key in _PACK_POS or key in _PACK_MISS:
+    # 只看词典缓存：增强包的 miss 不能当作"词典已查过"，否则会短路掉细信息
+    if not key or key in _POS_CACHE:
         return
     _load_dict_pos([{'word': word, 'meaning': ''}])
 
@@ -460,10 +473,15 @@ def backfill_all():
 
 def book_summary(book_id):
     """导入体检：这本书的词性判定分布（自带/词典/增强包/规则/待确认）。"""
+    coarse_keys = ('v', 'n')      # 只有动词/名词还有更细一层（及物性、可数性）
     with db.get_conn() as conn:
         total = conn.execute('SELECT COUNT(*) c FROM words WHERE book_id=?', (book_id,)).fetchone()['c']
         rows = conn.execute('SELECT pos_source, COUNT(*) c FROM words WHERE book_id=? '
                             'GROUP BY pos_source', (book_id,)).fetchall()
+        marks = ','.join('?' * len(coarse_keys))
+        coarse = conn.execute(
+            'SELECT COUNT(*) c FROM words WHERE book_id=? AND pos_tags IN (%s)' % marks,
+            (book_id, *coarse_keys)).fetchone()['c']
         st = stats(book_id)
     return {
         'total': total,
@@ -471,18 +489,29 @@ def book_summary(book_id):
         'groups': st['items'],
         'multi': st['multi'],
         'todo': (st['items'] and next((i['count'] for i in st['items'] if i['key'] == 'todo'), 0)) or 0,
+        'coarse': coarse,
     }
 
 
 def todo_words(book_id, limit=500):
     """待确认清单：这部分词判不出来，列给用户改（只落程序，不碰词书）。"""
+    coarse_keys = ('v', 'n')      # 只判到"动词/名词"、还没细分到及物性/可数性的词
     with db.get_conn() as conn:
-        return [{'word': r['word'], 'meaning': (r['meaning'] or '')[:120],
-                 'tags': r['pos_tags'] or '', 'source': r['pos_source'] or ''}
-                for r in conn.execute(
-                    "SELECT word, meaning, pos_tags, pos_source FROM words "
-                    "WHERE book_id=? AND (pos_tags='todo' OR pos_tags='') ORDER BY word LIMIT ?",
-                    (book_id, limit))]
+        items = [{'word': r['word'], 'meaning': (r['meaning'] or '')[:120],
+                  'tags': r['pos_tags'] or '', 'source': r['pos_source'] or '', 'coarse': False}
+                 for r in conn.execute(
+                     "SELECT word, meaning, pos_tags, pos_source FROM words "
+                     "WHERE book_id=? AND (pos_tags='todo' OR pos_tags='') ORDER BY word LIMIT ?",
+                     (book_id, limit))]
+        # 只判到「动词 / 名词」这一层、还没细分的词也一并列出来（多为词书缺信息或写错）
+        marks = ','.join('?' * len(coarse_keys))
+        items += [{'word': r['word'], 'meaning': (r['meaning'] or '')[:120],
+                   'tags': r['pos_tags'], 'source': r['pos_source'] or '', 'coarse': True}
+                  for r in conn.execute(
+                      'SELECT word, meaning, pos_tags, pos_source FROM words '
+                      'WHERE book_id=? AND pos_tags IN (%s) ORDER BY word LIMIT ?' % marks,
+                      (book_id, *coarse_keys, limit))]
+    return items
 
 
 def apply_overrides(book_id, items, source='user'):
