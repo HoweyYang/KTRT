@@ -123,7 +123,7 @@ def _load_wiki(rows):
 def reset_wiki_cache():
     _WIKI_POS.clear()
     _WIKI_MISS.clear()
-RULE_VERSION = 'r14'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
+RULE_VERSION = 'r15'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
 
 
 def _load_pack(rows):
@@ -214,6 +214,42 @@ _SUF_ADJ = ('ous', 'ive', 'able', 'ible', 'al', 'ial', 'ic', 'ical', 'ful', 'les
             'friendly', 'based', 'driven', 'aware', 'proofed', 'resistant', 'dependent')
 _SUF_VERB = ('ize', 'ise', 'ify', 'ate', 'en')
 _COUNT_RE = re.compile(r'[\[（(]\s*C\s*[\]）)]')      # n. [C] / (C) / （可数）
+
+# 形态（不是词性，是附加信息）：来自 ECDICT 的 exchange 代码
+FORM_CODES = {'p': 'form:past', 'd': 'form:pp', 'i': 'form:ing', '3': 'form:3s',
+              's': 'form:plur', 'r': 'form:comp', 't': 'form:sup'}
+_FORM_CACHE = {}
+
+
+def form_tags(word):
+    """这个词是不是某个词的变形（过去式/过去分词/现在分词/三单/复数…）。
+
+    -ed / -ing 这类词可能是形容词（interesting），也可能只是动词语态变形（underestimated）。
+    规则：**词性看它自己有没有独立词性**（词典/WordNet/Wiktionary 标了 a./n. 就是形容词/名词），
+    形态则统一作为附加标签，来自 ECDICT exchange（p 过去式 / d 过去分词 / i 现在分词 /
+    3 三单 / s 复数 / r 比较级 / t 最高级，`0:` 是原形）。
+    """
+    key = (word or '').strip().lower()
+    if not key or not os.path.exists(db.DICT_DB_PATH):
+        return []
+    if key in _FORM_CACHE:
+        return _FORM_CACHE[key]
+    out = []
+    try:
+        conn = sqlite3.connect(db.DICT_DB_PATH)
+        row = conn.execute('SELECT exchange FROM dict WHERE word=?', (key,)).fetchone()
+        conn.close()
+        exchange = (row[0] or '') if row else ''
+        codes = set()
+        for chunk in exchange.split('/'):
+            code, _, val = chunk.partition(':')
+            if code in FORM_CODES and val:
+                codes.add(FORM_CODES[code])
+        out = sorted(codes)
+    except Exception:
+        out = []
+    _FORM_CACHE[key] = out
+    return out
 
 
 def _merge_detail(tags, key):
@@ -428,6 +464,18 @@ def judge(meaning, word='', extra=''):
     return ['todo'], 'todo'
 
 
+def judge_with_form(meaning, word='', extra=''):
+    """在判定结果后面附上形态标签（过去分词 / 现在分词 / 复数…），供卡片显示。"""
+    tags, src = judge(meaning, word, extra)
+    forms = form_tags(word)
+    if forms:
+        merged = list(tags) + [f for f in forms if f not in tags]
+        order_bonus = {'form:past': 1, 'form:pp': 2, 'form:ing': 3, 'form:3s': 4,
+                       'form:plur': 5, 'form:comp': 6, 'form:sup': 7}
+        tags = sorted(merged, key=lambda t: (0 if t in tags else 1, order_bonus.get(t, 0)))
+    return tags, src
+
+
 def _add_pattern(tags, word, extra):
     """动词还没分及物/不及物时，用搭配/短语列再推一把。"""
     tags = list(tags)
@@ -509,7 +557,7 @@ def fill_book_pos(book_id, only_empty=True):
         return 0
     _load_dict_pos(rows)
     done = [(r['id'], r['word'],
-             judge(r['meaning'], r['word'], (r['collocations'] or '') + ' ' + (r['phrases'] or '')))
+             judge_with_form(r['meaning'], r['word'], (r['collocations'] or '') + ' ' + (r['phrases'] or '')))
             for r in rows]
     with db._lock:
         with db.get_conn() as conn:

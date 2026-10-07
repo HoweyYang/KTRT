@@ -633,6 +633,8 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
   border: 1px solid var(--line); border-radius: 6px; padding: 1px 7px;
   font-size: 12px; color: var(--accent); background: var(--th);
 }
+/* 形态芯片（过去分词/现在分词/复数…）用虚边框，和词性区分开 */
+.pos-tag.form-tag { color: var(--muted); border-style: dashed; background: transparent; }
 .gloss-line { margin: 2px 0; }
 .gloss-line b { color: var(--muted); font-weight: 600; margin-right: 6px; }
 /* 导入体检卡 + 待确认清单 */
