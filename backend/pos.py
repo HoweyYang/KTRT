@@ -13,12 +13,20 @@ import sqlite3
 
 from . import db
 
-LABELS = {
-    'n': '名词', 'v': '动词', 'a': '形容词', 'ad': '副词', 'prep': '介词',
-    'conj': '连词', 'pron': '代词', 'num': '数词', 'art': '冠词',
-    'int': '感叹词', 'aux': '助动词', 'abbr': '缩写', 'phr': '短语', 'other': '其他',
-}
-ORDER = ['n', 'v', 'a', 'ad', 'prep', 'conj', 'pron', 'num', 'art', 'int', 'aux', 'abbr', 'phr', 'other']
+# 蒙版筛选用的粗桶（0.2.2 起按语言学合并：名词性含代词/数词/冠词/缩写；
+# 介词连词同属封闭功能词；短语与感叹词归其他；判不出的单独一桶"待确认"）。
+GROUPS = [
+    ('noun', '名词性', ('n', 'pron', 'num', 'art', 'abbr')),
+    ('verb', '动词', ('v',)),
+    ('adj', '形容词', ('a',)),
+    ('adv', '副词', ('ad',)),
+    ('func', '虚词（介词·连词）', ('prep', 'conj')),
+    ('misc', '其他（短语·感叹）', ('phr', 'int')),
+    ('todo', '待确认', ('todo', 'other')),
+]
+LABELS = {key: label for key, label, _ in GROUPS}
+ORDER = [key for key, _, _ in GROUPS]
+_GROUP_OF = {base: key for key, _, bases in GROUPS for base in bases}
 
 _ALIAS = {
     'n': 'n', 'v': 'v', 'vt': 'v', 'vi': 'v', 'adj': 'a', 'a': 'a',
@@ -40,14 +48,14 @@ def pos_of(meaning):
 
 
 def pos_of_word(meaning, word):
-    """先看释义，释义没标就去离线词典借（雅思这类纯中文释义靠这个补）；都没有才算 other。"""
+    """粗桶：释义 → 离线词典 → 增强包 → 词缀规则；都没有算「待确认」。"""
     key = (word or '').strip().lower()
     tags = (_subtags_from_text(meaning) or _POS_CACHE.get(key, set())
             or _PACK_POS.get(key, set()) or _affix_tags(word))
-    found = _base_of(tags)
-    if not found:
-        return ['other']
-    return [k for k in ORDER if k in found]
+    groups = {_GROUP_OF[b] for b in _base_of(tags) if b in _GROUP_OF}
+    if not groups:
+        return ['todo']
+    return [k for k in ORDER if k in groups]
 
 
 def _tags_from_text(text):
@@ -408,7 +416,8 @@ def _load_dict_pos(rows):
 
 def _rows(conn, book_id, list_no=None):
     sql = ('SELECT id, list_no, seq, word, phonetic, meaning, collocations, phrases, '
-           'synonyms, antonyms, root_words, phrasal_keys FROM words WHERE book_id=?')
+           'synonyms, antonyms, root_words, phrasal_keys, pos_tags, pos_source '
+           'FROM words WHERE book_id=?')
     params = [book_id]
     if list_no:
         sql += ' AND list_no=?'
@@ -470,9 +479,10 @@ def build(book_id, list_no, poss, name=''):
             data.append((new_id, ln, counter[ln], r['word'], r['phonetic'], r['meaning'],
                          r['collocations'], r['phrases'], r['synonyms'], r['antonyms'],
                          r['root_words'], r['phrasal_keys'],
-                         '%d|%d|%d' % (book_id, r['list_no'], r['seq'])))
+                         '%d|%d|%d' % (book_id, r['list_no'], r['seq']),
+                         r['pos_tags'] or '', r['pos_source'] or ''))
         conn.executemany(
             'INSERT INTO words(book_id, list_no, seq, word, phonetic, meaning, collocations, '
-            'phrases, synonyms, antonyms, root_words, phrasal_keys, source_ref) '
-            'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)', data)
+            'phrases, synonyms, antonyms, root_words, phrasal_keys, source_ref, pos_tags, pos_source) '
+            'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', data)
     return {'book_id': new_id, 'name': book_name, 'count': len(picked), 'lists': len(counter)}
