@@ -38,6 +38,15 @@ function posChips(tags) {
   }
   return out;
 }
+
+/* 朗读只读"词"：从「lesson 减少；mitigate 缓解（语气更弱）」里取出英文单词 */
+function ttsWordsOnly(text) {
+  return String(text || '')
+    .split(/[；;\n]+/)
+    .map((s) => ((s.match(/^[A-Za-z][A-Za-z'’\-\s]*/) || [''])[0] || '').trim())
+    .filter(Boolean)
+    .join(', ');
+}
 const ICON_TRASH = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
 const ICON_DOWNLOAD = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 const SPEAKER_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>';
@@ -574,8 +583,7 @@ function renderCard() {
       <div class="field">
         <span class="label">搭配 / 短语</span>
         <div class="value"><ul class="phrase-list">${
-          phraseItems.map((s) => `<li><span class="ph-text">${highlightHead(s, c.word.word)}</span>`
-            + `<button class="icon-btn mini-speak" data-tts="${escapeAttr(s)}" title="朗读这一条">${SPEAKER_ICON}</button></li>`).join('')
+          phraseItems.map((s) => `<li><span class="ph-text">${highlightHead(s, c.word.word)}</span></li>`).join('')
         }</ul></div>
       </div>`);
   }
@@ -585,7 +593,7 @@ function renderCard() {
       <div class="field">
         <span class="label">${label}</span>
         <span class="value">${escapeHtml(value)}</span>
-        <button class="icon-btn" data-tts="${escapeAttr(label + '：' + value)}" title="朗读">${SPEAKER_ICON}</button>
+        <button class="icon-btn" data-tts="${escapeAttr(ttsWordsOnly(value))}" title="只朗读这些词">${SPEAKER_ICON}</button>
       </div>`);
   }
   // 原文释义（英文）：高阶学习者要原文，中文在上、原文在下，默认展开
@@ -597,7 +605,7 @@ function renderCard() {
         <span class="label">原文释义</span>
         <div class="value">${glossLines.map(([p, text]) =>
           `<div class="gloss-line"><b>${escapeHtml(POS_LABELS[p] || p)}</b> ${escapeHtml(text)}</div>`).join('')}</div>
-        <button class="icon-btn" data-tts="${escapeAttr(glossLines.map(([p, t]) => t).join('; '))}" title="朗读">${SPEAKER_ICON}</button>
+        <button class="icon-btn" data-tts="${escapeAttr(glossLines.map(([p, t]) => t)[0].slice(0, 220))}" title="朗读原文释义">${SPEAKER_ICON}</button>
       </div>`);
   }
   // 定向词书（词性筛选生成）里的词，标注它来自哪本书的哪个位置，可一键跳回去

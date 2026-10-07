@@ -660,11 +660,15 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .phrase-list li .mini-speak { padding: 1px 5px; border-radius: 7px; opacity: .4; transition: opacity .15s, color .15s; }
 .phrase-list li:hover .mini-speak, .phrase-list li .mini-speak.speaking { opacity: 1; }
 /* 朗读中的反馈：变色 + 呼吸 */
-@keyframes speakPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes speakPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .45; transform: scale(1.12); }
+}
 .icon-btn.speaking {
   color: var(--accent);
   border-color: var(--accent);
-  animation: speakPulse .9s ease-in-out infinite;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  animation: speakPulse .8s ease-in-out infinite;
 }
 .field .value { white-space: pre-wrap; }
 .cd-mt {
