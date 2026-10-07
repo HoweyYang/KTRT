@@ -1820,6 +1820,7 @@ async function openTodoList(bookId) {
   box.innerHTML = `<p class="muted">待确认 ${r.items.length} 个：改完只存在本程序里，不会动你的词书。</p>`
     + r.items.map((it) => `<div class="todo-row" data-word="${escapeAttr(it.word)}">
         <b>${escapeHtml(it.word)}</b><span class="muted">${escapeHtml(it.meaning || '')}</span>
+        ${it.coarse ? '<span class="tag none" data-tip="引擎只判到「动词 / 名词」这一层：多半是词书没写全、或词书写错了词性。">笼统</span>' : ''}
         <select>${POS_GROUP_CHOICES.map(([k, label]) =>
           `<option value="${k}">${label}</option>`).join('')}</select>
       </div>`).join('')
