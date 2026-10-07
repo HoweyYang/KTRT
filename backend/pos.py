@@ -41,7 +41,8 @@ def pos_of(meaning):
 
 def pos_of_word(meaning, word):
     """先看释义，释义没标就去离线词典借（雅思这类纯中文释义靠这个补）；都没有才算 other。"""
-    found = _tags_from_text(meaning) or _POS_CACHE.get((word or '').strip().lower(), set())
+    tags = _subtags_from_text(meaning) or _POS_CACHE.get((word or '').strip().lower(), set())
+    found = _base_of(tags)
     if not found:
         return ['other']
     return [k for k in ORDER if k in found]
@@ -58,6 +59,215 @@ def _tags_from_text(text):
 
 
 _POS_CACHE = {}      # word → 从离线词典借来的词性集合（空集合 = 查过，没有）
+_DICT_TEXT = {}      # word → 词典原文（translation 优先，其次 definition）
+_EXCH_CACHE = {}     # word → exchange 字段（判断可数性用）
+
+# ---------- 细分判定（0.2.2）：闭集表 + 关键词信号 ----------
+
+LINKING = {  # 系动词（核心表：中文教材那套"变化类 / 表象类 / 持续类"里最常用的）
+    'be', 'become', 'seem', 'appear', 'look', 'feel', 'sound', 'taste', 'smell',
+    'remain', 'stay', 'turn', 'grow', 'get', 'prove',
+}
+MODAL = {'can', 'could', 'may', 'might', 'must', 'shall', 'should', 'will', 'would',
+         'ought', 'need', 'dare', 'used'}
+AUX = {'be', 'am', 'is', 'are', 'was', 'were', 'been', 'being', 'have', 'has', 'had',
+       'do', 'does', 'did', 'will', 'would', 'shall', 'should'}
+CAUSATIVE = {'make', 'let', 'have', 'get', 'cause', 'force', 'enable', 'allow', 'permit',
+             'require', 'persuade', 'remind', 'help', 'keep', 'leave', 'drive', 'lead',
+             'render', 'set', 'turn', 'bring', 'put', 'send', 'compel', 'oblige',
+             'encourage', 'inspire', 'induce', 'prompt', 'urge'}
+_CAUS_PREFIX = ('使', '让', '令')          # 首个中文释义以这些字开头 → 使役
+_LINK_PREFIX = ('变成', '变得', '成为', '显得', '看起来', '听起来', '闻起来', '尝起来', '保持')
+
+
+def _subtags_from_text(text):
+    """从文本抽细分标记：vt → v:vt，vi → v:vi，adj → a…（比 base 版多一层）。"""
+    out = set()
+    for m in _TAG_RE.finditer(text or ''):
+        raw = m.group(1).lower()
+        key = _ALIAS.get(raw)
+        if not key:
+            continue
+        out.add(key)
+        if key == 'v':
+            if raw == 'vt':
+                out.add('v:vt')
+            elif raw == 'vi':
+                out.add('v:vi')
+    return out
+
+
+def _base_of(tags):
+    return {t.split(':')[0] for t in tags}
+
+
+def _first_gloss(text):
+    """取第一段中文释义（用于关键词规则）：去掉词性标记与括号注释后取首个词。"""
+    s = re.sub(r'\[[^\]]*\]', ' ', text or '')
+    s = _TAG_RE.sub(' ', s)
+    s = re.sub(r'^[\s,，;；、.。:：-]+', '', s)
+    return s[:6]
+
+
+def _table_tags(low):
+    out = set()
+    if low in LINKING:
+        out |= {'v', 'v:link'}
+    if low in MODAL:
+        out |= {'v', 'v:modal'}
+    if low in AUX:
+        out |= {'v', 'v:aux'}
+    if low in CAUSATIVE:
+        out |= {'v', 'v:caus'}
+    return out
+
+
+def _is_proper(word, text):
+    """专有名词：首字母大写，或词典释义里明确标了 [地名] / [人名]。"""
+    if len(word or '') > 1 and word[:1].isupper():
+        return True
+    return bool(re.search(r'\[(地名|人名)\]', text or ''))
+
+
+def _countable(word):
+    """可数性（弱推断）：词典 exchange 里有复数（s: / 3:）就算"有复数形式"。"""
+    key = (word or '').strip().lower()
+    if not key:
+        return False
+    if key not in _EXCH_CACHE:
+        val = ''
+        try:
+            if os.path.exists(db.DICT_DB_PATH):
+                conn = sqlite3.connect(db.DICT_DB_PATH)
+                row = conn.execute('SELECT exchange FROM dict WHERE word=?', (key,)).fetchone()
+                conn.close()
+                val = (row[0] or '') if row else ''
+        except Exception:
+            val = ''
+        _EXCH_CACHE[key] = val
+    exch = _EXCH_CACHE[key]
+    return 's:' in exch or '3:' in exch
+
+
+def _finish(tags, word, text, source):
+    """补齐细分：闭集表、关键词规则、名词子类；返回 (排序后的标签, 来源)。"""
+    tags = set(tags)
+    tags |= _table_tags((word or '').strip().lower())
+    base = _base_of(tags)
+    if 'v' in base:
+        first = _first_gloss(text)
+        if first.startswith(_CAUS_PREFIX):
+            tags.add('v:caus')
+        if first.startswith(_LINK_PREFIX):
+            tags.add('v:link')
+    if 'n' in base:
+        if _is_proper(word, text):
+            tags.add('n:proper')
+        if _countable(word):
+            tags.add('n:countable')
+    order = ['n', 'n:proper', 'n:countable', 'v', 'v:vt', 'v:vi', 'v:link', 'v:modal',
+             'v:aux', 'v:caus', 'a', 'ad', 'prep', 'conj', 'pron', 'num', 'art', 'int',
+             'aux', 'abbr', 'phr', 'todo']
+    return [t for t in order if t in tags], source
+
+
+def judge(meaning, word=''):
+    """五级判定 → (tags, source)：① 书里显式标记 ② 词典按行义项 ③ 关键词 ④ 闭集表 ⑤ 待确认。"""
+    ov = override_tags(word)
+    if ov:
+        return ov, 'user'
+    book = _subtags_from_text(meaning)
+    if book:
+        return _finish(book, word, meaning, 'book')
+    dt = _POS_CACHE.get((word or '').strip().lower(), set())
+    if dt:
+        return _finish(dt, word, _DICT_TEXT.get((word or '').strip().lower()) or meaning, 'dict')
+    tbl = _table_tags((word or '').strip().lower())
+    if tbl:
+        return _finish(tbl, word, meaning, 'table')
+    base = _base_of(_subtags_from_text(meaning)) if meaning else set()
+    if base:
+        return _finish(base, word, meaning, 'rule')
+    return ['todo'], 'todo'
+
+
+_OVERRIDE = None    # word → 手动修正标签（懒加载，判词时不再逐词查库）
+
+
+def _overrides():
+    global _OVERRIDE
+    if _OVERRIDE is None:
+        _OVERRIDE = {}
+        try:
+            with db.get_conn() as conn:
+                for r in conn.execute('SELECT word, tags FROM word_pos_override'):
+                    if r['tags']:
+                        _OVERRIDE[r['word']] = r['tags'].split('|')
+        except Exception:
+            _OVERRIDE = {}
+    return _OVERRIDE
+
+
+def override_tags(word):
+    """用户手动改过的判定（只存在程序里，不写回词书）；没有就返回空。"""
+    return _overrides().get((word or '').strip().lower()) or []
+
+
+def set_override(word, tags):
+    """写入/清除手动修正（tags 为空 = 清除）。"""
+    global _OVERRIDE
+    key = (word or '').strip().lower()
+    if not key:
+        raise RuntimeError('缺少单词')
+    with db._lock:
+        with db.get_conn() as conn:
+            if tags:
+                conn.execute('INSERT OR REPLACE INTO word_pos_override(word, tags) VALUES(?,?)',
+                             (key, '|'.join(tags)))
+            else:
+                conn.execute('DELETE FROM word_pos_override WHERE word=?', (key,))
+    _OVERRIDE = None
+    return list(tags or [])
+
+
+def fill_book_pos(book_id, only_empty=True):
+    """给某本书的词条算一次词性（导入后 / 启动补扫用）；只写程序库，不碰词书文件。"""
+    sql = 'SELECT id, word, meaning FROM words WHERE book_id=?'
+    if only_empty:
+        sql += " AND (pos_tags IS NULL OR pos_tags='')"
+    with db.get_conn() as conn:
+        rows = [dict(r) for r in conn.execute(sql, (book_id,))]
+    if not rows:
+        return 0
+    _load_dict_pos(rows)
+    done = [(r['id'], r['word'], judge(r['meaning'], r['word'])) for r in rows]
+    with db._lock:
+        with db.get_conn() as conn:
+            for wid, word, (tags, source) in done:
+                conn.execute('UPDATE words SET pos_tags=?, pos_source=? WHERE id=?',
+                             ('|'.join(tags), source, wid))
+                key = (word or '').strip().lower()
+                if key and source != 'user':
+                    conn.execute('INSERT OR REPLACE INTO word_pos_cache(word, tags, source) '
+                                 'VALUES(?,?,?)', (key, '|'.join(tags), source))
+    return len(done)
+
+
+def backfill_all():
+    """老库补扫：所有还没判过词性的词条（静默失败，不挡启动）。"""
+    total = 0
+    try:
+        with db.get_conn() as conn:
+            ids = [r['id'] for r in conn.execute('SELECT id FROM word_books ORDER BY id')]
+            pending = conn.execute(
+                "SELECT COUNT(*) c FROM words WHERE pos_tags IS NULL OR pos_tags=''").fetchone()['c']
+        if not pending:
+            return 0
+        for bid in ids:
+            total += fill_book_pos(bid)
+    except Exception:
+        return total
+    return total
 
 
 def _load_dict_pos(rows):
@@ -79,7 +289,8 @@ def _load_dict_pos(rows):
             sql = ('SELECT word, translation, definition FROM dict WHERE word IN (%s)'
                    % ','.join('?' * len(chunk)))
             for word, translation, definition in conn.execute(sql, chunk):
-                _POS_CACHE[word] = _tags_from_text(translation) or _tags_from_text(definition)
+                _POS_CACHE[word] = _subtags_from_text(translation) or _subtags_from_text(definition)
+                _DICT_TEXT[word] = (translation or definition or '').strip()
         conn.close()
     except Exception:
         return
