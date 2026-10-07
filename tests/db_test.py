@@ -331,6 +331,56 @@ def test_mask_edit_syncs_source_book():
           row_of(built['book_id'], 'apple'))
 
 
+def test_pos_judge_chain():
+    """五级判定：闭集表（become/let/must）、词典 vt/vi、专有名词、生造词 → 待确认。"""
+    import sqlite3
+    from backend import pos as poslib
+
+    conn = sqlite3.connect(os.path.join(TMP, 'dictionary.db'))
+    nl = chr(10)
+    conn.execute("INSERT OR REPLACE INTO dict(word, translation, definition, exchange) "
+                 "VALUES('run', ?, 'v. move fast', 'p:ran/i:running/s:runs')",
+                 ('n. 跑' + nl + 'vi. 跑, 奔跑' + nl + 'vt. 经营, 运转',))
+    conn.execute("INSERT OR REPLACE INTO dict(word, translation, definition, exchange) "
+                 "VALUES('atlantic', ?, 'n. the ocean', '')", ('n. 大西洋' + nl + 'a. 大西洋的',))
+    conn.execute("INSERT OR REPLACE INTO dict(word, translation, definition, exchange) "
+                 "VALUES('let', ?, 'v. allow', 'i:letting/p:let/3:lets')",
+                 ('vt. 让, 假设' + nl + 'vi. 出租',))
+    conn.commit()
+    conn.close()
+    for cache in (poslib._POS_CACHE, poslib._DICT_TEXT, poslib._EXCH_CACHE):
+        cache.clear()
+    poslib._load_dict_pos([{'word': 'run', 'meaning': ''}, {'word': 'atlantic', 'meaning': ''},
+                           {'word': 'let', 'meaning': ''}])
+
+    def tags_of(word, meaning=''):
+        return poslib.judge(meaning, word)[0]
+
+    check('become → 系动词（闭集表）', 'v:link' in tags_of('become'), tags_of('become'))
+    check('must → 情态动词（闭集表）', 'v:modal' in tags_of('must'), tags_of('must'))
+    check('let → 使役（闭集表）', 'v:caus' in tags_of('let'), tags_of('let'))
+    check('run → 及物 + 不及物（词典按行义项）',
+          {'v:vt', 'v:vi'} <= set(tags_of('run')), tags_of('run'))
+    check('Atlantic → 专有名词', 'n:proper' in tags_of('Atlantic'), tags_of('Atlantic'))
+    check('abstruse → 形容词（书里显式标记）', tags_of('abstruse', 'a. 难懂的') == ['a'],
+          tags_of('abstruse', 'a. 难懂的'))
+    check('生造词 → 待确认', tags_of('zzzqwerty') == ['todo'], tags_of('zzzqwerty'))
+
+
+def test_import_fills_pos_tags():
+    """导入后词性要落到词条上（卡片与蒙版都读它）。"""
+    path = os.path.join(TMP, 'pos_import.csv')
+    write_csv(path, [['become', '变成，变得'], ['abstruse', 'adj. 难懂的']])
+    importer.import_book(path)
+    with db.get_conn() as conn:
+        rid = conn.execute('SELECT id FROM word_books ORDER BY id DESC LIMIT 1').fetchone()['id']
+        rows = {r['word']: (r['pos_tags'], r['pos_source'])
+                for r in conn.execute('SELECT word, pos_tags, pos_source FROM words WHERE book_id=?', (rid,))}
+    check('导入即写入 pos_tags（become 系动词）', 'v:link' in rows['become'][0], rows)
+    check('导入即写入来源', rows['become'][1] in ('table', 'dict', 'rule', 'book'), rows)
+    check('书里显式标记优先（abstruse → a）', rows['abstruse'][0].startswith('a'), rows)
+
+
 def test_default_book_rename():
     """旧库的默认收藏册要跟着改名；已经有新名字时不乱动。"""
     with db.get_conn() as conn:
@@ -361,6 +411,8 @@ def main():
         test_patch_version_source()
         test_mask_edit_syncs_source_book()
         test_pos_falls_back_to_dictionary()
+        test_pos_judge_chain()
+        test_import_fills_pos_tags()
         test_default_book_rename()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)

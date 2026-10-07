@@ -123,6 +123,17 @@ def init_db():
                   content TEXT NOT NULL DEFAULT '',
                   updated_at TEXT DEFAULT (datetime('now','localtime'))
                 );
+                CREATE TABLE IF NOT EXISTS word_pos_cache(
+                  word TEXT PRIMARY KEY,
+                  tags TEXT NOT NULL DEFAULT '',
+                  source TEXT NOT NULL DEFAULT '',
+                  updated_at TEXT DEFAULT (datetime('now','localtime'))
+                );
+                CREATE TABLE IF NOT EXISTS word_pos_override(
+                  word TEXT PRIMARY KEY,
+                  tags TEXT NOT NULL DEFAULT '',
+                  updated_at TEXT DEFAULT (datetime('now','localtime'))
+                );
                 """
             )
             # 旧库补列：命中的动词短语（导入时写入，卡片据此显示「动词短语参考」）
@@ -132,6 +143,11 @@ def init_db():
             # 旧库补列：该词来自哪本词书的哪个位置（词性筛选生成的定向词书用，格式 书id|List|序号）
             if 'source_ref' not in cols:
                 conn.execute("ALTER TABLE words ADD COLUMN source_ref TEXT DEFAULT ''")
+            # 旧库补列：词性判定结果（细分标签，如 n:proper|v:vt|v:caus）与来源
+            if 'pos_tags' not in cols:
+                conn.execute("ALTER TABLE words ADD COLUMN pos_tags TEXT DEFAULT ''")
+            if 'pos_source' not in cols:
+                conn.execute("ALTER TABLE words ADD COLUMN pos_source TEXT DEFAULT ''")
             # 旧库改名：默认收藏册「外部单词收藏册」→「自定义单词收藏册」
             renamed = conn.execute("SELECT id FROM word_books WHERE name=?",
                                    ('自定义单词收藏册',)).fetchone()

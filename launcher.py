@@ -163,10 +163,15 @@ def prepare_and_serve():
     """后台线程：先建库（首次可能较慢），再启动服务。"""
     try:
         ensure_bundled_resources()
+        from backend import pos
         from backend.seed import seed_default_book, seed_dictionary, seed_references
         seed_default_book()
         seed_dictionary()
         seed_references()
+        # 老库补扫：还没判过词性的词条（0.2.2 起卡片要显示细分，缺数据就先补上）
+        n = pos.backfill_all()
+        if n:
+            print('[KTRT] 词性补扫完成：%d 条' % n)
     except Exception as e:
         print('[KTRT] 初始化失败：%s' % e)
     start_server()

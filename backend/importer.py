@@ -2,7 +2,7 @@ import csv
 import os
 import re
 
-from . import db, phrasal
+from . import db, phrasal, pos
 
 WORD_KEYS = {'【单词】', 'word', '单词', 'word_en', 'entry'}
 PHON_KEYS = {'【音标】', 'phonetic', '音标', 'pronunciation', 'ipa'}
@@ -216,5 +216,10 @@ def import_book(path, forced_book='', forced_language=''):
                 'root_words=excluded.root_words, phrasal_keys=excluded.phrasal_keys',
                 insert_rows,
             )
+    # 导入后按这本书的词条算一次词性（在写事务之外做，避免和上面的写锁抢）
+    try:
+        pos.fill_book_pos(book_id)
+    except Exception:
+        pass
     return {'book_name': book_name, 'language': language, 'rows': len(rows),
             'phrasal_hits': phrasal_hits}
