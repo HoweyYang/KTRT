@@ -202,10 +202,27 @@ def card(book_id: int = Query(...), list_no: int = Query(1), seq: int = Query(1)
         ).fetchone()['c']
     return {
         'word': dict(w),
+        # 统一检索层给的词性 + 英文原文（卡片芯片与「原文释义」用）
+        'lookup': _card_lookup(w['word']),
         'status': status,
         'sentences': [dict(s) for s in sents],
         'progress': {'total': count, 'learned': learned},
     }
+
+
+def _card_lookup(word):
+    """卡片要的词性标签与英文原文释义（最多两条，控制体积）。"""
+    try:
+        hit = lookuplib.lookup(word, depth='full')
+        return {
+            'pos': hit.get('pos') or [],
+            'pos_source': hit.get('pos_source') or '',
+            'gloss': dict(list((hit.get('gloss') or {}).items())[:2]),
+            'definition': (hit.get('definition') or '')[:400],
+            'sources': hit.get('sources') or [],
+        }
+    except Exception:
+        return {'pos': [], 'pos_source': '', 'gloss': {}, 'definition': '', 'sources': []}
 
 
 class StatusBody(BaseModel):
