@@ -623,6 +623,11 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
   border: solid var(--on-accent, #fff); border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 .pos-item b { margin-left: auto; color: var(--muted); font-weight: 600; }
+/* 蒙版页的勾选列表在 .panel 里，而 .panel label 的优先级更高（0-1-1 > 0-1-0），
+   会把 display 拉回 block 造成"复选框一行、文字一行"。这里用更高优先级压回来。 */
+.panel .pos-item {
+  display: flex; margin-bottom: 0; font-size: 13px; font-weight: 400;
+}
 /* —— 全局排版微调（0.2.2）：标题收紧字距、数字用等宽数字，读起来更"贵"一点 —— */
 .panel h2, .word-head .word { letter-spacing: -0.011em; font-weight: 640; }
 .field .label { letter-spacing: .01em; }
