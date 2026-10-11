@@ -24,7 +24,7 @@
 AppId={{8F4B9C3E-5A2D-4E7B-9C1A-001122334455}
 AppName={#APP_NAME}
 AppVersion={#APP_VERSION}
-AppPublisher=HoweyYueng
+AppPublisher=HoweyYeung
 AppPublisherURL=https://github.com/HoweyYang/KTRT
 DefaultDirName={localappdata}\Programs\KTRT
 DefaultGroupName=KTRT

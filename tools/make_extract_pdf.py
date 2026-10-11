@@ -41,7 +41,7 @@ def content(version, styles, width):
 
     story = []
     story.append(P('把单词书变成可导入的 Excel', 'title'))
-    story.append(P('溯源词斩 KTRT（KillTimeRecitationTool）v%s · AI 扒取词书方法 · 开发者 HoweyYueng'
+    story.append(P('溯源词斩 KTRT（KillTimeRecitationTool）v%s · AI 扒取词书方法 · 开发者 HoweyYeung'
                    % version, 'sub'))
     story.append(P('目标：把任意单词书（PDF / 电子书 / 网页 / 图片扫描件）整理成 KTRT 的标准格式，导入后即可背诵。'))
 
@@ -127,14 +127,14 @@ def main():
     out = os.path.abspath(args.out)
     doc = SimpleDocTemplate(out, pagesize=A4, leftMargin=2 * cm, rightMargin=2 * cm,
                             topMargin=1.8 * cm, bottomMargin=1.8 * cm,
-                            title='把单词书变成可导入的 Excel', author='HoweyYueng')
+                            title='把单词书变成可导入的 Excel', author='HoweyYeung')
     story = content(args.version, styles, doc.width)
 
     def footer(canvas, doc_):
         canvas.saveState()
         canvas.setFont('KTRT', 9)
         canvas.setFillColor(colors.HexColor('#9ca3af'))
-        canvas.drawString(2 * cm, 1.1 * cm, 'KTRT v%s · 溯源词斩 · by HoweyYueng' % args.version)
+        canvas.drawString(2 * cm, 1.1 * cm, 'KTRT v%s · 溯源词斩 · by HoweyYeung' % args.version)
         canvas.drawRightString(A4[0] - 2 * cm, 1.1 * cm, '第 %d 页' % doc_.page)
         canvas.restoreState()
 

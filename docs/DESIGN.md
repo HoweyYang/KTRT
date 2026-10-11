@@ -1,6 +1,6 @@
 # KTRT（KillTimeRecitationTool）设计文档
 
-开发者：HoweyYueng ｜ 形态：本地网页应用 ｜ 启动：`KTRT.bat`
+开发者：HoweyYeung ｜ 形态：本地网页应用 ｜ 启动：`KTRT.bat`
 
 ## 架构
 
