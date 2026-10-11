@@ -3,7 +3,7 @@
 
 - 带球小人（透明抠图）整体从左往右移动，人和球都在图里；
 - 进度条随小人同步从左往右填充，绿色渐变加深，终点是球门；
-- 空白区域用抽象字体写 KTRT 全名，副标为宣传语 + by HoweyYueng；
+- 空白区域用抽象字体写 KTRT 全名，副标为宣传语 + by HoweyYeung；
 - 动画固定约 3 秒（服务秒就绪也要播完 3 秒）；
 - 服务探测在主线程完成（避免跨线程 after 不生效导致弹窗不关闭）。
 """
@@ -33,7 +33,7 @@ DESCRIPTOR_FONT = ('Segoe UI', 10, 'italic')
 # 签名用系统里的手写花体：Edwardian Script 最接近 Apple 那种优雅手写，后面几个做兜底
 SIGNATURE_FONTS = ('Edwardian Script ITC', 'Kunstler Script', 'Monotype Corsiva',
                    'Segoe Script', 'Ink Free')
-SIGNATURE_TEXT = 'Designed by HoweyYueng'
+SIGNATURE_TEXT = 'Designed by HoweyYeung'
 # 中文主标题：思源宋体优先（比雅黑更有书卷气），没有就退到华文中宋、雅黑
 TITLE_FONTS = ('Noto Serif SC SemiBold', 'Noto Serif SC', 'STZhongsong', 'Microsoft YaHei UI')
 SUBTITLE_FONTS = ('Noto Serif SC', 'Noto Serif SC Light', 'STZhongsong', 'Microsoft YaHei UI')
