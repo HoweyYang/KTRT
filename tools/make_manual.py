@@ -55,7 +55,7 @@ def content(version, test_key, styles, width):
 
     story = []
     story.append(P('KTRT 使用说明', 'title'))
-    story.append(P('溯源词斩 KTRT（KillTimeRecitationTool）v%s · %s · 开发者 HoweyYueng'
+    story.append(P('溯源词斩 KTRT（KillTimeRecitationTool）v%s · %s · 开发者 HoweyYeung'
                    % (version, '内测试用版' if test_key else '正式版'), 'sub'))
     if test_key:
         story.append(P('<b>本册为内测发放版，内含测试专用 Key，请勿对外转发。</b>'
@@ -212,7 +212,7 @@ def main():
     out = os.path.abspath(args.out)
     doc = SimpleDocTemplate(out, pagesize=A4, leftMargin=2 * cm, rightMargin=2 * cm,
                             topMargin=1.8 * cm, bottomMargin=1.8 * cm,
-                            title='KTRT 使用说明 v%s' % args.version, author='HoweyYueng')
+                            title='KTRT 使用说明 v%s' % args.version, author='HoweyYeung')
     story = content(args.version, args.test_key, styles, doc.width)
 
     def footer(canvas, doc_):
@@ -220,7 +220,7 @@ def main():
         canvas.setFont('KTRT', 9)
         canvas.setFillColor(colors.HexColor('#9ca3af'))
         label = '内测版 · ' if args.test_key else ''
-        canvas.drawString(2 * cm, 1.1 * cm, 'KTRT v%s · %s溯源词斩 · by HoweyYueng' % (args.version, label))
+        canvas.drawString(2 * cm, 1.1 * cm, 'KTRT v%s · %s溯源词斩 · by HoweyYeung' % (args.version, label))
         canvas.drawRightString(A4[0] - 2 * cm, 1.1 * cm, '第 %d 页' % doc_.page)
         canvas.restoreState()
 
