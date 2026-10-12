@@ -123,7 +123,8 @@ def _load_wiki(rows):
 def reset_wiki_cache():
     _WIKI_POS.clear()
     _WIKI_MISS.clear()
-RULE_VERSION = 'r15'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
+RULE_VERSION = 'r16'   # 判定规则版本：改了规则就整体重扫一次（和增强包一起做戳）
+                       # r16：形态标签只给"自己就是变形"的词（abatement 不再被标成复数）
 
 
 def _load_pack(rows):
@@ -222,12 +223,17 @@ _FORM_CACHE = {}
 
 
 def form_tags(word):
-    """这个词是不是某个词的变形（过去式/过去分词/现在分词/三单/复数…）。
+    """这个词**自己**是不是某个词的变形（过去式/过去分词/现在分词/三单/复数…）。
 
-    -ed / -ing 这类词可能是形容词（interesting），也可能只是动词语态变形（underestimated）。
-    规则：**词性看它自己有没有独立词性**（词典/WordNet/Wiktionary 标了 a./n. 就是形容词/名词），
-    形态则统一作为附加标签，来自 ECDICT exchange（p 过去式 / d 过去分词 / i 现在分词 /
-    3 三单 / s 复数 / r 比较级 / t 最高级，`0:` 是原形）。
+    -ed / -ing 这类词可能是形容词（interesting），也可能只是动词语态变形（underestimated）；
+    词性看它自己有没有独立词性，形态则作为附加标签供卡片显示。
+
+    ECDICT 的 exchange 有两种写法，必须分开看：
+      · 变形词：`0:原形/1:形态码` —— `0:` 说明"它是谁变的"，`1:` 才是它自己是哪种形态
+        （governed = 0:govern/1:dp、abatements = 0:abatement/1:s、children = 0:child/1:s）
+      · 原形词：`s:xxx/d:xxx/i:xxx/3:xxx` —— 这些是**它的各种变形**，不是它自己
+    以前两种一起读，于是原形也被标了形态：abatement 成了"复数"、govern 成了
+    "过去式 / 过去分词 / 现在分词 / 三单"，全反了。
     """
     key = (word or '').strip().lower()
     if not key or not os.path.exists(db.DICT_DB_PATH):
@@ -240,12 +246,17 @@ def form_tags(word):
         row = conn.execute('SELECT exchange FROM dict WHERE word=?', (key,)).fetchone()
         conn.close()
         exchange = (row[0] or '') if row else ''
-        codes = set()
+        fields = {}
         for chunk in exchange.split('/'):
             code, _, val = chunk.partition(':')
-            if code in FORM_CODES and val:
-                codes.add(FORM_CODES[code])
-        out = sorted(codes)
+            if code:
+                fields[code] = val
+        if '0' in fields:                     # 有原形字段 → 它自己就是变形
+            codes = set()
+            for ch in (fields.get('1') or ''):
+                if ch in FORM_CODES:
+                    codes.add(FORM_CODES[ch])
+            out = sorted(codes)
     except Exception:
         out = []
     _FORM_CACHE[key] = out

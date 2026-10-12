@@ -25,6 +25,19 @@ const POS_LABELS = {
   'form:3s': '第三人称单数', 'form:plur': '复数', 'form:comp': '比较级', 'form:sup': '最高级',
 };
 
+/* 细分芯片的判定依据：芯片本身是弱推断，鼠标停一下能知道它凭什么这么判 */
+const POS_TIPS = {
+  'n:proper': '专有名词：首字母大写，且不是普通词',
+  'n:countable': '可数：词典里能查到它的复数形式（弱推断，个别词另有习惯用法）',
+  'n:uncountable': '不可数：有词典/增强包依据，但查不到复数形式',
+  'v:vt': '及物动词：词典释义里标了 vt.',
+  'v:vi': '不及物动词：词典释义里标了 vi.',
+  'v:link': '系动词：be / become / seem 这一类',
+  'v:modal': '情态动词：can / must / should 这一类',
+  'v:aux': '助动词：do / have / will 这一类',
+  'v:caus': '使役动词：make / let / have 这一类',
+};
+
 function posChips(tags) {
   const list = (tags || []).filter(Boolean);
   const out = [];
@@ -595,7 +608,8 @@ function renderCard() {
         <span class="label">词性</span>
         <span class="value pos-chips">${chips.map((t) =>
           `<span class="pos-tag${t.startsWith('form:') ? ' form-tag' : ''}" data-tip="${
-            t.startsWith('form:') ? '词形变化（不是独立词性）' : '判定依据：' + escapeAttr(from || '—')}">${
+            POS_TIPS[t] || (t.startsWith('form:') ? '词形变化（不是独立词性）'
+              : '判定依据：' + escapeAttr(from || '—'))}">${
             escapeHtml(POS_LABELS[t] || t)}</span>`).join('')}
           ${from ? `<span class="muted" style="font-size:12px">来自${escapeHtml(from)}</span>` : ''}
         </span>
