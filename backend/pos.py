@@ -8,6 +8,7 @@ ECDICT 的 pos 列实测全为空，只能从文本解析；有些词书（如�
 definition 同样带 n. / a. / vt. 这类标记。
 """
 import os
+import json
 import re
 import sqlite3
 
@@ -669,8 +670,10 @@ def book_summary(book_id):
         'conflict': todo['conflict'],
         'unmapped': todo['unmapped'],
         'truncated': todo['truncated'],
+        'shifted': todo['shifted'],
         'markfix': todo['markfix'],
         'todo_total': todo['total'],
+        'ignored': len(ignored_words()),
     }
 
 
@@ -680,8 +683,9 @@ def conn_count_todo(book_id):
     return {
         'unsure': sum(1 for i in items if not (i.get('coarse') or i.get('conflict')
                                               or i.get('unmapped') or i.get('truncated')
-                                              or i.get('markfix'))),
+                                              or i.get('markfix') or i.get('shifted'))),
         'truncated': sum(1 for i in items if i.get('truncated')),
+        'shifted': sum(1 for i in items if i.get('shifted')),
         'markfix': sum(1 for i in items if i.get('markfix')),
         'coarse': sum(1 for i in items if i.get('coarse')),
         'conflict': sum(1 for i in items if i.get('conflict')),
@@ -767,6 +771,29 @@ def lead_mark(meaning):
     return _MARK_BASE.get(m.group(1).lower(), '') if m else ''
 
 
+def dict_first_line(word):
+    """离线词典里这个词的第一行释义（带词性前缀），给"按词典改这条释义"用。
+
+    词书里偶尔会把别条的释义串到这一行（brow 挂着 brown 的"褐色的"），
+    这时光改词性没用，得把释义本身换回来。
+    """
+    try:
+        if not os.path.exists(db.DICT_DB_PATH):
+            return ''
+        conn = sqlite3.connect(db.DICT_DB_PATH)
+        row = conn.execute('SELECT translation FROM dict WHERE word=?',
+                           ((word or '').strip().lower(),)).fetchone()
+        conn.close()
+        text = ((row[0] or '') if row else '').replace('\\n', '\n')
+        for line in text.split('\n'):
+            line = line.strip()
+            if line and lead_mark(line):
+                return line[:80]
+    except Exception:
+        pass
+    return ''
+
+
 def mark_conflicts(conn, book_id):
     """词书里写的词性和最终判定对不上：典型是书里把 allusion 标成 adj.，其实它是名词。
 
@@ -787,10 +814,76 @@ def mark_conflicts(conn, book_id):
     return out
 
 
+def ignored_words():
+    """用户点过"这条没问题"的词：不再进待确认清单（判定本身不受影响）。"""
+    try:
+        return {str(w).strip().lower() for w in json.loads(db.get_setting('pos_todo_ignore', '[]') or '[]')}
+    except Exception:
+        return set()
+
+
+def set_ignored(words):
+    db.set_setting('pos_todo_ignore', json.dumps(sorted(words), ensure_ascii=False))
+
+
 def tag_bases(tags):
     """取词性大类（去掉 n:countable / v:vt 这种细分与 form: 形态标签）。"""
     return {t.split(':')[0] for t in (tags or '').split('|')
             if t and not t.startswith('form:')}
+
+
+def shifted_guess(word, meaning, dconn=None):
+    """这条的释义像是"隔壁那一行"的（词书串行）。
+
+    典型：brow 这一行挂着 brown 的"褐色的"，自己的"n. 眉毛"反倒没了 ——
+    字母序词书串行时，下一行往往正好只多几个字母。
+
+    判据故意收得很紧（宁缺勿滥）：
+      · 这个词**自己的词典释义**和它毫无重合（中文字重合 < 2）；
+      · 而某个**以它为前缀的更长词**的释义和它重合 ≥ 80%。
+    只按"自己的对不上"就报会误伤一大片同义词写法（越轨 vs 偏离 这种），
+    所以必须再有一个高度吻合的邻居才认。
+    """
+    w = (word or '').strip().lower()
+    if len(w) < 3 or len(w) > 14 or ' ' in w or not os.path.exists(db.DICT_DB_PATH):
+        return ''
+    mine = _gloss_chars(meaning)
+    if len(mine) < 2:
+        return ''
+    try:
+        conn = dconn or sqlite3.connect(db.DICT_DB_PATH)
+        own = conn.execute('SELECT translation FROM dict WHERE word=?', (w,)).fetchone()
+        own_gloss = _gloss_chars((own[0] if own else '') or '')
+        # 自己的释义哪怕只是同义写法（骨→骨骼）也算对得上，别乱报
+        if len(mine & own_gloss) / max(1, len(mine)) >= 0.34:
+            if dconn is None:
+                conn.close()
+            return ''                       # 自己的释义就对得上，不是串行
+        scored = []
+        for cw, tr, exch in conn.execute(
+                'SELECT word, translation, exchange FROM dict WHERE word LIKE ? AND length(word)<=? '
+                'AND CAST(frq AS INTEGER)>0 LIMIT 30', (w + '%', len(w) + 5)):
+            c = (cw or '').strip().lower()
+            if c == w or ' ' in c:
+                continue
+            # 候选要是"另一个词"，不能是这个词自己的变形：
+            # bellowing / boned / deployed 这些 exchange 里带 0:本词，属于同一个词
+            lv = dict(chunk.split(':', 1) for chunk in (exch or '').split('/') if ':' in chunk)
+            if (lv.get('0') or '').strip().lower() == w:
+                continue
+            other = _gloss_chars(tr or '')
+            if len(mine & other) < 2:
+                continue
+            score = len(mine & other) / max(1, len(mine))
+            scored.append((score, -len(c), c))
+        if dconn is None:
+            conn.close()
+    except Exception:
+        return ''
+    if not scored:
+        return ''
+    scored.sort(reverse=True)          # 同分取更短的：drown 而不是 drowned
+    return scored[0][2] if scored[0][0] >= 0.8 else ''
 
 
 def truncation_fix(word, meaning, min_len=4):
@@ -919,10 +1012,11 @@ def todo_words(book_id, limit=500):
             'SELECT id, word, meaning, pos_tags, pos_source FROM words WHERE book_id=? '
             'ORDER BY word', (book_id,))]
     items, seen = [], set()
+    ignored = ignored_words()
 
     def add(row, **extra):
         key = row['word'] or ''
-        if not key or key in seen:
+        if not key or key in seen or key.strip().lower() in ignored:
             return
         seen.add(key)
         items.append({'id': row['id'], 'word': key, 'meaning': (row['meaning'] or '')[:120],
@@ -954,12 +1048,23 @@ def todo_words(book_id, limit=500):
             guess = truncation_fix(r['word'], r['meaning'])
             if guess:           # 给不出完整词就别挂在这儿（cosplay 就是词本身，只是词典收成了缩写条）
                 add(r, truncated=True, suggest=guess)
+    # 2.5 释义像是隔壁那一行的（串行）：自己的词典释义对不上、隔壁更长词却高度吻合
+    if os.path.exists(db.DICT_DB_PATH):
+        try:
+            dc = sqlite3.connect(db.DICT_DB_PATH)
+            for r in rows:
+                g = shifted_guess(r['word'], r['meaning'], dc)
+                if g:
+                    add(r, shifted=True, suggest_word=g, dict_gloss=dict_first_line(r['word']))
+            dc.close()
+        except Exception:
+            pass
     # 3 词书里写的词性和判定对不上（书里把 allusion 标成 adj. 这种）
     for r in rows:
         mark = lead_mark(r['meaning'])
         bases = tag_bases(r['pos_tags'])
         if mark and bases and mark not in bases:
-            add(r, markfix=True, book_mark=mark)
+            add(r, markfix=True, book_mark=mark, dict_gloss=dict_first_line(r['word']))
     # 4 只判到动词/名词这一层（自动判定才算笼统；人工/联网判过就算定案）
     for r in rows:
         if (r['pos_tags'] or '') in ('v', 'n') and (r['pos_source'] or '') not in ('user', 'ai', 'web'):

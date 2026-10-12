@@ -968,6 +968,26 @@ class PosAiBody(BaseModel):
     limit: int = 100
 
 
+class PosIgnoreBody(BaseModel):
+    word: str
+    on: bool = True
+
+
+@app.post('/api/pos/todo/ignore')
+def pos_todo_ignore(body: PosIgnoreBody):
+    """「这条没问题，别再提示」：只影响待确认清单，判定和词书都不动。"""
+    words = poslib.ignored_words()
+    key = (body.word or '').strip().lower()
+    if not key:
+        raise HTTPException(400, '缺少单词')
+    if body.on:
+        words.add(key)
+    else:
+        words.discard(key)
+    poslib.set_ignored(words)
+    return {'ok': True, 'ignored': len(words)}
+
+
 POS_AI_MAP = {'noun': 'n', 'n': 'n', 'verb': 'v', 'v': 'v', 'adj': 'a', 'adjective': 'a',
               'a': 'a', 'adv': 'ad', 'adverb': 'ad', 'ad': 'ad', 'prep': 'prep',
               'conj': 'conj', 'pron': 'pron', 'num': 'num', 'art': 'art', 'int': 'int',
