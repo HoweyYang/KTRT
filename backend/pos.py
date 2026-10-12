@@ -651,18 +651,13 @@ def backfill_all():
 
 def book_summary(book_id):
     """导入体检：这本书的词性判定分布（自带/词典/增强包/规则/待确认）。"""
-    coarse_keys = ('v', 'n')      # 只有动词/名词还有更细一层（及物性、可数性）
     with db.get_conn() as conn:
         total = conn.execute('SELECT COUNT(*) c FROM words WHERE book_id=?', (book_id,)).fetchone()['c']
         rows = conn.execute('SELECT pos_source, COUNT(*) c FROM words WHERE book_id=? '
                             'GROUP BY pos_source', (book_id,)).fetchall()
-        marks = ','.join('?' * len(coarse_keys))
-        coarse = conn.execute(
-            'SELECT COUNT(*) c FROM words WHERE book_id=? AND pos_tags IN (%s)' % marks,
-            (book_id, *coarse_keys)).fetchone()['c']
         st = stats(book_id)
-    # 待确认的条数必须和 todo_words 用同一套条件：以前这里读"实时判定"，
-    # 清单读库里的 pos_tags，两边能对不上（按钮说有 1 个，点开却是空的）。
+    # 计数直接数清单的产物：以前这里读"实时判定"、清单读库里的 pos_tags，
+    # 两边条件不一样（按钮说有 1 个，点开却是空的）。
     todo = conn_count_todo(book_id)
     return {
         'total': total,
@@ -670,26 +665,29 @@ def book_summary(book_id):
         'groups': st['items'],
         'multi': st['multi'],
         'todo': todo['unsure'],
-        'coarse': coarse,
+        'coarse': todo['coarse'],
         'conflict': todo['conflict'],
         'unmapped': todo['unmapped'],
+        'truncated': todo['truncated'],
+        'markfix': todo['markfix'],
+        'todo_total': todo['total'],
     }
 
 
 def conn_count_todo(book_id):
-    """待确认清单的三个桶，条件与 todo_words 完全一致。"""
-    with db.get_conn() as conn:
-        unsure = conn.execute(
-            "SELECT COUNT(*) c FROM words WHERE book_id=? AND (pos_tags='todo' OR pos_tags='')",
-            (book_id,)).fetchone()['c']
-        coarse = conn.execute(
-            "SELECT COUNT(*) c FROM words WHERE book_id=? AND pos_tags IN ('v','n')",
-            (book_id,)).fetchone()['c']
-        conflict = conn.execute(
-            "SELECT COUNT(*) c FROM words WHERE book_id=? AND pos_source='conflict'",
-            (book_id,)).fetchone()['c']
-        unmapped = len(unmapped_rows(conn, book_id))     # 和 todo_words 用同一套判断
-    return {'unsure': unsure, 'coarse': coarse, 'conflict': conflict, 'unmapped': unmapped}
+    """待确认清单各桶计数 —— 直接数 todo_words 的产物，按钮和清单不可能对不上。"""
+    items = todo_words(book_id, limit=100000)
+    return {
+        'unsure': sum(1 for i in items if not (i.get('coarse') or i.get('conflict')
+                                              or i.get('unmapped') or i.get('truncated')
+                                              or i.get('markfix'))),
+        'truncated': sum(1 for i in items if i.get('truncated')),
+        'markfix': sum(1 for i in items if i.get('markfix')),
+        'coarse': sum(1 for i in items if i.get('coarse')),
+        'conflict': sum(1 for i in items if i.get('conflict')),
+        'unmapped': sum(1 for i in items if i.get('unmapped')),
+        'total': len(items),
+    }
 
 
 def _in_dict(phrase):
@@ -755,29 +753,44 @@ def repair_suggestion(word, meaning):
 
 _POS_BASE = {'n', 'v', 'a', 'ad', 'prep', 'conj', 'pron', 'num', 'art', 'int', 'phr'}
 
+# 释义开头那个词性前缀 → 大类（词书里的写法：n. / v. / adj. / adv. / prep. …）
+_MARK_BASE = {'n': 'n', 'v': 'v', 'vt': 'v', 'vi': 'v', 'a': 'a', 'adj': 'a', 'ad': 'ad',
+              'adv': 'ad', 'prep': 'prep', 'conj': 'conj', 'pron': 'pron', 'num': 'num',
+              'art': 'art', 'int': 'int', 'phr': 'phr', 'abbr': 'abbr'}
+_LEAD_MARK_RE = re.compile(
+    r'^\s*((?:n|v|vt|vi|a|adj|ad|adv|prep|conj|pron|num|art|int|phr|abbr))\s*\.', re.I)
+
+
+def lead_mark(meaning):
+    """取释义开头写的词性大类（词书里常写 'adj. 暗指…'）；没写就返回 ''。"""
+    m = _LEAD_MARK_RE.match(meaning or '')
+    return _MARK_BASE.get(m.group(1).lower(), '') if m else ''
+
+
+def mark_conflicts(conn, book_id):
+    """词书里写的词性和最终判定对不上：典型是书里把 allusion 标成 adj.，其实它是名词。
+
+    这类不再改文件、也不再改判定，只列给人过一眼；用户点保存
+    （即"确认按判定走"）后，词书里那个前缀会被改写成正确写法。
+    """
+    out = []
+    for r in conn.execute('SELECT id, word, meaning, pos_tags, pos_source FROM words WHERE book_id=?',
+                          (book_id,)):
+        mark = lead_mark(r['meaning'])
+        if not mark:
+            continue
+        bases = tag_bases(r['pos_tags'])
+        if bases and mark not in bases:
+            out.append({'id': r['id'], 'word': r['word'], 'meaning': (r['meaning'] or '')[:120],
+                        'tags': r['pos_tags'] or '', 'source': r['pos_source'] or '',
+                        'coarse': False, 'markfix': True, 'book_mark': mark})
+    return out
+
 
 def tag_bases(tags):
     """取词性大类（去掉 n:countable / v:vt 这种细分与 form: 形态标签）。"""
     return {t.split(':')[0] for t in (tags or '').split('|')
             if t and not t.startswith('form:')}
-
-
-def unmapped_rows(conn, book_id):
-    """类别都落不进去的词条：判出来的词性不在蒙版任何一类里（典型是 abbr）。
-
-    以前这批词两头都不占：蒙版分组里没有它、待确认清单也不列它 ——
-    用户既看不到也改不了，等于凭空消失。
-    """
-    out = []
-    for r in conn.execute('SELECT id, word, meaning, pos_tags, pos_source FROM words WHERE book_id=?',
-                          (book_id,)):
-        tags = (r['pos_tags'] or '').strip()
-        if tags in ('', 'todo'):
-            continue
-        bases = tag_bases(tags)
-        if bases and not (bases & _POS_BASE):
-            out.append(dict(r))
-    return out
 
 
 def truncation_fix(word, meaning, min_len=4):
@@ -895,38 +908,75 @@ def suspicious_words(book_id, limit=200):
 
 
 def todo_words(book_id, limit=500):
-    """待确认清单：这部分词判不出来，列给用户改（只落程序，不碰词书）。"""
-    coarse_keys = ('v', 'n')      # 只判到"动词/名词"、还没细分到及物性/可数性的词
+    """待确认清单：一网打尽"需要人过一眼"的词（同一个词只出现一次）。
+
+    六种情况，按优先级排：
+      1 判不出词性          2 疑似扫描截断（可一键改名）  3 词书写的词性和判定对不上（确认即改写词书）
+      4 只判到动词/名词      5 与词典冲突                  6 词性落不进蒙版任何一类
+    """
     with db.get_conn() as conn:
-        items = [{'word': r['word'], 'meaning': (r['meaning'] or '')[:120],
-                  'tags': r['pos_tags'] or '', 'source': r['pos_source'] or '', 'coarse': False}
-                 for r in conn.execute(
-                     "SELECT word, meaning, pos_tags, pos_source FROM words "
-                     "WHERE book_id=? AND (pos_tags='todo' OR pos_tags='') ORDER BY word LIMIT ?",
-                     (book_id, limit))]
-        # 词书与词典冲突的词（我们已按词典纠正，但要让人过一眼）
-        items += [{'word': r['word'], 'meaning': (r['meaning'] or '')[:120],
-                   'tags': r['pos_tags'] or '', 'source': 'conflict', 'coarse': False,
-                   'conflict': True}
-                  for r in conn.execute(
-                      "SELECT word, meaning, pos_tags, pos_source FROM words "
-                      "WHERE book_id=? AND pos_source='conflict' ORDER BY word LIMIT ?",
-                      (book_id, limit))]
-        # 只判到「动词 / 名词」这一层、还没细分的词也一并列出来（多为词书缺信息或写错）
-        marks = ','.join('?' * len(coarse_keys))
-        items += [{'word': r['word'], 'meaning': (r['meaning'] or '')[:120],
-                   'tags': r['pos_tags'], 'source': r['pos_source'] or '', 'coarse': True}
-                  for r in conn.execute(
-                      'SELECT word, meaning, pos_tags, pos_source FROM words '
-                      'WHERE book_id=? AND pos_tags IN (%s) ORDER BY word LIMIT ?' % marks,
-                      (book_id, *coarse_keys, limit))]
-        # 归类都落不进去的词（典型是 abbr）：蒙版任何一组都没有它，以前既不显示也改不了
-        items += [{'id': r['id'], 'word': r['word'], 'meaning': (r['meaning'] or '')[:120],
-                   'tags': r['pos_tags'] or '', 'source': r['pos_source'] or '',
-                   'coarse': False, 'unmapped': True,
-                   'suggest': truncation_fix(r['word'], r['meaning'])}
-                  for r in unmapped_rows(conn, book_id)]
-    return items
+        rows = [dict(r) for r in conn.execute(
+            'SELECT id, word, meaning, pos_tags, pos_source FROM words WHERE book_id=? '
+            'ORDER BY word', (book_id,))]
+    items, seen = [], set()
+
+    def add(row, **extra):
+        key = row['word'] or ''
+        if not key or key in seen:
+            return
+        seen.add(key)
+        items.append({'id': row['id'], 'word': key, 'meaning': (row['meaning'] or '')[:120],
+                      'tags': row['pos_tags'] or '', 'source': row['pos_source'] or '',
+                      'coarse': False, **extra})
+
+    # 1 判不出
+    for r in rows:
+        if (r['pos_tags'] or '').strip() in ('', 'todo'):
+            add(r)
+    # 2 疑似扫描截断：只看"头词本身是不是坏的"，和词性从哪来无关 ——
+    #   否则联网判定随手给个词性，就把坏头词从清单里盖过去了。
+    abbr_words = set()
+    if os.path.exists(db.DICT_DB_PATH):
+        try:
+            dc = sqlite3.connect(db.DICT_DB_PATH)
+            for r in rows:
+                w = (r['word'] or '').strip().lower()
+                if not w or ' ' in w or not (4 <= len(w) <= 12) or w[:1].isupper():
+                    continue
+                hit = dc.execute('SELECT translation FROM dict WHERE word=?', (w,)).fetchone()
+                if hit and (hit[0] or '').strip().lower().startswith('abbr.'):
+                    abbr_words.add(w)
+            dc.close()
+        except Exception:
+            abbr_words = set()
+    for r in rows:
+        if (r['word'] or '').strip().lower() in abbr_words:
+            guess = truncation_fix(r['word'], r['meaning'])
+            if guess:           # 给不出完整词就别挂在这儿（cosplay 就是词本身，只是词典收成了缩写条）
+                add(r, truncated=True, suggest=guess)
+    # 3 词书里写的词性和判定对不上（书里把 allusion 标成 adj. 这种）
+    for r in rows:
+        mark = lead_mark(r['meaning'])
+        bases = tag_bases(r['pos_tags'])
+        if mark and bases and mark not in bases:
+            add(r, markfix=True, book_mark=mark)
+    # 4 只判到动词/名词这一层（自动判定才算笼统；人工/联网判过就算定案）
+    for r in rows:
+        if (r['pos_tags'] or '') in ('v', 'n') and (r['pos_source'] or '') not in ('user', 'ai', 'web'):
+            add(r, coarse=True)
+    # 5 与词典冲突
+    for r in rows:
+        if r['pos_source'] == 'conflict':
+            add(r, conflict=True)
+    # 6 词性落不进蒙版任何一类（典型是 abbr）
+    for r in rows:
+        tags = (r['pos_tags'] or '').strip()
+        if tags in ('', 'todo'):
+            continue
+        bases = tag_bases(tags)
+        if bases and not (bases & _POS_BASE):
+            add(r, unmapped=True)
+    return items[:limit]
 
 
 def apply_overrides(book_id, items, source='user'):

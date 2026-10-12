@@ -1834,13 +1834,15 @@ async function loadPosStats() {
       const sum = await api(`/api/pos/summary?book_id=${bookId}`);
       const btn = $('btn-pos-todo');
       if (btn) {
-        const n = (sum.todo || 0) + (sum.coarse || 0) + (sum.conflict || 0) + (sum.unmapped || 0);
+        const n = sum.todo_total || 0;      // 后端直接给清单条数，按钮和清单不可能对不上
         btn.classList.toggle('hidden', !n);
         btn.dataset.book = String(bookId);
         const nb = $('pos-todo-n');
         if (nb) nb.textContent = n;
-        btn.dataset.tip = `待确认清单：${sum.todo || 0} 个判不出、${sum.coarse || 0} 个只判到动词/名词、`
-          + `${sum.conflict || 0} 个与词典冲突、${sum.unmapped || 0} 个归不了类；点开逐条改，改完按词性写回词书。`;
+        btn.dataset.tip = `待确认清单 ${n} 条：判不出 ${sum.todo || 0}、疑似扫描截断 ${sum.truncated || 0}、`
+          + `词书与判定不一致 ${sum.markfix || 0}、只判到动词/名词 ${sum.coarse || 0}、`
+          + `与词典冲突 ${sum.conflict || 0}、归类不了 ${sum.unmapped || 0}。`
+          + '点开逐条看：截断的可一键改名，其余保存后按判定改写词书。';
       }
       // 词条体检：发现可疑条目时才亮出按钮
       const chk = await api(`/api/pos/suspicious?book_id=${bookId}`);
@@ -1969,10 +1971,13 @@ async function openTodoList(bookId, toggle) {
     box.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return;
   }
+  const truncated = r.items.filter((it) => it.truncated);
+  const markfix = r.items.filter((it) => it.markfix);
   const unmapped = r.items.filter((it) => it.unmapped);
-  const unsure = r.items.filter((it) => !it.coarse && !it.unmapped);
   const coarse = r.items.filter((it) => it.coarse);
-  const conflicts = unsure.filter((it) => it.conflict);
+  const conflicts = r.items.filter((it) => it.conflict);
+  const unsure = r.items.filter((it) => !(it.truncated || it.markfix || it.coarse
+    || it.conflict || it.unmapped));
   const GROUP_OF_TAG = { n: 'noun', v: 'verb', a: 'adj', ad: 'adv', prep: 'func', conj: 'func',
                          phr: 'misc', int: 'misc' };
   // 一词多性 → 当前分类是一组，不是单个
@@ -1996,25 +2001,46 @@ async function openTodoList(bookId, toggle) {
           `<button type="button" class="pick${cur.includes(k) ? ' on' : ''}" data-key="${k}">${label}</button>`).join('')}</div>
       </div>`;
   };
-  // 归类都落不进去的词（多半是扫描截断的坏行）：给出改名建议，一键修好
-  const unmappedRowHtml = (it) => `<div class="todo-row" data-word="${escapeAttr(it.word)}">
+  // 词书里写的词性和判定对不上（书里把 allusion 标成 adj. 那种）：保存即按判定改写词书
+  const markfixRowHtml = (it) => {
+    const bookMark = (String(it.meaning || '').match(/^\s*([A-Za-z]+)\s*\./) || [])[1] || it.book_mark || '';
+    const cur = currentGroups(it.tags);
+    const curLabel = POS_GROUP_CHOICES.filter(([k]) => cur.includes(k))
+      .map(([, label]) => label).join(' / ') || '未判';
+    return `<div class="todo-row" data-word="${escapeAttr(it.word)}">
+        <div class="todo-head"><b>${escapeHtml(it.word)}</b>
+          <span class="muted">${escapeHtml(it.meaning || '')}</span>
+          <span class="tag none" data-tip="程序按词典/增强包判出来的结果">判定：${escapeHtml(curLabel)}</span></div>
+        <div class="todo-fix">词书里写的是 <b>${escapeHtml(bookMark)}.</b>，判定是 <b>${escapeHtml(curLabel)}</b>
+          —— 保存后按判定改写词书那一条（原文件先备份）</div>
+        <div class="todo-picks">${POS_GROUP_CHOICES.map(([k, label]) =>
+          `<button type="button" class="pick${cur.includes(k) ? ' on' : ''}" data-key="${k}">${label}</button>`).join('')}</div>
+      </div>`;
+  };
+  // 疑似扫描截断的坏头词：给出更可能的完整词，一键改名（改名＝真的把这一条改正）
+  const truncRowHtml = (it) => `<div class="todo-row" data-word="${escapeAttr(it.word)}">
       <div class="todo-head"><b>${escapeHtml(it.word)}</b>
         <span class="muted">${escapeHtml(it.meaning || '')}</span>
-        <span class="tag none" data-tip="程序判出来的词性落不进任何一类（词典里只收了个缩写义）">当前：${escapeHtml(it.tags || '—')}</span></div>
-      ${it.suggest ? `<div class="todo-fix" data-tip="多半是扫描时把词截断了：释义和完整词完全对得上。点一下改过来，程序会同步改词书 Excel。">
+        <span class="tag none" data-tip="词典里只把它的缩写义收进来了，所以词性也落不进任何一类">当前：${escapeHtml(it.tags || '—')}</span></div>
+      <div class="todo-fix" data-tip="多半是扫描时把词截断了：它的释义和完整词完全对得上。点一下改过来，本地库和词书 Excel 一起改。">
           疑似截断 → 建议改成 <b>${escapeHtml(it.suggest)}</b>
           <button type="button" class="btn" data-fix-id="${it.id}" data-fix-to="${escapeAttr(it.suggest)}">改成 ${escapeHtml(it.suggest)}</button>
-        </div>`
-        : '<div class="todo-fix" data-tip="词典里只把它当缩写，给不出完整词 —— 要么手动点亮它的词性，要么去「词条体检」删掉。">词典只当它是缩写，给不出完整词：手动选词性，或去词条体检删掉</div>'}
+        </div>
       <div class="todo-picks">${POS_GROUP_CHOICES.map(([k, label]) =>
         `<button type="button" class="pick" data-key="${k}">${label}</button>`).join('')}</div>
     </div>`;
   box.innerHTML = `<div class="todo-title"><b>待确认清单</b><span class="muted">共 ${r.items.length} 条</span>`
     + '<button type="button" class="btn" id="btn-todo-close">收起</button></div>'
     + `<p class="muted">判不出 <b>${unsure.length - conflicts.length}</b> 个 · `
+    + `疑似截断 <b>${truncated.length}</b> 个 · 词书写的和判定不一致 <b>${markfix.length}</b> 个 · `
     + `只判到动词/名词 <b>${coarse.length}</b> 个 · 与词典冲突 <b>${conflicts.length}</b> 个 · `
     + `归类不了 <b>${unmapped.length}</b> 个：`
-    + '点亮的按钮是程序<b>当前</b>的判定，<b>改过的行才会写入</b>；词性可多选（再点一下取消）。</p>'
+    + '点亮的按钮就是<b>你要保存的判定</b>（预亮的是程序当前的判定，顺手保存＝确认它）；'
+    + '一个都没点亮的行不会被动到，词性可多选（再点一下取消）。</p>'
+    + (truncated.length ? `<p class="muted" style="margin-top:8px">— 疑似扫描截断（头词少了字母，点一下改回来）—</p>`
+        + truncated.map(truncRowHtml).join('') : '')
+    + (markfix.length ? `<p class="muted" style="margin-top:8px">— 词书里写的词性和判定不一致（保存即按判定改写词书）—</p>`
+        + markfix.map(markfixRowHtml).join('') : '')
     + (conflicts.length ? `<p class="muted" style="margin-top:6px">— 词书与词典冲突（已按词典纠正，请过一眼）—</p>`
         + conflicts.map(rowHtml).join('') : '')
     + (unsure.length - conflicts.length ? `<p class="muted" style="margin-top:6px">— 待确认 —</p>`
@@ -2030,8 +2056,6 @@ async function openTodoList(bookId, toggle) {
   box.querySelectorAll('.todo-picks .pick').forEach((b) => {
     b.addEventListener('click', () => {
       b.classList.toggle('on');
-      const row = b.closest('.todo-row');
-      if (row) row.dataset.dirty = '1';   // 只有动过的行才会被保存
     });
   });
   // 一键把截断的坏行改回完整词（走编辑接口：本地库 + 词书 Excel 一起改）
@@ -2086,16 +2110,15 @@ async function openTodoList(bookId, toggle) {
   $('btn-todo-save').addEventListener('click', async () => {
     const items = [...box.querySelectorAll('.todo-row')]
       .map((row) => {
-        // 只存"动过的行"：按钮预亮的是程序当前的判定，不点就等于没改，
-        // 否则按一次保存会把整张清单都写成"你改的"，还会把冲突词降级成粗标签。
-        if (row.dataset.dirty !== '1') return null;
+        // 点亮的就是你的意思：预亮＝程序当前的判定，顺手点保存＝确认这一条
+        // （确认后它就不再挂在清单里）；一个都没点亮的行不会被动到。
         const keys = [...row.querySelectorAll('.pick.on')].map((b) => b.dataset.key);
         if (!keys.length) return null;
         return { word: row.dataset.word, tags: [...new Set(keys.map((k) => GROUP_TAG[k] || k))] };
       })
       .filter(Boolean);
     if (!items.length) {
-      $('todo-msg').textContent = '没有改动可保存（点亮的按钮表示程序当前的判定；改过的行才会写入）';
+      $('todo-msg').textContent = '清单里一个词性都没点亮，没有可保存的（点亮＝你要的判定）';
       return;
     }
     try {

@@ -978,9 +978,14 @@ POS_AI_MAP = {'noun': 'n', 'n': 'n', 'verb': 'v', 'v': 'v', 'adj': 'a', 'adjecti
 def pos_ai_fill(body: PosAiBody):
     """AI 兜底：只对「待确认」的词批量判一次；没配 Key / 断网就直接给结论，不硬等。"""
     limit = max(1, min(body.limit or 100, 200))
-    items = poslib.todo_words(body.book_id, limit)
+    # 扫描截断的坏头词不喂给在线词典/AI：它们该改名（或去词条体检删掉），
+    # 猜一个词性只会把问题盖住 —— 用户反馈过"判定了也改不了"就是这个
+    items = [it for it in poslib.todo_words(body.book_id, limit) if not it.get('truncated')]
     if not items:
-        return {'ok': True, 'count': 0, 'message': '没有待确认的词了'}
+        left = poslib.conn_count_todo(body.book_id).get('truncated', 0)
+        msg = ('剩下的 %d 条是扫描截断的坏行：用清单里的「改成 xxx」改名，或去词条体检删掉'
+               % left) if left else '没有待确认的词了'
+        return {'ok': True, 'count': 0, 'message': msg}
     # ① 先试免费在线词典（不花 token）：能查到的直接定；查不到的再交给 AI
     from_web, web_errors = [], 0
     words = [it['word'] for it in items]
