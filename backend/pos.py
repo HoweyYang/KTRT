@@ -661,6 +661,7 @@ def book_summary(book_id):
         'todo': todo['unsure'],
         'coarse': coarse,
         'conflict': todo['conflict'],
+        'unmapped': todo['unmapped'],
     }
 
 
@@ -676,7 +677,8 @@ def conn_count_todo(book_id):
         conflict = conn.execute(
             "SELECT COUNT(*) c FROM words WHERE book_id=? AND pos_source='conflict'",
             (book_id,)).fetchone()['c']
-    return {'unsure': unsure, 'coarse': coarse, 'conflict': conflict}
+        unmapped = len(unmapped_rows(conn, book_id))     # 和 todo_words 用同一套判断
+    return {'unsure': unsure, 'coarse': coarse, 'conflict': conflict, 'unmapped': unmapped}
 
 
 def _in_dict(phrase):
@@ -740,6 +742,90 @@ def repair_suggestion(word, meaning):
     return best if best_score >= 0.34 else ''
 
 
+_POS_BASE = {'n', 'v', 'a', 'ad', 'prep', 'conj', 'pron', 'num', 'art', 'int', 'phr'}
+
+
+def tag_bases(tags):
+    """取词性大类（去掉 n:countable / v:vt 这种细分与 form: 形态标签）。"""
+    return {t.split(':')[0] for t in (tags or '').split('|')
+            if t and not t.startswith('form:')}
+
+
+def unmapped_rows(conn, book_id):
+    """类别都落不进去的词条：判出来的词性不在蒙版任何一类里（典型是 abbr）。
+
+    以前这批词两头都不占：蒙版分组里没有它、待确认清单也不列它 ——
+    用户既看不到也改不了，等于凭空消失。
+    """
+    out = []
+    for r in conn.execute('SELECT id, word, meaning, pos_tags, pos_source FROM words WHERE book_id=?',
+                          (book_id,)):
+        tags = (r['pos_tags'] or '').strip()
+        if tags in ('', 'todo'):
+            continue
+        bases = tag_bases(tags)
+        if bases and not (bases & _POS_BASE):
+            out.append(dict(r))
+    return out
+
+
+def truncation_fix(word, meaning, min_len=4):
+    """疑似被扫描截断的词 → 给出更可能的完整词，找不到返回 ''。
+
+    专门盯"词典里只收到缩写义"的那批（delt→delta、pand→panda、oper→opera、
+    lemo→lemon、cabi→cabin、basi→basin、reig→reign、commo→common…）：
+    它们查得到，于是旧的体检规则（"词典里查不到才查"）正好漏掉；
+    但词频为 0 / 释义以 abbr. 开头，且中文释义和某个更长的常用词高度重合。
+    """
+    w = (word or '').strip().lower()
+    if len(w) < min_len or len(w) > 12 or ' ' in w or not os.path.exists(db.DICT_DB_PATH):
+        return ''
+    mine = _gloss_chars(meaning)
+    if len(mine) < 2:
+        return ''
+    try:
+        conn = sqlite3.connect(db.DICT_DB_PATH)
+        row = conn.execute('SELECT frq, translation FROM dict WHERE word=?', (w,)).fetchone()
+        if row is None:
+            conn.close()
+            return ''
+        frq, tr = int(row[0] or 0), (row[1] or '')
+        # 只处理"词典里只收了个缩写义"的词：这是 ECDICT 标注被截断形的典型写法
+        # （delt / pand / oper / lemo / cabi / basi / reig / commo 都是这样）。
+        # 放宽到"词频为 0"会误伤大量生僻词（实测 GRE 一次冒出 100 条假阳性）。
+        if not tr.strip().lower().startswith('abbr.'):
+            conn.close()
+            return ''
+        cands = []
+        for pattern in (w + '%', w[:4] + '%'):
+            for cw, ctr in conn.execute(
+                    'SELECT word, translation FROM dict WHERE word LIKE ? AND length(word)<=? '
+                    'AND CAST(frq AS INTEGER)>0 ORDER BY CAST(frq AS INTEGER) DESC LIMIT 15',
+                    (pattern, len(w) + 4)):
+                cands.append((cw, ctr or ''))
+        conn.close()
+    except Exception:
+        return ''
+    scored = []
+    for cw, ctr in cands:
+        c = (cw or '').strip().lower()
+        if not c or c == w or ' ' in c or len(c) <= len(w):
+            continue
+        if not re.match(r'^\s*[a-z]+\.', ctr):      # 候选得是带 n./v./adj. 的正经词
+            continue
+        other = _gloss_chars(ctr)
+        inter = len(mine & other)
+        if inter < 2:
+            continue
+        score = inter / max(1, len(mine))
+        scored.append((score, -len(c), cw))
+    if not scored:
+        return ''
+    # 同分时取更短的那个：oper 该修成 opera 而不是 operetta，lemo 该修成 lemon 而不是 lemony
+    scored.sort(reverse=True)
+    return scored[0][2] if scored[0][0] >= 0.34 else ''
+
+
 def suspicious_words(book_id, limit=200):
     """词条体检：找出疑似被扫描/错行弄坏的条目（headword 拼了两个词、释义里混进别的词或音标…）。
 
@@ -769,6 +855,15 @@ def suspicious_words(book_id, limit=200):
                 if len(out) >= limit:
                     break
                 continue
+        elif (not word[:1].isupper() and ' ' not in word and 4 <= len(word) <= 12
+              and (guess := truncation_fix(word, mean))):
+            # 词典里查得到、但只收了个缩写义（delt / pand / oper / lemo / cabi…）
+            why = '词典里只有缩写义，疑似被截断（建议：%s）' % guess
+            out.append({'id': r['id'], 'word': word, 'meaning': mean[:120],
+                        'reason': why, 'suggest': guess})
+            if len(out) >= limit:
+                break
+            continue
         elif ' ' in word:
             head = word.split()[0].lower()
             if ph_noise.search(mean):
@@ -814,6 +909,12 @@ def todo_words(book_id, limit=500):
                       'SELECT word, meaning, pos_tags, pos_source FROM words '
                       'WHERE book_id=? AND pos_tags IN (%s) ORDER BY word LIMIT ?' % marks,
                       (book_id, *coarse_keys, limit))]
+        # 归类都落不进去的词（典型是 abbr）：蒙版任何一组都没有它，以前既不显示也改不了
+        items += [{'id': r['id'], 'word': r['word'], 'meaning': (r['meaning'] or '')[:120],
+                   'tags': r['pos_tags'] or '', 'source': r['pos_source'] or '',
+                   'coarse': False, 'unmapped': True,
+                   'suggest': truncation_fix(r['word'], r['meaning'])}
+                  for r in unmapped_rows(conn, book_id)]
     return items
 
 

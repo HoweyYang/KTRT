@@ -1295,6 +1295,17 @@ def edit_word(word_id: int, body: EditBody):
             linked = _linked_words(conn, w)
             for lw in linked:
                 conn.execute('UPDATE words SET ' + set_sql + ' WHERE id=?', (*changed.values(), lw['id']))
+            # 改了单词或释义就重判一次词性：改名修好的坏行（delt→delta）要立刻拿到正确词性，
+            # 否则卡片上还挂着旧判定
+            if 'word' in changed or 'meaning' in changed:
+                for row in [w] + linked:
+                    cur = conn.execute('SELECT word, meaning FROM words WHERE id=?',
+                                       (row['id'],)).fetchone()
+                    if cur is None:
+                        continue
+                    tags, src = poslib.judge(cur['meaning'] or '', cur['word'] or '')
+                    conn.execute('UPDATE words SET pos_tags=?, pos_source=? WHERE id=?',
+                                 ('|'.join(tags), src, row['id']))
 
             excel = {'updated': False, 'created': False, 'path': '', 'message': ''}
             synced = []
@@ -1306,6 +1317,8 @@ def edit_word(word_id: int, body: EditBody):
                 item = {'book': bk['name'], 'ok': False, 'path': '', 'created': False, 'message': ''}
                 try:
                     path, created = _book_excel_path(conn, bk)
+                    if not created:
+                        _backup_excel(path)      # 改词书前先留一份 .bak，改坏了能换回来
                     ok, msg = _write_excel_entry(path, row['word'], row['list_no'], changed)
                     item.update({'ok': ok, 'path': path, 'created': created, 'message': msg})
                 except PermissionError:

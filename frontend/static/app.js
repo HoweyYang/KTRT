@@ -1820,11 +1820,13 @@ async function loadPosStats() {
       const sum = await api(`/api/pos/summary?book_id=${bookId}`);
       const btn = $('btn-pos-todo');
       if (btn) {
-        const n = (sum.todo || 0) + (sum.coarse || 0) + (sum.conflict || 0);
+        const n = (sum.todo || 0) + (sum.coarse || 0) + (sum.conflict || 0) + (sum.unmapped || 0);
         btn.classList.toggle('hidden', !n);
         btn.dataset.book = String(bookId);
-        btn.dataset.tip = `待确认清单：${sum.todo || 0} 个判不出、${sum.coarse || 0} 个只判到动词/名词这一层、`
-          + `${sum.conflict || 0} 个与词典冲突；点开逐条改，改完按词性写回词书。`;
+        const nb = $('pos-todo-n');
+        if (nb) nb.textContent = n;
+        btn.dataset.tip = `待确认清单：${sum.todo || 0} 个判不出、${sum.coarse || 0} 个只判到动词/名词、`
+          + `${sum.conflict || 0} 个与词典冲突、${sum.unmapped || 0} 个归不了类；点开逐条改，改完按词性写回词书。`;
       }
       // 词条体检：发现可疑条目时才亮出按钮
       const chk = await api(`/api/pos/suspicious?book_id=${bookId}`);
@@ -1832,6 +1834,8 @@ async function loadPosStats() {
       if (cbtn) {
         cbtn.classList.toggle('hidden', !chk.items.length);
         cbtn.dataset.book = String(bookId);
+        const cb = $('pos-check-n');
+        if (cb) cb.textContent = chk.items.length;
         cbtn.dataset.tip = `词条体检：${chk.items.length} 条疑似扫描/错行弄坏的条目，点开可改可删。`;
       }
     } catch (e) { /* 体检失败就不显示按钮 */ }
@@ -1841,10 +1845,10 @@ async function loadPosStats() {
 }
 
 /* ---------- 导入体检 + 待确认清单 + 词条体检 ---------- */
-async function openBookCheck(bookId) {
+async function openBookCheck(bookId, toggle) {
   const box = $('pos-check-box');
   if (!box || !bookId) return;
-  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }   // 再点＝收起
+  if (toggle && !box.classList.contains('hidden')) { box.classList.add('hidden'); return; }   // 再点＝收起
   box.classList.remove('hidden');
   box.innerHTML = '<p class="muted">体检中…</p>';
   box.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1927,11 +1931,11 @@ function wireTodoClose(box) {
   if (b) b.addEventListener('click', () => box.classList.add('hidden'));
 }
 
-async function openTodoList(bookId) {
+async function openTodoList(bookId, toggle) {
   const box = $('pos-todo-box');
   if (!box || !bookId) return;
-  // 再点一次＝收起。以前"点了没反应"多半是清单落在折叠线以下，看着像点不开
-  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+  // 只有从按钮点进来才做"再点一次＝收起"；保存/修复后的刷新走 toggle=false
+  if (toggle && !box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
   box.innerHTML = '<p class="muted">读取中…</p>';
   box.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1951,7 +1955,8 @@ async function openTodoList(bookId) {
     box.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return;
   }
-  const unsure = r.items.filter((it) => !it.coarse);
+  const unmapped = r.items.filter((it) => it.unmapped);
+  const unsure = r.items.filter((it) => !it.coarse && !it.unmapped);
   const coarse = r.items.filter((it) => it.coarse);
   const conflicts = unsure.filter((it) => it.conflict);
   const GROUP_OF_TAG = { n: 'noun', v: 'verb', a: 'adj', ad: 'adv', prep: 'func', conj: 'func',
@@ -1977,16 +1982,32 @@ async function openTodoList(bookId) {
           `<button type="button" class="pick${cur.includes(k) ? ' on' : ''}" data-key="${k}">${label}</button>`).join('')}</div>
       </div>`;
   };
+  // 归类都落不进去的词（多半是扫描截断的坏行）：给出改名建议，一键修好
+  const unmappedRowHtml = (it) => `<div class="todo-row" data-word="${escapeAttr(it.word)}">
+      <div class="todo-head"><b>${escapeHtml(it.word)}</b>
+        <span class="muted">${escapeHtml(it.meaning || '')}</span>
+        <span class="tag none" data-tip="程序判出来的词性落不进任何一类（词典里只收了个缩写义）">当前：${escapeHtml(it.tags || '—')}</span></div>
+      ${it.suggest ? `<div class="todo-fix" data-tip="多半是扫描时把词截断了：释义和完整词完全对得上。点一下改过来，程序会同步改词书 Excel。">
+          疑似截断 → 建议改成 <b>${escapeHtml(it.suggest)}</b>
+          <button type="button" class="btn" data-fix-id="${it.id}" data-fix-to="${escapeAttr(it.suggest)}">改成 ${escapeHtml(it.suggest)}</button>
+        </div>`
+        : '<div class="todo-fix" data-tip="词典里只把它当缩写，给不出完整词 —— 要么手动点亮它的词性，要么去「词条体检」删掉。">词典只当它是缩写，给不出完整词：手动选词性，或去词条体检删掉</div>'}
+      <div class="todo-picks">${POS_GROUP_CHOICES.map(([k, label]) =>
+        `<button type="button" class="pick" data-key="${k}">${label}</button>`).join('')}</div>
+    </div>`;
   box.innerHTML = `<div class="todo-title"><b>待确认清单</b><span class="muted">共 ${r.items.length} 条</span>`
     + '<button type="button" class="btn" id="btn-todo-close">收起</button></div>'
     + `<p class="muted">判不出 <b>${unsure.length - conflicts.length}</b> 个 · `
-    + `只判到动词/名词 <b>${coarse.length}</b> 个 · 与词典冲突 <b>${conflicts.length}</b> 个：`
+    + `只判到动词/名词 <b>${coarse.length}</b> 个 · 与词典冲突 <b>${conflicts.length}</b> 个 · `
+    + `归类不了 <b>${unmapped.length}</b> 个：`
     + '点亮的按钮是程序<b>当前</b>的判定，<b>改过的行才会写入</b>；词性可多选（再点一下取消）。</p>'
     + (conflicts.length ? `<p class="muted" style="margin-top:6px">— 词书与词典冲突（已按词典纠正，请过一眼）—</p>`
         + conflicts.map(rowHtml).join('') : '')
     + (unsure.length - conflicts.length ? `<p class="muted" style="margin-top:6px">— 待确认 —</p>`
         + unsure.filter((it) => !it.conflict).map(rowHtml).join('') : '')
     + (coarse.length ? `<p class="muted" style="margin-top:8px">— 笼统（可再细分）—</p>` + coarse.map(rowHtml).join('') : '')
+    + (unmapped.length ? `<p class="muted" style="margin-top:8px">— 归类不了（词典只给出缩写义，多半是扫描截断）—</p>`
+        + unmapped.map(unmappedRowHtml).join('') : '')
     + '<div class="row" style="margin-top:8px"><button class="btn primary" id="btn-todo-save">保存这些修正</button>'
     + `<button class="btn" id="btn-todo-ai" data-tip="先查免费在线词典定词性，查不到的再交给 AI；断网或没配 Key 会自动跳过。结果同样只落程序。">联网判定（在线词典 + AI）</button>`
     + '<span class="muted" id="todo-msg"></span></div>';
@@ -1997,6 +2018,27 @@ async function openTodoList(bookId) {
       b.classList.toggle('on');
       const row = b.closest('.todo-row');
       if (row) row.dataset.dirty = '1';   // 只有动过的行才会被保存
+    });
+  });
+  // 一键把截断的坏行改回完整词（走编辑接口：本地库 + 词书 Excel 一起改）
+  box.querySelectorAll('[data-fix-id]').forEach((b) => {
+    b.addEventListener('click', async () => {
+      const to = b.dataset.fixTo;
+      b.disabled = true;
+      b.textContent = '修改中…';
+      try {
+        await api('/api/word/' + b.dataset.fixId + '/edit', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word: to }),
+        });
+        toast(`已改成 ${to}，词书 Excel 同步更新`);
+        await openTodoList(bookId);        // 刷新清单（toggle=false，不会又把清单收起来）
+        loadPosStats();
+      } catch (e) {
+        b.disabled = false;
+        b.textContent = '改成 ' + to;
+        toast(e.message);
+      }
     });
   });
   $('btn-todo-ai').addEventListener('click', async () => {
@@ -2092,12 +2134,12 @@ $('btn-pos-build').addEventListener('click', buildPosBook);
 $('btn-pos-todo').addEventListener('click', () => {
   const bookId = Number($('pos-book').value || 0);
   if (!bookId) { toast('先选一本词书'); return; }
-  openTodoList(bookId);
+  openTodoList(bookId, true);           // 从这里点：再点一次收起
 });
 $('btn-pos-check').addEventListener('click', () => {
   const bookId = Number($('pos-book').value || 0);
   if (!bookId) { toast('先选一本词书'); return; }
-  openBookCheck(bookId);
+  openBookCheck(bookId, true);
 });
 document.addEventListener('click', async (e) => {
   const a = e.target && e.target.closest ? e.target.closest('[data-todo-book]') : null;
