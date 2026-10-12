@@ -2993,6 +2993,20 @@ $('btn-export-notes').addEventListener('click', async () => {
 /* ---------- 杀词 ---------- */
 let chg = { mode: 'word', q: [], i: 0, wrong: [], correct: 0, removed: [], bookId: 0, listNo: 0, mistake: false, active: false };
 
+/* 杀词：进入前可开关「答题时展开词卡」——两个模式共用一个偏好 */
+['chg-show-card', 'chg-show-card-m'].forEach((id) => {
+  const box = $(id);
+  if (!box) return;
+  box.checked = localStorage.getItem('ktrt.chgCard') === '1';
+  box.addEventListener('change', () => {
+    localStorage.setItem('ktrt.chgCard', box.checked ? '1' : '0');
+    ['chg-show-card', 'chg-show-card-m'].forEach((other) => {
+      const b = $(other);
+      if (b) b.checked = box.checked;
+    });
+  });
+});
+
 function refreshChallengeBooks() {
   ['chg-book', 'chg-mbook'].forEach((id) => {
     const s = $(id);
@@ -3048,10 +3062,53 @@ function showChallengeQuestion() {
   $('chg-progress').textContent = `${chg.i + 1} / ${chg.q.length}`;
   $('chg-fill').style.width = (chg.i / chg.q.length * 100) + '%';
   const opts = q.options.map((o, idx) => `<button class="opt" data-idx="${idx}">${escapeHtml(o)}</button>`).join('');
-  $('chg-question').innerHTML = `<div style="font-size:28px;font-weight:800;margin-bottom:14px">${escapeHtml(q.word)}</div>${opts}`;
+  // 状态标记（收藏 / 不熟悉 / 已背）+ 可选的就地展开词卡
+  const chips = [
+    q.favorite ? '<span class="chg-flag fav" data-tip="已收藏">☆ 收藏</span>' : '',
+    q.unfamiliar ? '<span class="chg-flag unf" data-tip="标为不熟悉">? 不熟悉</span>' : '',
+    q.learned ? '<span class="chg-flag ok" data-tip="已背">✓ 已背</span>' : '',
+  ].join('');
+  const canPeek = localStorage.getItem('ktrt.chgCard') === '1';
+  $('chg-question').innerHTML =
+    `<div class="chg-word" data-word-id="${q.word_id}"${canPeek ? ' data-tip="点一下展开词卡"' : ''}
+          style="font-size:28px;font-weight:800;margin-bottom:6px;${canPeek ? 'cursor:pointer' : ''}">
+       ${escapeHtml(q.word)}</div>`
+    + (chips ? `<div style="margin-bottom:10px">${chips}</div>` : '')
+    + `<div id="chg-peek" class="chg-peek hidden"></div>`
+    + opts;
   $('chg-question').querySelectorAll('.opt').forEach((b) => {
     b.addEventListener('click', () => answerChallenge(q, Number(b.dataset.idx), b));
   });
+  if (canPeek) {
+    $('chg-question').querySelector('.chg-word').addEventListener('click', () => toggleChgPeek(q.word_id));
+  }
+}
+
+async function toggleChgPeek(wordId) {
+  const box = $('chg-peek');
+  if (!box) return;
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  box.innerHTML = '<span class="muted">读取中…</span>';
+  try {
+    const d = await api('/api/word/' + wordId);
+    const w = d.word || {};
+    const rows = [
+      ['音标', w.phonetic ? '/' + w.phonetic + '/' : ''],
+      ['词性释义', w.meaning || ''],
+      ['搭配', w.collocations || ''],
+      ['短语', w.phrases || ''],
+      ['同义词', w.synonyms || ''],
+      ['反义词', w.antonyms || ''],
+      ['同根词', w.root_words || ''],
+      ['笔记', (d.note || '').replace(/\n/g, ' ').slice(0, 200)],
+    ].filter(([, v]) => v);
+    box.innerHTML = rows.map(([k, v]) =>
+      `<div class="chg-peek-row"><b>${k}</b><span>${escapeHtml(v)}</span></div>`).join('')
+      || '<span class="muted">这条词条没有更多内容</span>';
+  } catch (e) {
+    box.innerHTML = `<span class="err">${escapeHtml(e.message)}</span>`;
+  }
 }
 
 function answerChallenge(q, idx, btn) {
