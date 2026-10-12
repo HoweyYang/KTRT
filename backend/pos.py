@@ -707,6 +707,16 @@ def _in_dict(phrase):
         return False
 
 
+def _prefix_bounds(prefix):
+    """把"以某串开头"变成可走索引的范围。
+
+    SQLite 的 `word LIKE 'abc%'` 在这张 77 万行的表上**用不上索引**（实测全表扫，
+    0.13 秒一次；待确认清单每行都要查一次，于是整体拖到 40 秒以上）。
+    换成 `word >= 'abc' AND word < 'abc\\uffff'` 就走主键索引了。
+    """
+    return prefix, prefix + '\uffff'
+
+
 def _gloss_chars(text):
     """取释义里的中文字（做相似度比对用）。"""
     return {c for c in str(text or '') if '\u4e00' <= c <= '\u9fff'}
@@ -734,9 +744,10 @@ def repair_suggestion(word, meaning):
             return ''                      # 有词频 = 正经词，不做截断推断
         for pattern in (w + '%', w[:4] + '%'):
             for cw, tr, frq in conn.execute(
-                    'SELECT word, translation, frq FROM dict WHERE word LIKE ? AND length(word)<=? '
-                    'AND CAST(frq AS INTEGER)>0 ORDER BY CAST(frq AS INTEGER) LIMIT 15',
-                    (pattern, len(w) + 4)):
+                    'SELECT word, translation, frq FROM dict WHERE word >= ? AND word < ? '
+                    'AND length(word)<=? '
+                    'AND CAST(frq AS INTEGER)>0 LIMIT 15',
+                    (*_prefix_bounds(pattern[:-1]), len(w) + 4)):
                 cands.append((cw, tr or ''))
         conn.close()
     except Exception:
@@ -861,8 +872,9 @@ def shifted_guess(word, meaning, dconn=None):
             return ''                       # 自己的释义就对得上，不是串行
         scored = []
         for cw, tr, exch in conn.execute(
-                'SELECT word, translation, exchange FROM dict WHERE word LIKE ? AND length(word)<=? '
-                'AND CAST(frq AS INTEGER)>0 LIMIT 30', (w + '%', len(w) + 5)):
+                'SELECT word, translation, exchange FROM dict WHERE word >= ? AND word < ? '
+                'AND length(word)<=? AND CAST(frq AS INTEGER)>0 LIMIT 30',
+                (*_prefix_bounds(w), len(w) + 5)):
             c = (cw or '').strip().lower()
             if c == w or ' ' in c:
                 continue
@@ -916,9 +928,10 @@ def truncation_fix(word, meaning, min_len=4):
         cands = []
         for pattern in (w + '%', w[:4] + '%'):
             for cw, ctr in conn.execute(
-                    'SELECT word, translation FROM dict WHERE word LIKE ? AND length(word)<=? '
-                    'AND CAST(frq AS INTEGER)>0 ORDER BY CAST(frq AS INTEGER) DESC LIMIT 15',
-                    (pattern, len(w) + 4)):
+                    'SELECT word, translation FROM dict WHERE word >= ? AND word < ? '
+                    'AND length(word)<=? '
+                    'AND CAST(frq AS INTEGER)>0 LIMIT 15',
+                    (*_prefix_bounds(pattern[:-1]), len(w) + 4)):
                 cands.append((cw, ctr or ''))
         conn.close()
     except Exception:
