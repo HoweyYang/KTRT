@@ -650,14 +650,33 @@ def book_summary(book_id):
             'SELECT COUNT(*) c FROM words WHERE book_id=? AND pos_tags IN (%s)' % marks,
             (book_id, *coarse_keys)).fetchone()['c']
         st = stats(book_id)
+    # 待确认的条数必须和 todo_words 用同一套条件：以前这里读"实时判定"，
+    # 清单读库里的 pos_tags，两边能对不上（按钮说有 1 个，点开却是空的）。
+    todo = conn_count_todo(book_id)
     return {
         'total': total,
         'by_source': {r['pos_source'] or 'todo': r['c'] for r in rows},
         'groups': st['items'],
         'multi': st['multi'],
-        'todo': (st['items'] and next((i['count'] for i in st['items'] if i['key'] == 'todo'), 0)) or 0,
+        'todo': todo['unsure'],
         'coarse': coarse,
+        'conflict': todo['conflict'],
     }
+
+
+def conn_count_todo(book_id):
+    """待确认清单的三个桶，条件与 todo_words 完全一致。"""
+    with db.get_conn() as conn:
+        unsure = conn.execute(
+            "SELECT COUNT(*) c FROM words WHERE book_id=? AND (pos_tags='todo' OR pos_tags='')",
+            (book_id,)).fetchone()['c']
+        coarse = conn.execute(
+            "SELECT COUNT(*) c FROM words WHERE book_id=? AND pos_tags IN ('v','n')",
+            (book_id,)).fetchone()['c']
+        conflict = conn.execute(
+            "SELECT COUNT(*) c FROM words WHERE book_id=? AND pos_source='conflict'",
+            (book_id,)).fetchone()['c']
+    return {'unsure': unsure, 'coarse': coarse, 'conflict': conflict}
 
 
 def _in_dict(phrase):
