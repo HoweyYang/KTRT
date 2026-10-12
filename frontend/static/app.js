@@ -1628,7 +1628,17 @@ async function speak(text, btn) {
     if (token !== ttsToken) return;            // 被更晚的点击取消了，静默退出
     ttsAbort = null;
     _ttsClear();
-    if (!e || e.name !== 'AbortError') toast('语音合成失败：' + ((e && e.message) || '需要联网'));
+    if (!e || e.name !== 'AbortError') {
+      // 在线语音（edge-tts）不可用时自动回退到系统语音，别让朗读直接失效
+      try {
+        const u = new SpeechSynthesisUtterance(clean);
+        u.lang = 'en-US';
+        speechSynthesis.speak(u);
+        toast('在线语音不可用，已改用系统语音朗读');
+      } catch (err) {
+        toast('语音合成失败：' + ((e && e.message) || '需要联网'));
+      }
+    }
   }
 }
 $('btn-word-tts').addEventListener('click', () => {
