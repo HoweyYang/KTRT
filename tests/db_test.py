@@ -467,10 +467,12 @@ def test_truncated_headword_detected():
         bid = conn.execute("SELECT id FROM word_books WHERE name='trunc_src'").fetchone()['id']
     items = poslib.todo_words(bid)
     row = next((i for i in items if i['word'] == 'delt'), None)
-    check('归类不了的词会进待确认清单', bool(row) and bool(row.get('unmapped')), items)
+    check('扫描截断的词会进待确认清单',
+          bool(row) and bool(row.get('truncated')), items)
     check('清单里带上改名建议', bool(row) and row.get('suggest') == 'delta', row)
-    check('计数和清单条数一致', poslib.conn_count_todo(bid)['unmapped'] ==
-          len([i for i in items if i.get('unmapped')]), poslib.conn_count_todo(bid))
+    cnt = poslib.conn_count_todo(bid)
+    check('计数和清单条数一致', cnt['total'] == len(items), (cnt, len(items)))
+    check('截断桶单独计数', cnt['truncated'] == len([i for i in items if i.get('truncated')]), cnt)
     poslib._POS_CACHE.pop('delt', None)
 
 
