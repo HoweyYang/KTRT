@@ -946,10 +946,21 @@ class PosOverrideBody(BaseModel):
 
 @app.post('/api/pos/override')
 def pos_override(body: PosOverrideBody):
-    """手动修正词性：写程序内的覆盖表（不回写词书），立即影响卡片与蒙版。"""
+    """手动修正词性：写覆盖表，并把词性前缀回写进词书 Excel（原文件自动备份）。
+
+    回写只发生在"人工确认"这一步：AI / 在线词典的批量结果不落文件，
+    免得一次跑歪就把整本词书改花。
+    """
     if not body.items:
         raise HTTPException(400, '没有要保存的修正')
-    return {'ok': True, 'count': poslib.apply_overrides(body.book_id, body.items)}
+    n = poslib.apply_overrides(body.book_id, body.items)
+    excel = {'written': 0, 'notes': []}
+    if db.get_setting('pos_writeback', '1') == '1':
+        with db._lock:
+            with db.get_conn() as conn:
+                written, notes = _pos_back_to_excel(conn, body.book_id, body.items)
+        excel = {'written': written, 'notes': notes}
+    return {'ok': True, 'count': n, 'excel': excel}
 
 
 class PosAiBody(BaseModel):
@@ -1134,6 +1145,65 @@ def _write_excel_entry(path, old_word, list_no, changed):
     wb.save(path)
     wb.close()
     return True, ''
+
+
+def _backup_excel(path):
+    """回写前把原文件另存一份 .bak（覆盖上一次的），改坏了能立刻换回来。"""
+    try:
+        shutil.copy2(path, path + '.bak')
+    except Exception:
+        pass
+
+
+def _pos_back_to_excel(conn, book_id, items):
+    """把人工确认过的词性写进词书的【词性释义】列（连带母子书），返回 (写入份数, 说明)。
+
+    规则：只动"人工保存"的这几个词；释义开头已有的旧前缀会被替换，
+    没前缀的就补一个（例：'濒临灭绝' → 'v. 濒临灭绝'）。
+    """
+    done, notes = 0, []
+    book = conn.execute('SELECT * FROM word_books WHERE id=?', (book_id,)).fetchone()
+    if book is None:
+        return 0, []
+    for it in items or []:
+        word = (it.get('word') or '').strip()
+        if not word:
+            continue
+        w = conn.execute('SELECT * FROM words WHERE book_id=? AND word=?',
+                         (book_id, word)).fetchone()
+        if w is None:
+            continue
+        # 用覆盖表里已经合并过细分的完整标签，而不是前端传来的粗标签
+        new_meaning = poslib.stamp_meaning(w['meaning'], poslib.override_tags(word))
+        if not new_meaning:
+            continue        # 判不出词性 / 本来就是短语：不动词书
+        rows = [(w, book)]
+        for lw in _linked_words(conn, w):
+            lb = conn.execute('SELECT * FROM word_books WHERE id=?', (lw['book_id'],)).fetchone()
+            if lb is not None:
+                rows.append((lw, lb))
+        for row, bk in rows:
+            if bk['name'] == '自定义单词收藏册':
+                continue
+            conn.execute('UPDATE words SET meaning=? WHERE id=?', (new_meaning, row['id']))
+            try:
+                path, created = _book_excel_path(conn, bk)
+                if not created:
+                    _backup_excel(path)
+                ok, msg = _write_excel_entry(path, row['word'], row['list_no'],
+                                             {'meaning': new_meaning})
+                if ok:
+                    done += 1
+                elif msg and msg not in notes:
+                    notes.append(msg)
+            except PermissionError:
+                if '词书 Excel 正被占用（在 Excel 里打开时请先关闭），已只改本地库' not in notes:
+                    notes.append('词书 Excel 正被占用（在 Excel 里打开时请先关闭），已只改本地库')
+            except Exception as e:
+                msg = '回写词书失败：' + str(e)
+                if msg not in notes:
+                    notes.append(msg)
+    return done, notes
 
 
 @app.post('/api/import')
@@ -2350,6 +2420,7 @@ def _get_settings():
         'tts_volume': db.get_setting('tts_volume', '100'),
         'theme': db.get_setting('theme', 'dark-blue'),
         'theme_page': db.get_setting('theme_page', 'normal'),
+        'pos_writeback': db.get_setting('pos_writeback', '1'),
         'auto_update_check': db.get_setting('auto_update_check', '1'),
         'update_snooze': db.get_setting('update_snooze', ''),
     }
@@ -2369,6 +2440,7 @@ class SettingsBody(BaseModel):
     tts_volume: str = '100'
     theme: str = 'dark-blue'
     theme_page: str = 'normal'
+    pos_writeback: str | None = None
 
 
 @app.get('/api/settings')
@@ -2395,6 +2467,8 @@ def save_settings(body: SettingsBody):
     db.set_setting('tts_volume', body.tts_volume.strip() or '100')
     db.set_setting('theme', body.theme.strip() or 'dark-blue')
     db.set_setting('theme_page', body.theme_page.strip() or 'normal')
+    if body.pos_writeback is not None:      # 只改主题色时别把这个开关顺手重置了
+        db.set_setting('pos_writeback', '1' if body.pos_writeback.strip() != '0' else '0')
     return _get_settings()
 
 
