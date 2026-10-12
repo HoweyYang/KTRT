@@ -105,6 +105,59 @@ def _edge_params(rate='0', pitch='0', volume='100'):
     return rate_s, pitch_s, volume_s
 
 
+# 2026-10 起微软把 Edge 朗读的合成端点迁到 api.msedgeservices.com：
+# 旧域名 speech.platform.bing.com 对部分地区（欧洲、随后的美西、中国大陆出口）
+# 的 WebSocket 握手一律回 403，而同一个 IP 上的音色列表接口仍然正常。
+# 新域名要改用 Ocp-Apim-Subscription-Key 传客户端令牌（不再是旧参数名）。
+NEW_WSS = 'wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1'
+_preferred_wss = None  # 记住上次成功的端点，避免每次都先撞一遍 403
+
+
+def _wss_candidates():
+    """按优先级返回候选端点；空串表示用库自带的旧端点。"""
+    import edge_tts.constants as _c
+    forced = (os.environ.get('KTRT_EDGE_TTS_ENDPOINT') or '').strip()
+    if forced:
+        return [forced]
+    cands = [NEW_WSS + '?Ocp-Apim-Subscription-Key=' + _c.TRUSTED_CLIENT_TOKEN, '']
+    if _preferred_wss in cands:
+        cands.remove(_preferred_wss)
+        cands.insert(0, _preferred_wss)
+    return cands
+
+
+def _edge_synthesize(text, voice, rate_s, pitch_s, volume_s, path, rounds=3):
+    """逐个候选端点尝试，失败就换端点；仍失败则隔一会儿再重来。
+
+    微软这两个端点都会偶发 403（同一句话这次挂下次就过），所以单次失败
+    不代表服务不可用，重试比直接报错有用得多。
+    """
+    global _preferred_wss
+    import edge_tts
+    import edge_tts.communicate as cm
+    from edge_tts.constants import WSS_URL as DEFAULT_WSS
+    cands = _wss_candidates()
+    last = None
+    for round_no in range(rounds):
+        if round_no:
+            time.sleep(0.5 * round_no)
+        for url in cands:
+            try:
+                cm.WSS_URL = url or DEFAULT_WSS
+                asyncio.run(edge_tts.Communicate(
+                    text, voice, rate=rate_s, pitch=pitch_s, volume=volume_s).save(path))
+                _preferred_wss = url
+                return
+            except Exception as e:  # noqa: BLE001 - 换端点重试，最后统一抛出
+                last = e
+                try:
+                    if os.path.exists(path):
+                        os.remove(path)  # 不留半截 mp3
+                except OSError:
+                    pass
+    raise last
+
+
 def synthesize(text, language, voice=None, rate='0', pitch='0', volume='100'):
     """Synthesize speech; returns path to cached mp3."""
     voice = voice_for(language, voice)
@@ -115,8 +168,10 @@ def synthesize(text, language, voice=None, rate='0', pitch='0', volume='100'):
         return path
     _maybe_prune()
     try:
-        import edge_tts  # 延迟导入，降低启动内存占用
-        asyncio.run(edge_tts.Communicate(text, voice, rate=rate_s, pitch=pitch_s, volume=volume_s).save(path))
+        _edge_synthesize(text, voice, rate_s, pitch_s, volume_s, path)
     except Exception as e:
+        if '403' in str(e) and 'Invalid response status' in str(e):
+            raise RuntimeError(
+                '在线语音接口拒绝了请求（服务端 403），可稍后重试，或在设置里改用浏览器/系统语音') from e
         raise RuntimeError(net.describe(e, '在线语音')) from e
     return path
