@@ -779,6 +779,7 @@ $('btn-next').addEventListener('click', () => go(1));
 $('btn-prev').addEventListener('click', () => go(-1));
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (chg.active) return;                 // 闯关中：左右键留给杀词，别偷偷翻学习卡片
   if (e.key === 'ArrowRight') go(1);
   if (e.key === 'ArrowLeft') go(-1);
 });
@@ -1814,14 +1815,16 @@ async function loadPosStats() {
         ? ' data-tip="释义里没标词性、离线词典也没查到——多为专有名词、词组或拼写变体。"' : ''}>`
         + `<input type="checkbox" value="${i.key}">`
         + ` ${escapeHtml(i.label)} <b>${i.count}</b></label>`).join('');
-    // 只有存在「待确认 / 笼统」的词时才亮出疑问小人按钮
+    // 只有清单里真有词时才亮出疑问小人按钮（计数和清单同源，点开不会是空的）
     try {
       const sum = await api(`/api/pos/summary?book_id=${bookId}`);
       const btn = $('btn-pos-todo');
       if (btn) {
-        btn.classList.toggle('hidden', !(sum.todo || sum.coarse));
+        const n = (sum.todo || 0) + (sum.coarse || 0) + (sum.conflict || 0);
+        btn.classList.toggle('hidden', !n);
         btn.dataset.book = String(bookId);
-        btn.dataset.tip = `待确认清单：${sum.todo || 0} 个判不出、${sum.coarse || 0} 个只判到动词/名词这一层；点开逐条改（只落程序，不动词书）。`;
+        btn.dataset.tip = `待确认清单：${sum.todo || 0} 个判不出、${sum.coarse || 0} 个只判到动词/名词这一层、`
+          + `${sum.conflict || 0} 个与词典冲突；点开逐条改，改完按词性写回词书。`;
       }
       // 词条体检：发现可疑条目时才亮出按钮
       const chk = await api(`/api/pos/suspicious?book_id=${bookId}`);
@@ -1841,8 +1844,10 @@ async function loadPosStats() {
 async function openBookCheck(bookId) {
   const box = $('pos-check-box');
   if (!box || !bookId) return;
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }   // 再点＝收起
   box.classList.remove('hidden');
   box.innerHTML = '<p class="muted">体检中…</p>';
+  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   let r;
   try {
     r = await api(`/api/pos/suspicious?book_id=${bookId}`);
@@ -1917,11 +1922,19 @@ function importHealthHtml(r) {
   return `<div class="health-card"><p class="muted">词性体检：${parts}</p>${todo}</div>`;
 }
 
+function wireTodoClose(box) {
+  const b = box.querySelector('#btn-todo-close');
+  if (b) b.addEventListener('click', () => box.classList.add('hidden'));
+}
+
 async function openTodoList(bookId) {
   const box = $('pos-todo-box');
   if (!box || !bookId) return;
+  // 再点一次＝收起。以前"点了没反应"多半是清单落在折叠线以下，看着像点不开
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
   box.innerHTML = '<p class="muted">读取中…</p>';
+  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   let r;
   try {
     r = await api(`/api/pos/todo?book_id=${bookId}`);
@@ -1934,6 +1947,8 @@ async function openTodoList(bookId) {
       + '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
       + 'stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/>'
       + '<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>';
+    wireTodoClose(box);
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return;
   }
   const unsure = r.items.filter((it) => !it.coarse);
@@ -1962,7 +1977,11 @@ async function openTodoList(bookId) {
           `<button type="button" class="pick${cur.includes(k) ? ' on' : ''}" data-key="${k}">${label}</button>`).join('')}</div>
       </div>`;
   };
-  box.innerHTML = `<p class="muted">待确认 <b>${unsure.length}</b> 个（判不出词性）· 笼统 <b>${coarse.length}</b> 个（只判到动词/名词，可再细分）：点亮的按钮是程序<b>当前</b>的判定，<b>改过的行才会写入</b>；词性可多选（再点一下取消），改完只存在本程序里，不会动你的词书。</p>`
+  box.innerHTML = `<div class="todo-title"><b>待确认清单</b><span class="muted">共 ${r.items.length} 条</span>`
+    + '<button type="button" class="btn" id="btn-todo-close">收起</button></div>'
+    + `<p class="muted">判不出 <b>${unsure.length - conflicts.length}</b> 个 · `
+    + `只判到动词/名词 <b>${coarse.length}</b> 个 · 与词典冲突 <b>${conflicts.length}</b> 个：`
+    + '点亮的按钮是程序<b>当前</b>的判定，<b>改过的行才会写入</b>；词性可多选（再点一下取消）。</p>'
     + (conflicts.length ? `<p class="muted" style="margin-top:6px">— 词书与词典冲突（已按词典纠正，请过一眼）—</p>`
         + conflicts.map(rowHtml).join('') : '')
     + (unsure.length - conflicts.length ? `<p class="muted" style="margin-top:6px">— 待确认 —</p>`
@@ -1971,6 +1990,8 @@ async function openTodoList(bookId) {
     + '<div class="row" style="margin-top:8px"><button class="btn primary" id="btn-todo-save">保存这些修正</button>'
     + `<button class="btn" id="btn-todo-ai" data-tip="先查免费在线词典定词性，查不到的再交给 AI；断网或没配 Key 会自动跳过。结果同样只落程序。">联网判定（在线词典 + AI）</button>`
     + '<span class="muted" id="todo-msg"></span></div>';
+  wireTodoClose(box);
+  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   box.querySelectorAll('.todo-picks .pick').forEach((b) => {
     b.addEventListener('click', () => {
       b.classList.toggle('on');
@@ -3047,7 +3068,8 @@ $('btn-export-notes').addEventListener('click', async () => {
 });
 
 /* ---------- 杀词 ---------- */
-let chg = { mode: 'word', q: [], i: 0, wrong: [], correct: 0, removed: [], bookId: 0, listNo: 0, mistake: false, active: false };
+let chg = { mode: 'word', q: [], i: 0, wrong: [], correct: 0, removed: [], bookId: 0, listNo: 0,
+            mistake: false, active: false, sel: -1 };
 
 /* 杀词：进入前可开关「答题时展开词卡」——两个模式共用一个偏好 */
 ['chg-show-card', 'chg-show-card-m'].forEach((id) => {
@@ -3126,46 +3148,111 @@ function showChallengeQuestion() {
   // 状态图标（收藏 / 不熟悉 / 已背）常显、可直接点；下面还有可选的就地词卡
   const canPeek = localStorage.getItem('ktrt.chgCard') === '1';
   $('chg-question').innerHTML =
-    `<div class="chg-word" data-word-id="${q.word_id}"${canPeek ? ' data-tip="点一下展开词卡"' : ''}
-          style="font-size:28px;font-weight:800;margin-bottom:6px;${canPeek ? 'cursor:pointer' : ''}">
-       ${escapeHtml(q.word)}</div>`
+    `<div class="chg-word-row">
+       <span class="chg-word" data-word-id="${q.word_id}"${canPeek ? ' data-tip="点一下展开词卡"' : ''}
+             style="cursor:${canPeek ? 'pointer' : 'default'}">${escapeHtml(q.word)}</span>
+       <button type="button" class="icon-btn mini-btn" id="chg-word-tts"
+               data-tip="朗读这个单词：用设置里的朗读方式与音色（edge-tts 需联网，浏览器语音可离线）。">
+         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/>
+           <path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg></button>
+     </div>`
     + `<div class="chg-flags">${chgFlagsHtml(q)}</div>`
     + `<div id="chg-peek" class="chg-peek hidden"></div>`
     + opts;
-  $('chg-question').querySelectorAll('.opt').forEach((b) => {
+  const optEls = [...$('chg-question').querySelectorAll('.opt')];
+  chg.sel = -1;                                   // 换题：清掉键盘高亮
+  optEls.forEach((b) => {
     b.addEventListener('click', () => answerChallenge(q, Number(b.dataset.idx), b));
+    b.addEventListener('mouseenter', () => {      // 鼠标划过也算选中，和键盘高亮同步
+      chg.sel = Number(b.dataset.idx);
+      paintChgSel(optEls);
+    });
   });
   wireChgFlags(q);
+  const ttsBtn = $('chg-word-tts');
+  if (ttsBtn) {
+    ttsBtn.addEventListener('click', () => {
+      if (ttsBtn === ttsBtnActive) { _ttsStop(); return; }   // 再点一次＝停止
+      speak(q.word, ttsBtn);
+    });
+  }
   if (canPeek) {
     $('chg-question').querySelector('.chg-word').addEventListener('click', () => toggleChgPeek(q.word_id));
   }
 }
 
-/* 杀词里的三个状态图标：常显，点一下切换；状态跟着 /api/status 走 */
-const CHG_FLAGS = [
-  ['favorite', 'fav', '☆', '收藏'],
-  ['unfamiliar', 'unf', '?', '不熟悉'],
-  ['learned', 'ok', '✓', '已背'],
-];
+/* 杀词里的三个状态图标：和学词卡上那三个同图标、同配色、同尺寸（都是 17px），不带文字 */
+const CHG_FLAG_ORDER = ['learned', 'unfamiliar', 'favorite'];
+const CHG_FLAG_ICONS = {
+  learned: '<polyline points="20 6 9 17 4 12"/>',
+  unfamiliar: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>'
+    + '<line x1="12" y1="17" x2="12.01" y2="17"/>',
+  favorite: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 '
+    + '2 9.27 8.91 8.26 12 2"/>',
+};
+const CHG_FLAG_TIPS = {
+  learned: '已背：点亮后这个词立刻从本次杀词里移走，下次也不会再出现',
+  unfamiliar: '不熟悉：点亮会同时记进错题本视角；杀词答错也会自动标上',
+  favorite: '收藏这个词（管理页可按收藏筛选）',
+};
 
 function chgFlagsHtml(q) {
-  return CHG_FLAGS.map(([field, cls, icon, label]) => {
+  return CHG_FLAG_ORDER.map((field) => {
     const on = !!q[field];
-    const tip = field === 'learned'
-      ? '已背：点亮后这个词立刻从本次杀词里移走，下次也不会再出现'
-      : (field === 'unfamiliar' ? '不熟悉：点亮会同时记进错题本视角' : '收藏这个词');
-    return `<button type="button" class="chg-flag ${cls}${on ? ' on' : ''}" data-field="${field}"`
-      + ` aria-pressed="${on ? 'true' : 'false'}" data-tip="${tip}">${icon} ${label}</button>`;
+    return `<button type="button" class="icon-btn mini-btn${on ? ' on' : ''}" data-field="${field}"`
+      + ` aria-pressed="${on ? 'true' : 'false'}" data-tip="${CHG_FLAG_TIPS[field]}">`
+      + `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"`
+      + ` stroke-width="${field === 'learned' ? 2.5 : 2}" stroke-linejoin="round">`
+      + `${CHG_FLAG_ICONS[field]}</svg></button>`;
   }).join('');
 }
 
 function wireChgFlags(q) {
   const box = $('chg-question');
   if (!box) return;
-  box.querySelectorAll('.chg-flag').forEach((b) => {
+  // 注意选的是 data-field，不是类名：图标按钮同时挂了 icon-btn/mini-btn
+  box.querySelectorAll('.chg-flags [data-field]').forEach((b) => {
     b.addEventListener('click', () => toggleChgFlag(q, b.dataset.field));
   });
 }
+
+/* 杀词的键盘操作：界面上不做任何提示，纯顺手。
+   ↑/↓ 选选项 · 空格 / Enter 确认 · 1~4 直接作答（三者都等于用鼠标点那一下）。 */
+function paintChgSel(opts) {
+  opts.forEach((o, i) => o.classList.toggle('kb', i === chg.sel));
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!chg.active || e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  const stage = $('chg-stage');
+  if (!stage || stage.classList.contains('hidden')) return;
+  const q = $('chg-question');
+  const opts = q ? [...q.querySelectorAll('.opt')] : [];
+  if (!opts.length || opts.some((o) => o.disabled)) return;   // 已作答 / 切题动画中不抢键
+  const cur = chg.q[chg.i];
+  if (!cur) return;
+  if (e.key >= '1' && e.key <= String(Math.min(9, opts.length))) {   // 数字＝直接点第 N 项
+    e.preventDefault();
+    answerChallenge(cur, Number(e.key) - 1, opts[Number(e.key) - 1]);
+    return;
+  }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const n = opts.length;
+    if (chg.sel < 0) chg.sel = e.key === 'ArrowDown' ? 0 : n - 1;
+    else chg.sel = (chg.sel + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+    paintChgSel(opts);
+    return;
+  }
+  if (e.key === ' ' || e.key === 'Enter') {
+    e.preventDefault();
+    if (chg.sel < 0) { chg.sel = 0; paintChgSel(opts); return; }   // 还没选：先落到第一项，不误答
+    answerChallenge(cur, chg.sel, opts[chg.sel]);
+  }
+});
 
 async function toggleChgFlag(q, field) {
   const value = !q[field];

@@ -681,6 +681,15 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .check-row input { padding: 4px 6px; font-size: 13px; min-width: 0; }
 /* 待确认清单的"空"状态：只留一个疑问小人，不啰嗦 */
 .todo-empty { display: inline-flex; color: var(--muted); cursor: help; }
+/* 待确认清单 / 词条体检：点开后要有明确的"打开了"的样子，并滚进视野 */
+#pos-todo-box, #pos-check-box {
+  border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
+  background: var(--th); scroll-margin-top: 12px;
+}
+.todo-title { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.todo-title b { font-size: 14px; }
+.todo-title .muted { font-size: 12px; }
+.todo-title .btn { margin-left: auto; padding: 4px 10px; font-size: 12px; }
 .todo-empty:hover { color: var(--accent); }
 /* 介绍性文字收进「?」气泡，页面保持干净 */
 .hint-q {
@@ -1050,31 +1059,26 @@ input[type="range"] { width: 100%; margin-top: 8px; }
 #note-context button:hover { background: var(--th); }
 .opt { display: block; width: 100%; text-align: left; margin: 8px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); font-size: 15px; cursor: pointer; }
 .opt:hover { border-color: var(--accent); }
+.opt.kb {                      /* 键盘/鼠标选中的那一项：和 hover 同一套观感，再亮一点 */
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
 .opt.right { background: var(--green); border-color: var(--green); color: var(--active-ink, #fff); }
 .opt.wrong { background: var(--red); border-color: var(--red); color: var(--wrong-ink, #fff); }
 .chg-lists { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin: 6px 0 12px; }
 .chg-lists label { display: flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-weight: 400; margin: 0; }
-/* 杀词：状态图标（常显可点）+ 就地展开的词卡 */
-.chg-flags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-.chg-flag {
-  font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 999px;
-  border: 1px solid var(--line); background: transparent; color: var(--muted);
-  cursor: pointer; transition: all .14s ease;
-}
-.chg-flag:hover { border-color: var(--accent); color: var(--accent); }
-.chg-flag.on { font-weight: 600; }
-.chg-flag.on.fav {
-  color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent);
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-}
-.chg-flag.on.unf {
-  color: var(--amber, #b7791f); border-color: color-mix(in srgb, var(--amber, #b7791f) 50%, transparent);
-  background: color-mix(in srgb, var(--amber, #b7791f) 15%, transparent);
-}
-.chg-flag.on.ok {
-  color: var(--green, #2f855a); border-color: color-mix(in srgb, var(--green, #2f855a) 50%, transparent);
-  background: color-mix(in srgb, var(--green, #2f855a) 15%, transparent);
-}
+/* 杀词：状态图标（常显可点，和学词卡上那三个同款）+ 朗读键 + 就地展开的词卡 */
+.chg-word-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.chg-word { font-size: 28px; font-weight: 800; }
+.chg-word-row #chg-word-tts { padding: 6px 9px; }   /* 和三个状态图标同尺寸（37×31） */
+.chg-flags { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.chg-flags .mini-btn { padding: 6px 9px; }
+.chg-flags .mini-btn.on[data-field="learned"] { color: var(--green); border-color: var(--green); }
+.chg-flags .mini-btn.on[data-field="learned"] svg { fill: color-mix(in srgb, var(--green) 22%, transparent); }
+.chg-flags .mini-btn.on[data-field="unfamiliar"] { color: var(--red); border-color: var(--red); }
+.chg-flags .mini-btn.on[data-field="unfamiliar"] svg { fill: color-mix(in srgb, var(--red) 14%, transparent); }
+.chg-flags .mini-btn.on[data-field="favorite"] { color: var(--amber); border-color: var(--amber); }
+.chg-flags .mini-btn.on[data-field="favorite"] svg { fill: var(--amber); }
 .chg-peek {
   max-width: 640px; margin: 4px 0 12px; padding: 8px 12px;
   border: 1px dashed var(--line); border-radius: 10px; background: var(--th);
