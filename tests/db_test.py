@@ -433,6 +433,47 @@ def test_todo_override_is_program_only():
     poslib.set_override('zxqv', [])          # 清理，别影响后续用例
 
 
+def test_truncated_headword_detected():
+    """扫描截断的坏行（delt → delta）要认得出来。
+
+    这批词的坑：ECDICT 恰好把截断形也收作缩写（abbr.、词频 0），
+    所以"词典里查不到才体检"的老规则正好漏掉它们；而且它们的词性
+    落不进蒙版任何一类，以前既不显示也改不了。
+    """
+    import sqlite3
+    from backend import pos as poslib
+
+    conn = sqlite3.connect(os.path.join(TMP, 'dictionary.db'))
+    conn.execute("INSERT OR REPLACE INTO dict(word, translation, definition, exchange, frq) "
+                 "VALUES('delt', 'abbr. delete', '', '', '0')")
+    conn.execute("INSERT OR REPLACE INTO dict(word, translation, definition, exchange, frq) "
+                 "VALUES('delta', 'n. 三角洲, 希腊字母的第四个字母', '', '', '10451')")
+    conn.execute("INSERT OR REPLACE INTO dict(word, translation, definition, exchange, frq) "
+                 "VALUES('data', 'n. 数据', '', '', '5000')")
+    conn.commit()
+    conn.close()
+
+    got = poslib.truncation_fix('delt', '三角洲；from alpha to omega')
+    check('截断词给出完整词', got == 'delta', got)
+    check('正经常用词不瞎猜', poslib.truncation_fix('data', '数据') == '',
+          poslib.truncation_fix('data', '数据'))
+    check('释义对不上就不猜', poslib.truncation_fix('delt', '完全不相干的东西') == '',
+          poslib.truncation_fix('delt', '完全不相干的东西'))
+
+    path = os.path.join(TMP, 'trunc_src.csv')
+    write_csv(path, [['delt', '三角洲'], ['delta', '三角洲；希腊字母 Δ']])
+    importer.import_book(path, 'trunc_src')
+    with db.get_conn() as conn:
+        bid = conn.execute("SELECT id FROM word_books WHERE name='trunc_src'").fetchone()['id']
+    items = poslib.todo_words(bid)
+    row = next((i for i in items if i['word'] == 'delt'), None)
+    check('归类不了的词会进待确认清单', bool(row) and bool(row.get('unmapped')), items)
+    check('清单里带上改名建议', bool(row) and row.get('suggest') == 'delta', row)
+    check('计数和清单条数一致', poslib.conn_count_todo(bid)['unmapped'] ==
+          len([i for i in items if i.get('unmapped')]), poslib.conn_count_todo(bid))
+    poslib._POS_CACHE.pop('delt', None)
+
+
 def test_pos_writeback_to_excel():
     """人工确认的词性要写回词书的【词性释义】列，且原文件先备份成 .bak。
 
@@ -529,6 +570,7 @@ def main():
         test_import_fills_pos_tags()
         test_lookup_layer()
         test_pos_writeback_to_excel()
+        test_truncated_headword_detected()
         test_todo_override_is_program_only()
         test_default_book_rename()
     finally:

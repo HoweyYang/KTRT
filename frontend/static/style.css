@@ -690,6 +690,12 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .todo-title b { font-size: 14px; }
 .todo-title .muted { font-size: 12px; }
 .todo-title .btn { margin-left: auto; padding: 4px 10px; font-size: 12px; }
+.todo-fix {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 4px 0 2px; font-size: 12px; color: var(--muted);
+}
+.todo-fix .btn { padding: 3px 10px; font-size: 12px; }
+.todo-fix b { color: var(--accent); }
 .todo-empty:hover { color: var(--accent); }
 /* 介绍性文字收进「?」气泡，页面保持干净 */
 .hint-q {
