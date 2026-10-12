@@ -374,7 +374,7 @@ function switchView(name) {
     if (!confirm('闯关进行中，切换页面将丢弃本次进度（已入错题本的词不受影响），确定退出？')) return;
     resetChallengeState();
   }
-  document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x.dataset.view === name));
+  document.querySelectorAll('.tab[data-view]').forEach((x) => x.classList.toggle('active', x.dataset.view === name));
   document.querySelectorAll('.view').forEach((x) => x.classList.toggle('active', x.id === 'view-' + name));
   localStorage.setItem('activeView', name);
   if (name === 'manage') {
@@ -394,9 +394,32 @@ function switchView(name) {
     if (state.bookId && !state.lists.length) loadLists();
   }
 }
-document.querySelectorAll('.tab').forEach((b) => {
+document.querySelectorAll('.tab[data-view]').forEach((b) => {
   b.addEventListener('click', () => switchView(b.dataset.view));
 });
+
+/* ---------- 侧栏「通用」分组 ---------- */
+(function initGeneralGroup() {
+  const btn = $('btn-general');
+  const body = $('general-group');
+  if (!btn || !body) return;
+  const groupViews = ['manage', 'import', 'settings', 'update', 'guide'];
+  const setOpen = (open) => {
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    body.classList.toggle('hidden', !open);
+    try { localStorage.setItem('ktrt.sideGeneral', open ? '1' : '0'); } catch (e) {}
+  };
+  // 上次停在组里的页面（设置/更新…）就直接展开，否则记住用户自己的选择
+  const last = localStorage.getItem('activeView') || '';
+  let open = false;
+  try { open = localStorage.getItem('ktrt.sideGeneral') === '1'; } catch (e) {}
+  setOpen(open || groupViews.includes(last));
+  btn.addEventListener('click', () => setOpen(body.classList.contains('hidden')));
+  // 点组里的页面时保持展开
+  body.querySelectorAll('.tab[data-view]').forEach((b) => {
+    b.addEventListener('click', () => setOpen(true));
+  });
+})();
 
 /* ---------- 初始化 ---------- */
 async function init() {
@@ -1916,25 +1939,30 @@ async function openTodoList(bookId) {
   const unsure = r.items.filter((it) => !it.coarse);
   const coarse = r.items.filter((it) => it.coarse);
   const conflicts = unsure.filter((it) => it.conflict);
-  const GROUP_OF_TAG = { n: 'noun', v: 'verb', a: 'adj', ad: 'adv', prep: 'func', conj: 'func' };
-  const currentGroup = (tags) => {
-    const base = String(tags || '').split('|').map((t) => t.split(':')[0]);
-    for (const b of base) {
-      if (GROUP_OF_TAG[b]) return GROUP_OF_TAG[b];
+  const GROUP_OF_TAG = { n: 'noun', v: 'verb', a: 'adj', ad: 'adv', prep: 'func', conj: 'func',
+                         phr: 'misc', int: 'misc' };
+  // 一词多性 → 当前分类是一组，不是单个
+  const currentGroups = (tags) => {
+    const out = new Set();
+    for (const t of String(tags || '').split('|')) {
+      const g = GROUP_OF_TAG[t.split(':')[0]];
+      if (g) out.add(g);
     }
-    return '';
+    return [...out];
   };
   const rowHtml = (it) => {
-    const cur = currentGroup(it.tags);
-    const curLabel = (POS_GROUP_CHOICES.find(([k]) => k === cur) || [])[1] || '未判';
+    const cur = currentGroups(it.tags);
+    const curLabel = POS_GROUP_CHOICES.filter(([k]) => cur.includes(k))
+      .map(([, label]) => label).join(' / ') || '未判';
     return `<div class="todo-row" data-word="${escapeAttr(it.word)}">
-        <b>${escapeHtml(it.word)}</b><span class="muted">${escapeHtml(it.meaning || '')}</span>
-        <span class="tag none" data-tip="当前判定">${escapeHtml(curLabel)}</span>
-        <select><option value="">改成…</option>${POS_GROUP_CHOICES.map(([k, label]) =>
-          `<option value="${k}">${label}</option>`).join('')}</select>
+        <div class="todo-head"><b>${escapeHtml(it.word)}</b>
+          <span class="muted">${escapeHtml(it.meaning || '')}</span>
+          <span class="tag none" data-tip="当前判定；可多选，一词多性就都点亮">当前：${escapeHtml(curLabel)}</span></div>
+        <div class="todo-picks">${POS_GROUP_CHOICES.map(([k, label]) =>
+          `<button type="button" class="pick${cur.includes(k) ? ' on' : ''}" data-key="${k}">${label}</button>`).join('')}</div>
       </div>`;
   };
-  box.innerHTML = `<p class="muted">待确认 <b>${unsure.length}</b> 个（判不出词性）· 笼统 <b>${coarse.length}</b> 个（只判到动词/名词，可再细分）：改完只存在本程序里，不会动你的词书。</p>`
+  box.innerHTML = `<p class="muted">待确认 <b>${unsure.length}</b> 个（判不出词性）· 笼统 <b>${coarse.length}</b> 个（只判到动词/名词，可再细分）：点亮的按钮是程序<b>当前</b>的判定，<b>改过的行才会写入</b>；词性可多选（再点一下取消），改完只存在本程序里，不会动你的词书。</p>`
     + (conflicts.length ? `<p class="muted" style="margin-top:6px">— 词书与词典冲突（已按词典纠正，请过一眼）—</p>`
         + conflicts.map(rowHtml).join('') : '')
     + (unsure.length - conflicts.length ? `<p class="muted" style="margin-top:6px">— 待确认 —</p>`
@@ -1943,6 +1971,13 @@ async function openTodoList(bookId) {
     + '<div class="row" style="margin-top:8px"><button class="btn primary" id="btn-todo-save">保存这些修正</button>'
     + `<button class="btn" id="btn-todo-ai" data-tip="先查免费在线词典定词性，查不到的再交给 AI；断网或没配 Key 会自动跳过。结果同样只落程序。">联网判定（在线词典 + AI）</button>`
     + '<span class="muted" id="todo-msg"></span></div>';
+  box.querySelectorAll('.todo-picks .pick').forEach((b) => {
+    b.addEventListener('click', () => {
+      b.classList.toggle('on');
+      const row = b.closest('.todo-row');
+      if (row) row.dataset.dirty = '1';   // 只有动过的行才会被保存
+    });
+  });
   $('btn-todo-ai').addEventListener('click', async () => {
     const btn = $('btn-todo-ai');
     btn.disabled = true;
@@ -1963,18 +1998,27 @@ async function openTodoList(bookId) {
       msg.textContent = `已判 ${done} 个；失败：` + e.message;
     } finally {
       btn.disabled = false;
+      // 判完的词要从清单里消失，否则看着像"改好了还挂在那儿"
+      const doneMsg = msg.textContent;
+      await openTodoList(bookId);
+      const after = $('todo-msg');
+      if (after) after.textContent = doneMsg;
       loadPosStats();
     }
   });
   $('btn-todo-save').addEventListener('click', async () => {
     const items = [...box.querySelectorAll('.todo-row')]
       .map((row) => {
-        const v = row.querySelector('select').value;
-        return v ? { word: row.dataset.word, tags: [GROUP_TAG[v] || v] } : null;
+        // 只存"动过的行"：按钮预亮的是程序当前的判定，不点就等于没改，
+        // 否则按一次保存会把整张清单都写成"你改的"，还会把冲突词降级成粗标签。
+        if (row.dataset.dirty !== '1') return null;
+        const keys = [...row.querySelectorAll('.pick.on')].map((b) => b.dataset.key);
+        if (!keys.length) return null;
+        return { word: row.dataset.word, tags: [...new Set(keys.map((k) => GROUP_TAG[k] || k))] };
       })
       .filter(Boolean);
     if (!items.length) {
-      $('todo-msg').textContent = '没有要改的（下拉框默认是"改成…"，选一个再保存）';
+      $('todo-msg').textContent = '没有改动可保存（点亮的按钮表示程序当前的判定；改过的行才会写入）';
       return;
     }
     try {
@@ -1982,7 +2026,17 @@ async function openTodoList(bookId) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ book_id: bookId, items }),
       });
-      $('todo-msg').textContent = `已保存 ${res.count} 条（只存在本程序里）`;
+      // 重新拉一遍清单：改过的词不该再挂在待确认里（以前只刷新统计，
+      // 清单一动不动，于是"已保存 1 条"之后那个词还在，看着像没生效）
+      await openTodoList(bookId);
+      const ex = (res && res.excel) || {};
+      let note = `已保存 ${res.count} 条`;
+      if (ex.written) note += '，词书文件也已同步（原文件备份为 .bak）';
+      else if (ex.notes && ex.notes.length) note += `；词书未回写：${ex.notes[0]}`;
+      else note += '，程序里的判定已更新';
+      const msgEl = $('todo-msg');
+      if (msgEl) msgEl.textContent = note;
+      else toast(note + '，这本词书的清单清空了');
       loadPosStats();
     } catch (e) {
       $('todo-msg').textContent = '保存失败：' + e.message;
@@ -2296,6 +2350,7 @@ function populateSettings() {
   $('s-rate').value = String(Math.min(150, Math.max(50, ttsNum(s.tts_rate, 0) + 100)));
   $('s-pitch').value = s.tts_pitch || '0';
   $('s-volume').value = s.tts_volume || '100';
+  $('s-pos-writeback').checked = s.pos_writeback !== '0';
   syncTtsLabels();
   ['s-rate', 's-pitch', 's-volume'].forEach((id) => $(id).addEventListener('input', syncTtsLabels));
   $('s-theme').value = s.theme === 'paper' ? 'light' : (s.theme || 'light');
@@ -2407,6 +2462,7 @@ function settingsPayload() {
     tts_volume: $('s-volume').value,
     theme: $('s-theme').value,
     theme_page: currentPageMode(),
+    pos_writeback: $('s-pos-writeback').checked ? '1' : '0',
   };
 }
 
@@ -2998,6 +3054,11 @@ let chg = { mode: 'word', q: [], i: 0, wrong: [], correct: 0, removed: [], bookI
   const box = $(id);
   if (!box) return;
   box.checked = localStorage.getItem('ktrt.chgCard') === '1';
+  // 提示挂在整个开关行上（整行都能点，也就整行都能看到说明）；挂在 input 上
+  // 会和行本身的 data-tip 打架，鼠标一挪提示就换词。
+  const row = box.closest('.chg-toggle');
+  if (row) row.setAttribute('data-tip',
+    '开启后，答题时点单词就地展开词卡（音标 / 释义 / 搭配 / 短语 / 同反义 / 同根词 / 笔记），只读、不影响作答。');
   box.addEventListener('change', () => {
     localStorage.setItem('ktrt.chgCard', box.checked ? '1' : '0');
     ['chg-show-card', 'chg-show-card-m'].forEach((other) => {
@@ -3062,25 +3123,71 @@ function showChallengeQuestion() {
   $('chg-progress').textContent = `${chg.i + 1} / ${chg.q.length}`;
   $('chg-fill').style.width = (chg.i / chg.q.length * 100) + '%';
   const opts = q.options.map((o, idx) => `<button class="opt" data-idx="${idx}">${escapeHtml(o)}</button>`).join('');
-  // 状态标记（收藏 / 不熟悉 / 已背）+ 可选的就地展开词卡
-  const chips = [
-    q.favorite ? '<span class="chg-flag fav" data-tip="已收藏">☆ 收藏</span>' : '',
-    q.unfamiliar ? '<span class="chg-flag unf" data-tip="标为不熟悉">? 不熟悉</span>' : '',
-    q.learned ? '<span class="chg-flag ok" data-tip="已背">✓ 已背</span>' : '',
-  ].join('');
+  // 状态图标（收藏 / 不熟悉 / 已背）常显、可直接点；下面还有可选的就地词卡
   const canPeek = localStorage.getItem('ktrt.chgCard') === '1';
   $('chg-question').innerHTML =
     `<div class="chg-word" data-word-id="${q.word_id}"${canPeek ? ' data-tip="点一下展开词卡"' : ''}
           style="font-size:28px;font-weight:800;margin-bottom:6px;${canPeek ? 'cursor:pointer' : ''}">
        ${escapeHtml(q.word)}</div>`
-    + (chips ? `<div style="margin-bottom:10px">${chips}</div>` : '')
+    + `<div class="chg-flags">${chgFlagsHtml(q)}</div>`
     + `<div id="chg-peek" class="chg-peek hidden"></div>`
     + opts;
   $('chg-question').querySelectorAll('.opt').forEach((b) => {
     b.addEventListener('click', () => answerChallenge(q, Number(b.dataset.idx), b));
   });
+  wireChgFlags(q);
   if (canPeek) {
     $('chg-question').querySelector('.chg-word').addEventListener('click', () => toggleChgPeek(q.word_id));
+  }
+}
+
+/* 杀词里的三个状态图标：常显，点一下切换；状态跟着 /api/status 走 */
+const CHG_FLAGS = [
+  ['favorite', 'fav', '☆', '收藏'],
+  ['unfamiliar', 'unf', '?', '不熟悉'],
+  ['learned', 'ok', '✓', '已背'],
+];
+
+function chgFlagsHtml(q) {
+  return CHG_FLAGS.map(([field, cls, icon, label]) => {
+    const on = !!q[field];
+    const tip = field === 'learned'
+      ? '已背：点亮后这个词立刻从本次杀词里移走，下次也不会再出现'
+      : (field === 'unfamiliar' ? '不熟悉：点亮会同时记进错题本视角' : '收藏这个词');
+    return `<button type="button" class="chg-flag ${cls}${on ? ' on' : ''}" data-field="${field}"`
+      + ` aria-pressed="${on ? 'true' : 'false'}" data-tip="${tip}">${icon} ${label}</button>`;
+  }).join('');
+}
+
+function wireChgFlags(q) {
+  const box = $('chg-question');
+  if (!box) return;
+  box.querySelectorAll('.chg-flag').forEach((b) => {
+    b.addEventListener('click', () => toggleChgFlag(q, b.dataset.field));
+  });
+}
+
+async function toggleChgFlag(q, field) {
+  const value = !q[field];
+  try {
+    const r = await api('/api/status', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word_id: q.word_id, field, value }),
+    });
+    const st = r.status || {};
+    q.favorite = !!st.favorite; q.unfamiliar = !!st.unfamiliar; q.learned = !!st.learned;
+    if (q.learned) {
+      // 规则：已背的词不再出现在杀词里 —— 当场从剩余队列摘掉（下标正好落到下一题）
+      chg.q = chg.q.filter((x) => x !== q);
+      toast('已标为已背，这个词已从本次杀词里移出');
+      if (chg.i < chg.q.length) showChallengeQuestion(); else finishChallenge();
+      return;
+    }
+    const wrap = $('chg-question') && $('chg-question').querySelector('.chg-flags');
+    if (wrap) { wrap.innerHTML = chgFlagsHtml(q); wireChgFlags(q); }   // 互斥状态按服务端返回重画
+    toast(field === 'unfamiliar' ? '已标为不熟悉' : (field === 'favorite' ? '已收藏' : '已取消标记'));
+  } catch (e) {
+    toast(e.message);
   }
 }
 

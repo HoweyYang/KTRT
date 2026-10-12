@@ -423,12 +423,48 @@ def test_todo_override_is_program_only():
     with db.get_conn() as conn:
         after = conn.execute('SELECT pos_tags, pos_source FROM words WHERE book_id=?', (bid,)).fetchone()
         ov = conn.execute("SELECT tags FROM word_pos_override WHERE word='zxqv'").fetchone()
-    check('修正写进程序（pos_tags=user）', n == 1 and after['pos_tags'] == 'n',
+    # 修正后会用词典把细分补回来（n → n|n:uncountable 这种），比光一个 n 更细
+    check('修正写进程序（细分 + 来源 user）',
+          n == 1 and after['pos_tags'].startswith('n') and after['pos_source'] == 'user',
           (n, dict(after)))
     check('修正同时记进覆盖表', bool(ov) and ov['tags'] == 'n', ov['tags'] if ov else None)
     now = os.path.getmtime(exc) if os.path.exists(exc) else None
     check('词书文件一个字节没动', before == now, (before, now))
     poslib.set_override('zxqv', [])          # 清理，别影响后续用例
+
+
+def test_pos_writeback_to_excel():
+    """人工确认的词性要写回词书的【词性释义】列，且原文件先备份成 .bak。
+
+    只写人工保存的那几个词；AI / 在线词典的批量结果不落文件。
+    """
+    from openpyxl import Workbook, load_workbook
+    from backend import pos as poslib
+    from backend import app as applib
+
+    path = os.path.join(TMP, 'wb_back.xlsx')
+    wb = Workbook(); ws = wb.active
+    ws.append(['【单词】', '【音标】', '【词性释义】', '【搭配】', '【短语】',
+               '【同义词】', '【反义词】', '【同根词】', '【List】', '【语言】', '【单词书】'])
+    ws.append(['abstruse', 'əbˈstruːs', 'adj. 难懂的', '', '', '', '', '', 1, '英语', 'wb_back'])
+    ws.append(['plain', 'pleɪn', '普通的', '', '', '', '', '', 1, '英语', 'wb_back'])
+    wb.save(path)
+
+    importer.import_book(path, 'wb_back')
+    with db.get_conn() as conn:
+        bid = conn.execute("SELECT id FROM word_books WHERE name='wb_back'").fetchone()['id']
+    poslib.apply_overrides(bid, [{'word': 'abstruse', 'tags': ['v']}])
+    with db.get_conn() as conn:
+        written, notes = applib._pos_back_to_excel(conn, bid, [{'word': 'abstruse'}])
+    check('词性回写词书 Excel', written == 1, (written, notes))
+
+    cells = {r[0]: r[2] for r in load_workbook(path).active.iter_rows(values_only=True)}
+    got = cells.get('abstruse') or ''
+    check('旧前缀 adj. 被换成动词类前缀',
+          got.split(' ')[0] in ('v.', 'vt.', 'vi.') and got.endswith('难懂的'), got)
+    check('没改的词一个字节不动', cells.get('plain') == '普通的', cells.get('plain'))
+    check('原文件已备份成 .bak', os.path.exists(path + '.bak'))
+    poslib.set_override('abstruse', [])      # 清理，别影响后续用例
 
 
 def test_lookup_layer():
@@ -492,6 +528,7 @@ def main():
         test_pos_judge_chain()
         test_import_fills_pos_tags()
         test_lookup_layer()
+        test_pos_writeback_to_excel()
         test_todo_override_is_program_only()
         test_default_book_rename()
     finally:

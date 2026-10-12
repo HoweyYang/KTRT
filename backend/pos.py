@@ -546,6 +546,49 @@ def set_override(word, tags, source='user'):
     return list(tags or [])
 
 
+# 词书里的词性前缀写法（GRE 那本用 adj.，就跟着它）
+_BASE_MARK = {'n': 'n.', 'v': 'v.', 'a': 'adj.', 'ad': 'adv.', 'prep': 'prep.',
+              'conj': 'conj.', 'pron': 'pron.', 'num': 'num.', 'art': 'art.',
+              'int': 'int.', 'phr': 'phr.'}
+_SUB_MARK = {'v:vt': 'vt.', 'v:vi': 'vi.'}
+# 释义开头的旧前缀，例如 "adj. 越轨的" / "n.&v. 手工艺"
+_LEAD_MARK = re.compile(
+    r'^\s*(?:(?:n|v|vt|vi|a|adj|ad|adv|prep|conj|pron|num|art|int|phr|aux|modal|link|caus)'
+    r'\s*\.\s*(?:[/&、,＋+]\s*)?)+')
+
+
+def pos_marker(tags):
+    """把细分标签压成词书用的词性前缀：['v','v:vt'] → 'vt.'；多词性用 / 连接。"""
+    tags = [t for t in (tags or []) if t and not t.startswith('form:')]
+    marks = []
+    for sub in ('v:vt', 'v:vi'):
+        if sub in tags and _SUB_MARK[sub] not in marks:
+            marks.append(_SUB_MARK[sub])
+    for t in tags:
+        if ':' in t and t not in _SUB_MARK:
+            continue
+        m = _BASE_MARK.get(t)
+        if not m:
+            continue
+        if t == 'v' and any(x in ('v:vt', 'v:vi') for x in tags):
+            continue        # 已经写了 vt./vi.，就不再重复一个 v.
+        if m not in marks:
+            marks.append(m)
+    return '/'.join(marks)
+
+
+def stamp_meaning(meaning, tags):
+    """把词性写进释义开头：'暗指' → 'n. 暗指'；已经有旧前缀（词书写错的）就替换掉。
+
+    返回 None 表示这条不适合带前缀（判不出词性，或本来就是短语）。
+    """
+    mark = pos_marker(tags)
+    if not mark:
+        return None
+    text = _LEAD_MARK.sub('', meaning or '').strip()
+    return (mark + ' ' + text).strip() if text else mark
+
+
 def fill_book_pos(book_id, only_empty=True):
     """给某本书的词条算一次词性（导入后 / 启动补扫用）；只写程序库，不碰词书文件。"""
     sql = 'SELECT id, word, meaning, collocations, phrases FROM words WHERE book_id=?'
@@ -764,10 +807,13 @@ def apply_overrides(book_id, items, source='user'):
         if not word:
             continue
         set_override(word, tags, source)
+        # 用刚写进去的修正重判一次，把词典里的细分（及物性 / 可数性 / 专有名词）
+        # 补回来；否则卡片上只剩"名词""动词"这种粗标签，比改之前还糙。
+        final, src = judge('', word) if tags else ([], '')
         with db._lock:
             with db.get_conn() as conn:
                 conn.execute('UPDATE words SET pos_tags=?, pos_source=? WHERE book_id=? AND word=?',
-                             ('|'.join(tags), (source if tags else ''), book_id, word))
+                             ('|'.join(final), src, book_id, word))
         done += 1
     return done
 

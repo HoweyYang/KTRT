@@ -565,6 +565,17 @@ body[data-page="paper"] .brand-text i { color: var(--accent-dark); }
 }
 .tab:hover { background: var(--th); }
 .tab.active { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-weight: 600; }
+/* 侧栏「通用」折叠组：核心四件（学 / 杀 / 蒙版 / 风暴）常驻，其余收在标题下面 */
+.tab-group .caret { flex-shrink: 0; opacity: .6; transition: transform .18s ease; }
+.tab-group[aria-expanded="true"] .caret { transform: rotate(180deg); }
+.tab-group-body {
+  display: grid; gap: 2px; margin: 1px 0 4px 11px; padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+.tab-group-body.hidden { display: none; }
+.tab-group-body .tab { padding: 7px 9px; font-size: 13px; }
+html.side-collapsed .tab-group .caret { display: none; }
+html.side-collapsed .tab-group-body { margin-left: 0; padding-left: 0; border-left: none; }
 /* 侧栏「两字 + 英文」，英文压小、字距拉开，悬停看完整名字与功能（data-tip） */
 .tab .tab-en {
   font-style: normal;
@@ -646,12 +657,20 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 .health-card { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: var(--th); margin-top: 8px; }
 .health-card p { margin: 3px 0; }
 .todo-row {
-  display: flex; align-items: center; gap: 10px; padding: 5px 0;
+  display: block; padding: 6px 0;
   border-bottom: 1px dashed var(--line); font-size: 13px;
 }
-.todo-row b { min-width: 110px; }
-.todo-row .muted { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.todo-row select { padding: 4px 6px; font-size: 13px; }
+.todo-head { display: flex; align-items: baseline; gap: 8px; }
+.todo-head b { min-width: 96px; }
+.todo-head .muted { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.todo-picks { display: flex; flex-wrap: wrap; gap: 5px; margin: 5px 0 2px 0; }
+.pick {
+  font: inherit; font-size: 12px; padding: 2px 10px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer;
+  transition: all .14s ease;
+}
+.pick:hover { border-color: var(--accent); color: var(--accent); }
+.pick.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); font-weight: 600; }
 /* 词条体检行：原因 + 单词/释义可改 + 保存/删除 */
 .check-row {
   display: grid; grid-template-columns: 1fr 1.1fr 1.4fr auto auto;
@@ -1035,14 +1054,27 @@ input[type="range"] { width: 100%; margin-top: 8px; }
 .opt.wrong { background: var(--red); border-color: var(--red); color: var(--wrong-ink, #fff); }
 .chg-lists { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin: 6px 0 12px; }
 .chg-lists label { display: flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-weight: 400; margin: 0; }
-/* 杀词：状态标记 + 就地展开的词卡 */
+/* 杀词：状态图标（常显可点）+ 就地展开的词卡 */
+.chg-flags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .chg-flag {
-  display: inline-block; padding: 1px 8px; margin-right: 6px; border-radius: 6px;
-  font-size: 12px; border: 1px solid var(--line); color: var(--muted);
+  font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--muted);
+  cursor: pointer; transition: all .14s ease;
 }
-.chg-flag.fav { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
-.chg-flag.unf { color: var(--amber, #b7791f); border-color: color-mix(in srgb, var(--amber, #b7791f) 45%, transparent); }
-.chg-flag.ok { color: var(--green, #2f855a); border-color: color-mix(in srgb, var(--green, #2f855a) 45%, transparent); }
+.chg-flag:hover { border-color: var(--accent); color: var(--accent); }
+.chg-flag.on { font-weight: 600; }
+.chg-flag.on.fav {
+  color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.chg-flag.on.unf {
+  color: var(--amber, #b7791f); border-color: color-mix(in srgb, var(--amber, #b7791f) 50%, transparent);
+  background: color-mix(in srgb, var(--amber, #b7791f) 15%, transparent);
+}
+.chg-flag.on.ok {
+  color: var(--green, #2f855a); border-color: color-mix(in srgb, var(--green, #2f855a) 50%, transparent);
+  background: color-mix(in srgb, var(--green, #2f855a) 15%, transparent);
+}
 .chg-peek {
   max-width: 640px; margin: 4px 0 12px; padding: 8px 12px;
   border: 1px dashed var(--line); border-radius: 10px; background: var(--th);
@@ -1050,8 +1082,37 @@ input[type="range"] { width: 100%; margin-top: 8px; }
 }
 .chg-peek-row { display: flex; gap: 10px; }
 .chg-peek-row b { flex: 0 0 68px; color: var(--muted); font-weight: 600; }
-.chg-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 400; margin: 4px 0 12px; }
-.chg-toggle input { width: auto; margin: 0; accent-color: var(--accent); }
+/* 杀词设置里的开关行。注意 .panel label 的优先级（0-1-1）比 .chg-toggle（0-1-0）高，
+   不压回来的话复选框会被拉成独占一行的 block，文字另起一行、字重字号也跟着跑偏。
+   这里统一成"左边说明、右边开关"的一行，并把复选框画成 iOS 风格开关。 */
+.panel .chg-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 0 0 16px; padding: 9px 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--th);
+  font-size: 14px; font-weight: 400; line-height: 1.4;
+  cursor: pointer; user-select: none;
+  transition: border-color .16s ease, background .16s ease;
+}
+.panel .chg-toggle:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.panel .chg-toggle input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  flex: 0 0 40px; width: 40px; height: 23px; margin: 0;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--card);
+  position: relative; cursor: pointer; outline: none;
+  transition: background .18s ease, border-color .18s ease;
+}
+.panel .chg-toggle input[type="checkbox"]::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 17px; height: 17px;
+  border-radius: 50%; background: var(--muted);
+  transition: transform .18s ease, background .18s ease;
+}
+.panel .chg-toggle input[type="checkbox"]:active::after { transform: scale(.9); }
+.panel .chg-toggle input[type="checkbox"]:checked {
+  background: color-mix(in srgb, var(--accent) 32%, transparent); border-color: var(--accent);
+}
+.panel .chg-toggle input[type="checkbox"]:checked::after {
+  transform: translateX(17px); background: var(--accent);
+}
 #view-challenge .panel { max-width: 760px; }
 #view-challenge h2 { margin: 0 0 16px; }
 #view-challenge .row { margin-bottom: 18px; }
