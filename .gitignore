@@ -35,3 +35,9 @@ tools/*
 !tools/build_refpos.py
 !tools/make_logo.py
 !tools/make_phrasal_wordbook.py
+
+# 生成性/中间产物（保留本地，不入库）
+docs/design/
+docs/superpowers/
+docs/ai_sentence_*.png
+assets/logo_rounded.png
