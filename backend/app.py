@@ -497,6 +497,8 @@ def _challenge_options(conn, book_id, word_ids):
         w = conn.execute('SELECT word, meaning FROM words WHERE id=?', (wid,)).fetchone()
         if w is None or not (w['meaning'] or '').strip():
             continue
+        st = conn.execute('SELECT favorite, unfamiliar, learned FROM word_status WHERE word_id=?',
+                          (wid,)).fetchone()
         correct = w['meaning'].strip()
         pool = [m.strip() for m in meanings if m.strip() != correct]
         wrong = random.sample(pool, min(3, len(pool)))
@@ -507,9 +509,32 @@ def _challenge_options(conn, book_id, word_ids):
             'word': w['word'],
             'options': opts,
             'correct': opts.index(correct),
+            # 杀词里要标出这个词现在是什么状态（收藏 / 不熟悉 / 已背）
+            'favorite': bool(st and st['favorite']),
+            'unfamiliar': bool(st and st['unfamiliar']),
+            'learned': bool(st and st['learned']),
         })
     random.shuffle(questions)
     return questions
+
+
+@app.get('/api/word/{word_id}')
+def word_peek(word_id: int):
+    """杀词里就地展开的那张小词卡：词条全文 + 状态 + 笔记。"""
+    with db.get_conn() as conn:
+        w = conn.execute('SELECT * FROM words WHERE id=?', (word_id,)).fetchone()
+        if w is None:
+            raise HTTPException(404, '词条不存在')
+        st = conn.execute('SELECT favorite, unfamiliar, learned FROM word_status WHERE word_id=?',
+                          (word_id,)).fetchone()
+        note = conn.execute('SELECT content FROM word_notes WHERE word_key=? LIMIT 1',
+                            ((w['word'] or '').strip().lower(),)).fetchone()
+    return {
+        'word': dict(w),
+        'status': {k: bool(st and st[k]) for k in ('favorite', 'unfamiliar', 'learned')} if st
+                  else {'favorite': False, 'unfamiliar': False, 'learned': False},
+        'note': (note['content'] if note else '') or '',
+    }
 
 
 @app.get('/api/challenge')

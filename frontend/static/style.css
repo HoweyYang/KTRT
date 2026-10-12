@@ -1035,6 +1035,23 @@ input[type="range"] { width: 100%; margin-top: 8px; }
 .opt.wrong { background: var(--red); border-color: var(--red); color: var(--wrong-ink, #fff); }
 .chg-lists { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin: 6px 0 12px; }
 .chg-lists label { display: flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-weight: 400; margin: 0; }
+/* 杀词：状态标记 + 就地展开的词卡 */
+.chg-flag {
+  display: inline-block; padding: 1px 8px; margin-right: 6px; border-radius: 6px;
+  font-size: 12px; border: 1px solid var(--line); color: var(--muted);
+}
+.chg-flag.fav { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.chg-flag.unf { color: var(--amber, #b7791f); border-color: color-mix(in srgb, var(--amber, #b7791f) 45%, transparent); }
+.chg-flag.ok { color: var(--green, #2f855a); border-color: color-mix(in srgb, var(--green, #2f855a) 45%, transparent); }
+.chg-peek {
+  max-width: 640px; margin: 4px 0 12px; padding: 8px 12px;
+  border: 1px dashed var(--line); border-radius: 10px; background: var(--th);
+  font-size: 13px; line-height: 1.7;
+}
+.chg-peek-row { display: flex; gap: 10px; }
+.chg-peek-row b { flex: 0 0 68px; color: var(--muted); font-weight: 600; }
+.chg-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 400; margin: 4px 0 12px; }
+.chg-toggle input { width: auto; margin: 0; accent-color: var(--accent); }
 #view-challenge .panel { max-width: 760px; }
 #view-challenge h2 { margin: 0 0 16px; }
 #view-challenge .row { margin-bottom: 18px; }
