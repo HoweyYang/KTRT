@@ -1873,7 +1873,7 @@ async function openBookCheck(bookId, toggle) {
   if (!box || !bookId) return;
   if (toggle && !box.classList.contains('hidden')) { box.classList.add('hidden'); return; }   // 再点＝收起
   box.classList.remove('hidden');
-  box.innerHTML = '<p class="muted">体检中…</p>';
+  box.innerHTML = '<p class="muted">检索中…（要一两秒）</p>';
   box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   let r;
   try {
@@ -2006,7 +2006,7 @@ async function openTodoList(bookId, toggle) {
   // 只有从按钮点进来才做"再点一次＝收起"；保存/修复后的刷新走 toggle=false
   if (toggle && !box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
-  box.innerHTML = '<p class="muted">读取中…</p>';
+  box.innerHTML = '<p class="muted">检索中…（要一两秒）</p>';
   box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   let r;
   try {
