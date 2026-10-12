@@ -948,7 +948,8 @@ function renderSentences(list) {
   $('sentence-list').innerHTML = list.map((s) => `
     <div class="sentence-item">
       <button class="del" data-del="${s.id}" data-tip="删除这句造句（不可恢复）。">${ICON_TRASH}</button>
-      <div class="en">${highlightWord(s.sentence, state.card.word.word, state.card.word.root_words)}</div>
+      <div class="en"><button class="icon-btn mini-btn sent-say" data-say="${escapeAttr(s.sentence)}"
+          data-tip="朗读这句">${SPEAKER_ICON}</button>${highlightWord(s.sentence, state.card.word.word, state.card.word.root_words)}</div>
       <div class="zh">${escapeHtml(s.translation || '')}</div>
       <div class="meta">${escapeHtml(s.prompt || '')} · ${s.created_at || ''}</div>
     </div>`).join('');
@@ -956,6 +957,12 @@ function renderSentences(list) {
     b.addEventListener('click', async () => {
       await api('/api/sentences/' + b.dataset.del, { method: 'DELETE' });
       loadCard();
+    });
+  });
+  document.querySelectorAll('[data-say]').forEach((b) => {
+    b.addEventListener('click', () => {
+      if (b === ttsBtnActive) { _ttsStop(); return; }     // 再点一次＝停
+      speak(b.dataset.say, b);
     });
   });
 }
@@ -1942,6 +1949,52 @@ function importHealthHtml(r) {
   return `<div class="health-card"><p class="muted">词性体检：${parts}</p>${todo}</div>`;
 }
 
+/* 待确认清单里就地编辑一条词条：字段与学词页的编辑一致，保存走同一个接口
+   （本地库 + 词书 Excel 一起改，改完重判词性）。 */
+const TODO_EDIT_FIELDS = [['word', '单词'], ['phonetic', '音标'], ['meaning', '词性释义'],
+  ['collocations', '搭配'], ['phrases', '短语'], ['synonyms', '同义词'],
+  ['antonyms', '反义词'], ['root_words', '同根词']];
+
+async function openTodoEditor(row, id, bookId) {
+  row.innerHTML = '<p class="muted">读取中…</p>';
+  let d;
+  try {
+    d = await api('/api/word/' + id);
+  } catch (e) {
+    row.innerHTML = `<p class="err">${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  const w = d.word || {};
+  row.innerHTML = '<div class="todo-edit-form">'
+    + TODO_EDIT_FIELDS.map(([k, label]) =>
+      `<label>${label}<input data-k="${k}" value="${escapeAttr(w[k] || '')}"></label>`).join('')
+    + '<div class="row"><button type="button" class="btn primary" data-save="1">保存这一条</button>'
+    + '<button type="button" class="btn" data-cancel="1">取消</button>'
+    + '<span class="muted" data-msg></span></div></div>';
+  row.querySelector('[data-cancel]').addEventListener('click', () => openTodoList(bookId));
+  row.querySelector('[data-save]').addEventListener('click', async () => {
+    const body = {};
+    row.querySelectorAll('[data-k]').forEach((i) => { body[i.dataset.k] = i.value; });
+    if (!(body.word || '').trim()) { row.querySelector('[data-msg]').textContent = '单词不能为空'; return; }
+    row.querySelector('[data-save]').disabled = true;
+    row.querySelector('[data-msg]').textContent = '保存中…';
+    try {
+      const r = await api('/api/word/' + id + '/edit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const ex = r.excel || {};
+      toast(ex.updated ? '已保存：本地库和词书 Excel 都改了'
+        : '已保存到本地库（词书未回写：' + (ex.message || '原文件不可写') + '）');
+      await openTodoList(bookId);
+      loadPosStats();
+    } catch (e) {
+      row.querySelector('[data-msg]').textContent = '保存失败：' + e.message;
+      row.querySelector('[data-save]').disabled = false;
+    }
+  });
+}
+
 function wireTodoClose(box) {
   const b = box.querySelector('#btn-todo-close');
   if (b) b.addEventListener('click', () => box.classList.add('hidden'));
@@ -1972,12 +2025,13 @@ async function openTodoList(bookId, toggle) {
     return;
   }
   const truncated = r.items.filter((it) => it.truncated);
+  const shifted = r.items.filter((it) => it.shifted);
   const markfix = r.items.filter((it) => it.markfix);
   const unmapped = r.items.filter((it) => it.unmapped);
   const coarse = r.items.filter((it) => it.coarse);
   const conflicts = r.items.filter((it) => it.conflict);
   const unsure = r.items.filter((it) => !(it.truncated || it.markfix || it.coarse
-    || it.conflict || it.unmapped));
+    || it.conflict || it.unmapped || it.shifted));
   const GROUP_OF_TAG = { n: 'noun', v: 'verb', a: 'adj', ad: 'adv', prep: 'func', conj: 'func',
                          phr: 'misc', int: 'misc' };
   // 一词多性 → 当前分类是一组，不是单个
@@ -1989,6 +2043,13 @@ async function openTodoList(bookId, toggle) {
     }
     return [...out];
   };
+  // 每条都有的两个动作：自己改，或者"这条没问题，别再提示"
+  // 每条都有的两个动作：自己改，或者"这条没问题，别再提示"
+  const actsHtml = (it) => '<div class="todo-acts">'
+    + `<button type="button" class="btn todo-edit-btn" data-edit-id="${it.id}"`
+    + ' data-tip="自己改：单词 / 音标 / 释义 / 搭配 / 短语 / 同义词 / 反义词 / 同根词；保存后同步本地库与词书 Excel">编辑这一条</button>'
+    + `<button type="button" class="btn" data-ok-word="${escapeAttr(it.word)}"`
+    + ' data-tip="这条其实没问题，别再列出来（只影响这张清单，不动判定和词书）">这条没问题</button></div>';
   const rowHtml = (it) => {
     const cur = currentGroups(it.tags);
     const curLabel = POS_GROUP_CHOICES.filter(([k]) => cur.includes(k))
@@ -1999,6 +2060,7 @@ async function openTodoList(bookId, toggle) {
           <span class="tag none" data-tip="当前判定；可多选，一词多性就都点亮">当前：${escapeHtml(curLabel)}</span></div>
         <div class="todo-picks">${POS_GROUP_CHOICES.map(([k, label]) =>
           `<button type="button" class="pick${cur.includes(k) ? ' on' : ''}" data-key="${k}">${label}</button>`).join('')}</div>
+        ${actsHtml(it)}
       </div>`;
   };
   // 词书里写的词性和判定对不上（书里把 allusion 标成 adj. 那种）：保存即按判定改写词书
@@ -2012,42 +2074,59 @@ async function openTodoList(bookId, toggle) {
           <span class="muted">${escapeHtml(it.meaning || '')}</span>
           <span class="tag none" data-tip="程序按词典/增强包判出来的结果">判定：${escapeHtml(curLabel)}</span></div>
         <div class="todo-fix">词书里写的是 <b>${escapeHtml(bookMark)}.</b>，判定是 <b>${escapeHtml(curLabel)}</b>
-          —— 保存后按判定改写词书那一条（原文件先备份）</div>
+          —— 保存后按判定改写词书那一条（原文件先备份）
+          ${it.dict_gloss ? `<br>词典里是：<b>${escapeHtml(it.dict_gloss)}</b>
+            <button type="button" class="btn" data-meaning-id="${it.id}"
+              data-meaning="${escapeAttr(it.dict_gloss)}">按词典改这条释义</button>` : ''}</div>
         <div class="todo-picks">${POS_GROUP_CHOICES.map(([k, label]) =>
           `<button type="button" class="pick${cur.includes(k) ? ' on' : ''}" data-key="${k}">${label}</button>`).join('')}</div>
+        ${actsHtml(it)}
       </div>`;
   };
   // 疑似扫描截断的坏头词：给出更可能的完整词，一键改名（改名＝真的把这一条改正）
+  // 释义像是隔壁那一行的（错行）：两个一键选择 —— 改成隔壁的词，或改回本意
+  const shiftRowHtml = (it) => `<div class="todo-row" data-word="${escapeAttr(it.word)}">
+      <div class="todo-head"><b>${escapeHtml(it.word)}</b>
+        <span class="muted">${escapeHtml(it.meaning || '')}</span></div>
+      <div class="todo-fix">这条的释义看着是 <b>${escapeHtml(it.suggest_word)}</b> 的。
+        要么把单词改成 <b>${escapeHtml(it.suggest_word)}</b>，要么保留 <b>${escapeHtml(it.word)}</b> 用它自己的意思${it.dict_gloss ? `（词典：${escapeHtml(it.dict_gloss)}）` : ''}：
+        <button type="button" class="btn" data-fix-id="${it.id}" data-fix-to="${escapeAttr(it.suggest_word)}">改成 ${escapeHtml(it.suggest_word)}</button>
+        ${it.dict_gloss ? `<button type="button" class="btn" data-meaning-id="${it.id}"
+          data-meaning="${escapeAttr(it.dict_gloss)}">保留 ${escapeHtml(it.word)}，释义改回本意</button>` : ''}
+      </div>
+      ${actsHtml(it)}
+    </div>`;
+
   const truncRowHtml = (it) => `<div class="todo-row" data-word="${escapeAttr(it.word)}">
       <div class="todo-head"><b>${escapeHtml(it.word)}</b>
         <span class="muted">${escapeHtml(it.meaning || '')}</span>
         <span class="tag none" data-tip="词典里只把它的缩写义收进来了，所以词性也落不进任何一类">当前：${escapeHtml(it.tags || '—')}</span></div>
-      <div class="todo-fix" data-tip="多半是扫描时把词截断了：它的释义和完整词完全对得上。点一下改过来，本地库和词书 Excel 一起改。">
+      ${it.suggest ? `<div class="todo-fix" data-tip="多半是扫描时把词截断了：它的释义和完整词完全对得上。点一下改过来，本地库和词书 Excel 一起改。">
           疑似截断 → 建议改成 <b>${escapeHtml(it.suggest)}</b>
           <button type="button" class="btn" data-fix-id="${it.id}" data-fix-to="${escapeAttr(it.suggest)}">改成 ${escapeHtml(it.suggest)}</button>
-        </div>
+        </div>`
+        : '<div class="todo-fix">这个拼写落不进任何词性（词典里只当它是缩写）：点「编辑这一条」改拼写或补释义。</div>'}
       <div class="todo-picks">${POS_GROUP_CHOICES.map(([k, label]) =>
         `<button type="button" class="pick" data-key="${k}">${label}</button>`).join('')}</div>
+      ${actsHtml(it)}
     </div>`;
   box.innerHTML = `<div class="todo-title"><b>待确认清单</b><span class="muted">共 ${r.items.length} 条</span>`
     + '<button type="button" class="btn" id="btn-todo-close">收起</button></div>'
-    + `<p class="muted">判不出 <b>${unsure.length - conflicts.length}</b> 个 · `
-    + `疑似截断 <b>${truncated.length}</b> 个 · 词书写的和判定不一致 <b>${markfix.length}</b> 个 · `
-    + `只判到动词/名词 <b>${coarse.length}</b> 个 · 与词典冲突 <b>${conflicts.length}</b> 个 · `
-    + `归类不了 <b>${unmapped.length}</b> 个：`
-    + '点亮的按钮就是<b>你要保存的判定</b>（预亮的是程序当前的判定，顺手保存＝确认它）；'
-    + '一个都没点亮的行不会被动到，词性可多选（再点一下取消）。</p>'
-    + (truncated.length ? `<p class="muted" style="margin-top:8px">— 疑似扫描截断（头词少了字母，点一下改回来）—</p>`
+    + '<p class="muted">下面这些词，程序拿不准、或者词书写得不对劲。你看一眼，能修的下面都有按钮。</p>'
+    + (truncated.length ? '<p class="muted" style="margin-top:8px">— 单词被截断了（少打了字母）—</p>'
         + truncated.map(truncRowHtml).join('') : '')
-    + (markfix.length ? `<p class="muted" style="margin-top:8px">— 词书里写的词性和判定不一致（保存即按判定改写词书）—</p>`
+    + (shifted.length ? '<p class="muted" style="margin-top:8px">— 这条的释义像是另一个词的（错行）—</p>'
+        + shifted.map(shiftRowHtml).join('') : '')
+    + (markfix.length ? '<p class="muted" style="margin-top:8px">— 词书里标的词性和实际不一样 —</p>'
         + markfix.map(markfixRowHtml).join('') : '')
-    + (conflicts.length ? `<p class="muted" style="margin-top:6px">— 词书与词典冲突（已按词典纠正，请过一眼）—</p>`
+    + (conflicts.length ? '<p class="muted" style="margin-top:6px">— 词书和词典说的不一样（已按词典纠正，看一眼）—</p>'
         + conflicts.map(rowHtml).join('') : '')
-    + (unsure.length - conflicts.length ? `<p class="muted" style="margin-top:6px">— 待确认 —</p>`
+    + (unsure.length - conflicts.length ? '<p class="muted" style="margin-top:6px">— 判不出词性 —</p>'
         + unsure.filter((it) => !it.conflict).map(rowHtml).join('') : '')
-    + (coarse.length ? `<p class="muted" style="margin-top:8px">— 笼统（可再细分）—</p>` + coarse.map(rowHtml).join('') : '')
-    + (unmapped.length ? `<p class="muted" style="margin-top:8px">— 归类不了（词典只给出缩写义，多半是扫描截断）—</p>`
-        + unmapped.map(unmappedRowHtml).join('') : '')
+    + (coarse.length ? '<p class="muted" style="margin-top:8px">— 只知道是动词/名词，还没分出及物、可数这些 —</p>'
+        + coarse.map(rowHtml).join('') : '')
+    + (unmapped.length ? '<p class="muted" style="margin-top:8px">— 词性归不进任何一类（词典只给了缩写义）—</p>'
+        + unmapped.map(truncRowHtml).join('') : '')
     + '<div class="row" style="margin-top:8px"><button class="btn primary" id="btn-todo-save">保存这些修正</button>'
     + `<button class="btn" id="btn-todo-ai" data-tip="先查免费在线词典定词性，查不到的再交给 AI；断网或没配 Key 会自动跳过。结果同样只落程序。">联网判定（在线词典 + AI）</button>`
     + '<span class="muted" id="todo-msg"></span></div>';
@@ -2056,6 +2135,47 @@ async function openTodoList(bookId, toggle) {
   box.querySelectorAll('.todo-picks .pick').forEach((b) => {
     b.addEventListener('click', () => {
       b.classList.toggle('on');
+    });
+  });
+  // 「这条没问题，别再提示」
+  box.querySelectorAll('[data-ok-word]').forEach((b) => {
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        await api('/api/pos/todo/ignore', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word: b.dataset.okWord, on: true }),
+        });
+        toast('好，这条不再提示（判定和词书都没动）');
+        await openTodoList(bookId);
+        loadPosStats();
+      } catch (e) {
+        b.disabled = false;
+        toast(e.message);
+      }
+    });
+  });
+  // 就地编辑这一条
+  box.querySelectorAll('[data-edit-id]').forEach((b) => {
+    b.addEventListener('click', () => openTodoEditor(b.closest('.todo-row'),
+      Number(b.dataset.editId), bookId));
+  });
+  // 按词典把这条的释义换回来（词书里串到别条的那种）
+  box.querySelectorAll('[data-meaning-id]').forEach((b) => {
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        await api('/api/word/' + b.dataset.meaningId + '/edit', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ meaning: b.dataset.meaning }),
+        });
+        toast('已按词典改掉这条释义（词书 Excel 同步）');
+        await openTodoList(bookId);
+        loadPosStats();
+      } catch (e) {
+        b.disabled = false;
+        toast(e.message);
+      }
     });
   });
   // 一键把截断的坏行改回完整词（走编辑接口：本地库 + 词书 Excel 一起改）

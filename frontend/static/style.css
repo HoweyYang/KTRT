@@ -696,6 +696,12 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 }
 .todo-fix .btn { padding: 3px 10px; font-size: 12px; }
 .todo-fix b { color: var(--accent); }
+.todo-acts { margin-top: 5px; }
+.todo-acts .todo-edit-btn { padding: 3px 10px; font-size: 12px; }
+.todo-edit-form { display: grid; gap: 6px; padding: 4px 0 2px; }
+.todo-edit-form label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); font-weight: 400; margin: 0; }
+.todo-edit-form input { padding: 5px 8px; font-size: 13px; }
+.todo-edit-form .row { margin: 2px 0 0; gap: 8px; align-items: center; }
 .todo-empty:hover { color: var(--accent); }
 /* 介绍性文字收进「?」气泡，页面保持干净 */
 .hint-q {
@@ -949,8 +955,12 @@ main { flex: 1; overflow: auto; max-width: 1000px; margin: 0 auto; padding: 26px
 }
 .btn.icon-only svg { display: block; }
 
-.sentences { margin-top: 22px; }
-.sentences h3 { font-size: 16px; margin: 0 0 10px; }
+.sentences { margin-top: 12px; }              /* 贴着词卡，别被当成页脚忽略掉 */
+.sentences h3 { font-size: 15px; margin: 0 0 8px; }
+.sentences .make-sentence { margin-bottom: 10px; }
+/* 朗读键浮动在句子左侧：不能把 .en 做成 flex，否则高亮的 <mark> 会被当成独立项，换行很难看 */
+.sentence-item .en .sent-say { float: left; margin: 1px 7px 0 0; padding: 2px 6px; }
+.sentence-item .en::after { content: ''; display: block; clear: both; }
 #sentence-list { display: grid; gap: 8px; margin-bottom: 12px; }
 .sentence-item {
   background: var(--card);
