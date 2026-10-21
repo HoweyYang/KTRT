@@ -86,6 +86,29 @@ def init_db():
                   updated_at TEXT DEFAULT (datetime('now','localtime')),
                   PRIMARY KEY(book_id, list_no)
                 );
+                CREATE TABLE IF NOT EXISTS challenge_sessions(
+                  id TEXT PRIMARY KEY,
+                  book_id INTEGER NOT NULL,
+                  list_no INTEGER,
+                  mode TEXT NOT NULL DEFAULT 'word',
+                  created_at TEXT DEFAULT (datetime('now','localtime')),
+                  expires_at TEXT NOT NULL,
+                  finished INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS challenge_items(
+                  session_id TEXT NOT NULL,
+                  qid TEXT NOT NULL,
+                  seq INTEGER NOT NULL,
+                  word_id INTEGER NOT NULL,
+                  correct_option_id TEXT NOT NULL,
+                  options_json TEXT NOT NULL DEFAULT '[]',
+                  answered INTEGER NOT NULL DEFAULT 0,
+                  chosen_option_id TEXT,
+                  is_correct INTEGER,
+                  PRIMARY KEY(session_id, qid)
+                );
+                CREATE INDEX IF NOT EXISTS idx_challenge_items_word
+                  ON challenge_items(word_id);
                 CREATE TABLE IF NOT EXISTS settings(
                   key TEXT PRIMARY KEY,
                   value TEXT

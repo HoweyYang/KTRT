@@ -3268,7 +3268,7 @@ $('btn-export-notes').addEventListener('click', async () => {
 
 /* ---------- 杀词 ---------- */
 let chg = { mode: 'word', q: [], i: 0, wrong: [], correct: 0, removed: [], bookId: 0, listNo: 0,
-            mistake: false, active: false, sel: -1 };
+            mistake: false, active: false, sel: -1, session: '', answering: false };
 
 /* 杀词：进入前可开关「答题时展开词卡」——两个模式共用一个偏好 */
 ['chg-show-card', 'chg-show-card-m'].forEach((id) => {
@@ -3333,6 +3333,7 @@ function setChallengeMode(mode) {
 function resetChallengeState() {
   chg.active = false;
   chg.q = []; chg.i = 0; chg.wrong = []; chg.correct = 0; chg.removed = [];
+  chg.session = ''; chg.answering = false;
   document.body.classList.remove('chg-focus');
   $('chg-stage').classList.add('hidden');
   $('chg-result').classList.add('hidden');
@@ -3343,7 +3344,7 @@ function showChallengeQuestion() {
   const q = chg.q[chg.i];
   $('chg-progress').textContent = `${chg.i + 1} / ${chg.q.length}`;
   $('chg-fill').style.width = (chg.i / chg.q.length * 100) + '%';
-  const opts = q.options.map((o, idx) => `<button class="opt" data-idx="${idx}">${escapeHtml(o)}</button>`).join('');
+  const opts = q.options.map((o, idx) => `<button class="opt" data-idx="${idx}">${escapeHtml(o.text)}</button>`).join('');
   // 状态图标（收藏 / 不熟悉 / 已背）常显、可直接点；下面还有可选的就地词卡
   const canPeek = localStorage.getItem('ktrt.chgCard') === '1';
   $('chg-question').innerHTML =
@@ -3504,34 +3505,57 @@ async function toggleChgPeek(wordId) {
   }
 }
 
-function answerChallenge(q, idx, btn) {
-  const correct = idx === q.correct;
-  const btns = $('chg-question').querySelectorAll('.opt');
+async function answerChallenge(q, idx, btn) {
+  // 答案只在服务端：这里拿到的是选项 id，判分由 /api/challenge/answer 完成
+  if (q._answered || chg.answering) return;
+  const opt = q.options[idx];
+  if (!opt || !chg.session) return;
+  const btns = [...$('chg-question').querySelectorAll('.opt')];
   btns.forEach((x) => x.disabled = true);
-  btns[q.correct].classList.add('right');
-  if (correct) {
+  chg.answering = true;
+  let r;
+  try {
+    r = await api('/api/challenge/answer', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: chg.session, qid: q.qid, option_id: opt.id }),
+    });
+  } catch (e) {
+    chg.answering = false;
+    btns.forEach((x) => x.disabled = false);
+    if (/过期|失效|不存在/.test(e.message)) {
+      toast('本局已失效，请重新开始');
+      resetChallengeState();
+      setChallengeMode(chg.mode);
+    } else {
+      toast(e.message);
+    }
+    return;
+  }
+  chg.answering = false;
+  q._answered = true;
+  const correctIdx = q.options.findIndex((o) => o.id === r.correct_option_id);
+  if (correctIdx >= 0 && btns[correctIdx]) btns[correctIdx].classList.add('right');
+  if (r.correct) {
     chg.correct++;
   } else {
-    btn.classList.add('wrong');
+    if (btn) btn.classList.add('wrong');
     chg.wrong.push(q.word_id);
-    if (!chg.mistake) {
-      api('/api/mistakes/add', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ word_id: q.word_id }),
-      }).catch(() => {});
-    }
   }
-  if (chg.mistake && correct) {
+  const st = r.status || {};
+  q.favorite = !!st.favorite; q.unfamiliar = !!st.unfamiliar; q.learned = !!st.learned;
+  const wrap = $('chg-question') && $('chg-question').querySelector('.chg-flags');
+  if (wrap) { wrap.innerHTML = chgFlagsHtml(q); wireChgFlags(q); }
+  if (chg.mistake && r.correct) {
     const bar = document.createElement('div');
     bar.style.cssText = 'margin-top:12px;display:flex;gap:8px';
     bar.innerHTML = '<button class="btn" id="chg-keep">保留</button><button class="btn danger" id="chg-remove">移出错题本</button>';
     btn.parentElement.appendChild(bar);
-    $('chg-remove').addEventListener('click', () => { chg.removed.push(q.word_id); chg.i++; showChallengeQuestion(); });
+    $('chg-remove').addEventListener('click', () => { chg.removed.push(q.qid); chg.i++; showChallengeQuestion(); });
     $('chg-keep').addEventListener('click', () => { chg.i++; showChallengeQuestion(); });
     return;
   }
   chg.i++;
-  setTimeout(showChallengeQuestion, correct ? 220 : 340);
+  setTimeout(showChallengeQuestion, r.correct ? 220 : 340);
 }
 
 async function finishChallenge() {
@@ -3543,15 +3567,15 @@ async function finishChallenge() {
   if (!chg.mistake) {
     const r = await api('/api/challenge/result', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ book_id: chg.bookId, list_no: chg.listNo, wrong_ids: chg.wrong, total: chg.q.length, correct: chg.correct }),
+      body: JSON.stringify({ session_id: chg.session, removed_qids: chg.removed }),
     });
-    res.innerHTML = `<p class="ok">本轮 ${chg.correct} / ${chg.q.length}，历史最高 ${r.best}</p><p style="font-size:13px;color:var(--muted)">答错的词已自动标为「不熟悉」并进入错题本</p>`;
+    res.innerHTML = `<p class="ok">本轮 ${r.correct} / ${r.total}，历史最高 ${r.best}</p><p style="font-size:13px;color:var(--muted)">答错的词已自动标为「不熟悉」并进入错题本</p>`;
   } else {
-    await api('/api/mistakes/result', {
+    const r = await api('/api/challenge/result', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ removed_ids: chg.removed }),
+      body: JSON.stringify({ session_id: chg.session, removed_qids: chg.removed }),
     });
-    res.innerHTML = `<p class="ok">本轮答对 ${chg.correct} / ${chg.q.length}，移出错题本 ${chg.removed.length} 个</p>`;
+    res.innerHTML = `<p class="ok">本轮答对 ${r.correct} / ${r.total}，移出错题本 ${chg.removed.length} 个</p>`;
   }
   loadMistakeLists();
 }
@@ -3561,8 +3585,12 @@ async function startWordChallenge() {
   chg.bookId = Number($('chg-book').value);
   chg.listNo = Number($('chg-list').value);
   if (!chg.bookId || !chg.listNo) { toast('请选择单词书和 List'); return; }
-  const r = await api(`/api/challenge?book_id=${chg.bookId}&list_no=${chg.listNo}`);
+  const r = await api('/api/challenge/start', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ book_id: chg.bookId, list_no: chg.listNo, mode: 'word' }),
+  });
   if (!r.questions.length) { toast('该 List 没有可闯关的单词'); return; }
+  chg.session = r.session_id;
   chg.q = r.questions; chg.i = 0; chg.wrong = []; chg.correct = 0;
   chg.active = true;
   document.body.classList.add('chg-focus');
@@ -3576,11 +3604,12 @@ async function startMistakeChallenge() {
   chg.bookId = Number($('chg-mbook').value);
   const listNos = [...$('chg-mlists').querySelectorAll('input:checked')].map((x) => Number(x.value));
   if (!listNos.length) { toast('请勾选至少一个 List'); return; }
-  const r = await api('/api/mistakes/start', {
+  const r = await api('/api/challenge/start', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ book_id: chg.bookId, list_nos: listNos }),
+    body: JSON.stringify({ book_id: chg.bookId, mode: 'mistake', list_nos: listNos }),
   });
   if (!r.questions.length) { toast('所选 List 没有错题'); return; }
+  chg.session = r.session_id;
   chg.q = r.questions; chg.i = 0; chg.wrong = []; chg.correct = 0; chg.removed = [];
   chg.active = true;
   document.body.classList.add('chg-focus');

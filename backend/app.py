@@ -3,6 +3,7 @@ import json
 import os
 import random
 import re
+import secrets
 import shutil
 import sqlite3
 import sys
@@ -12,6 +13,7 @@ import time
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -488,34 +490,141 @@ def delete_bookmark(bookmark_id: int):
     return {'ok': True}
 
 
-def _challenge_options(conn, book_id, word_ids):
-    """给一组 word_id 生成四选一题目：1 正确 + 3 错误（错误项来自本书其他词的中文释义）。"""
-    meanings = [r['meaning'] for r in conn.execute(
-        'SELECT meaning FROM words WHERE book_id=? AND TRIM(COALESCE(meaning,""))<>""', (book_id,)).fetchall()]
-    questions = []
-    for wid in word_ids:
-        w = conn.execute('SELECT word, meaning FROM words WHERE id=?', (wid,)).fetchone()
-        if w is None or not (w['meaning'] or '').strip():
+# ---------- 杀词：服务端组题与判分 ----------
+CHALLENGE_TTL_MIN = 30
+_POS_FAMILY = {'n': 'n', 'v': 'v', 'a': 'a', 'ad': 'ad', 'prep': 'func', 'conj': 'func',
+               'pron': 'other', 'num': 'other', 'art': 'other', 'int': 'other',
+               'phr': 'other', 'abbr': 'other'}
+
+
+def _zh_chars(text):
+    return {ch for ch in str(text or '') if '\u4e00' <= ch <= '\u9fff'}
+
+
+def _norm_meaning(text):
+    """答案 / 干扰项的归一化键：全角→半角、弯引号→直引号、压缩空白、小写。"""
+    out = []
+    for ch in str(text or ''):
+        code = ord(ch)
+        if 0xFF01 <= code <= 0xFF5E:
+            out.append(chr(code - 0xFEE0))
+        elif ch == '\u3000':
+            out.append(' ')
+        else:
+            out.append(ch)
+    s = ''.join(out).replace('’', "'").replace('‘', "'").replace('“', '"').replace('”', '"')
+    return re.sub(r'\s+', ' ', s).strip().lower()
+
+
+def _pos_family(tags):
+    for t in (tags or '').split('|'):
+        if t and not t.startswith('form:'):
+            return _POS_FAMILY.get(t.split(':')[0], 'other')
+    return 'other'
+
+
+def _meaning_usable(meaning):
+    s = str(meaning or '').strip()
+    if not s or len(s) > 80 or '\n' in s or '\r' in s:
+        return False
+    if s.lower() in ('todo', '待确认'):
+        return False
+    return len(_zh_chars(s)) >= 2
+
+
+def _recent_combos(conn, word_id, limit=3):
+    """这个词最近几局用过的干扰项 key 集合（避免组合高度重复）。"""
+    out = []
+    try:
+        for r in conn.execute(
+                'SELECT i.options_json, i.correct_option_id FROM challenge_items i '
+                'JOIN challenge_sessions s ON s.id=i.session_id '
+                'WHERE i.word_id=? ORDER BY s.created_at DESC, i.seq LIMIT ?',
+                (word_id, limit)):
+            try:
+                opts = json.loads(r['options_json'] or '[]')
+            except Exception:
+                continue
+            out.append({_norm_meaning(o.get('text')) for o in opts
+                        if o.get('id') != r['correct_option_id']})
+    except Exception:
+        pass
+    return out
+
+
+def _pick_question(rng, row, rows, recent_sets):
+    """给一个词挑 3 个干扰项：同 List 同词性 → 同词性 → 同书；去重、防近义、防泄漏。"""
+    correct_text = (row['meaning'] or '').strip()
+    cnorm = _norm_meaning(correct_text)
+    cbase = _pos_family(row['pos_tags'])
+    cchars = _zh_chars(correct_text)
+    tiers = (
+        [x for x in rows if x['list_no'] == row['list_no'] and _pos_family(x['pos_tags']) == cbase],
+        [x for x in rows if _pos_family(x['pos_tags']) == cbase],
+        rows,
+    )
+    fallback = None
+    for _attempt in range(8):
+        chosen, seen = [], {cnorm}
+        for tier in tiers:
+            cand = []
+            for x in tier:
+                if x['id'] == row['id']:
+                    continue
+                m = (x['meaning'] or '').strip()
+                k = _norm_meaning(m)
+                if not k or k in seen or not _meaning_usable(m):
+                    continue
+                if len(k) >= 2 and (k in cnorm or cnorm in k):
+                    continue          # 正确答案文本里已经含了这个释义（pebble / marble 那种泄漏）
+                xc = _zh_chars(m)
+                if len(cchars) >= 2 and len(cchars & xc) / max(1, len(cchars)) >= 0.6:
+                    continue          # 近义释义：两个都像正确答案
+                cand.append((k, m))
+            rng.shuffle(cand)
+            for k, m in cand:
+                if k in seen:
+                    continue
+                seen.add(k)
+                chosen.append((k, m))
+                if len(chosen) >= 3:
+                    break
+            if len(chosen) >= 3:
+                break
+        if len(chosen) < 3:
+            return None
+        opts = [{'id': secrets.token_hex(4), 'text': correct_text, '_ok': True}]
+        opts += [{'id': secrets.token_hex(4), 'text': m, '_ok': False} for _, m in chosen]
+        rng.shuffle(opts)
+        correct_id = next(o['id'] for o in opts if o['_ok'])
+        for o in opts:
+            o.pop('_ok', None)
+        result = {'qid': secrets.token_hex(8), 'word_id': row['id'], 'word': row['word'],
+                  'correct_option_id': correct_id, 'options': opts}
+        keys = {k for k, _ in chosen}
+        if any(len(keys & s) >= 2 for s in recent_sets):
+            fallback = fallback or result   # 小词书里组合有限：宁可复用，也别把题丢掉
             continue
-        st = conn.execute('SELECT favorite, unfamiliar, learned FROM word_status WHERE word_id=?',
-                          (wid,)).fetchone()
-        correct = w['meaning'].strip()
-        pool = [m.strip() for m in meanings if m.strip() != correct]
-        wrong = random.sample(pool, min(3, len(pool)))
-        opts = [correct] + wrong
-        random.shuffle(opts)
-        questions.append({
-            'word_id': wid,
-            'word': w['word'],
-            'options': opts,
-            'correct': opts.index(correct),
-            # 杀词里要标出这个词现在是什么状态（收藏 / 不熟悉 / 已背）
-            'favorite': bool(st and st['favorite']),
-            'unfamiliar': bool(st and st['unfamiliar']),
-            'learned': bool(st and st['learned']),
-        })
-    random.shuffle(questions)
-    return questions
+        return result
+    return fallback
+
+
+def _build_questions(rows, recent_map=None):
+    """纯组题：输入词条行，输出不含答案索引的题目（正确项只留服务端 id）。"""
+    rng = secrets.SystemRandom()
+    out = []
+    for row in rows:
+        q = _pick_question(rng, row, rows, (recent_map or {}).get(row['id'], []))
+        if q:
+            out.append(q)
+    rng.shuffle(out)
+    return out
+
+
+def _next_unanswered(conn, session_id):
+    row = conn.execute('SELECT MIN(seq) AS s FROM challenge_items '
+                       'WHERE session_id=? AND answered=0', (session_id,)).fetchone()
+    return row['s'] if row and row['s'] is not None else -1
 
 
 @app.get('/api/word/{word_id}')
@@ -537,42 +646,175 @@ def word_peek(word_id: int):
     }
 
 
+class ChallengeStartBody(BaseModel):
+    book_id: int
+    list_no: int | None = None
+    mode: str = 'word'          # word | mistake
+    list_nos: list = []
+
+
+@app.post('/api/challenge/start')
+def challenge_start(body: ChallengeStartBody):
+    """开一局杀词：服务端组题、落会话；**响应里没有正确答案**。"""
+    mode = body.mode if body.mode in ('word', 'mistake') else 'word'
+    with db._lock:
+        with db.get_conn() as conn:
+            book = conn.execute('SELECT * FROM word_books WHERE id=?', (body.book_id,)).fetchone()
+            if book is None:
+                raise HTTPException(404, '词书不存在')
+            if mode == 'word':
+                if not body.list_no:
+                    raise HTTPException(400, '缺少 List')
+                rows = [dict(r) for r in conn.execute(
+                    'SELECT w.id, w.word, w.meaning, w.pos_tags, w.list_no FROM words w '
+                    'LEFT JOIN word_status s ON s.word_id=w.id '
+                    'WHERE w.book_id=? AND w.list_no=? AND COALESCE(s.learned,0)=0 '
+                    'AND TRIM(COALESCE(w.meaning,""))<>"" ORDER BY w.seq',
+                    (body.book_id, body.list_no))]
+            else:
+                if not body.list_nos:
+                    raise HTTPException(400, '至少选择一个 List')
+                ph = ','.join('?' * len(body.list_nos))
+                rows = [dict(r) for r in conn.execute(
+                    'SELECT w.id, w.word, w.meaning, w.pos_tags, w.list_no '
+                    'FROM mistakes m JOIN words w ON w.id=m.word_id '
+                    'LEFT JOIN word_status s ON s.word_id=w.id '
+                    'WHERE m.book_id=? AND m.list_no IN (%s) AND COALESCE(s.learned,0)=0 '
+                    'AND TRIM(COALESCE(w.meaning,""))<>"" ORDER BY w.seq' % ph,
+                    [body.book_id] + [int(x) for x in body.list_nos])]
+            if not rows:
+                raise HTTPException(400, '该范围没有可闯关的单词')
+            recent = {r['id']: _recent_combos(conn, r['id']) for r in rows}
+            questions = _build_questions(rows, recent)
+            if not questions:
+                raise HTTPException(400, '组不出足够干净的四选一题目（检查词书释义是否为空或过短）')
+            ids = [q['word_id'] for q in questions]
+            ph = ','.join('?' * len(ids))
+            status = {}
+            for r in conn.execute('SELECT word_id, favorite, unfamiliar, learned FROM word_status '
+                                  'WHERE word_id IN (%s)' % ph, ids):
+                status[r['word_id']] = {'favorite': bool(r['favorite']),
+                                        'unfamiliar': bool(r['unfamiliar']),
+                                        'learned': bool(r['learned'])}
+            sid = secrets.token_hex(16)
+            expires = (datetime.now() + timedelta(minutes=CHALLENGE_TTL_MIN)).strftime('%Y-%m-%d %H:%M:%S')
+            # 清掉两天前的旧会话，避免 challenge_items 无限增长
+            conn.execute("DELETE FROM challenge_items WHERE session_id IN "
+                         "(SELECT id FROM challenge_sessions "
+                         "WHERE created_at < datetime('now','localtime','-2 days'))")
+            conn.execute("DELETE FROM challenge_sessions "
+                         "WHERE created_at < datetime('now','localtime','-2 days')")
+            conn.execute('INSERT INTO challenge_sessions(id, book_id, list_no, mode, expires_at) '
+                         'VALUES(?,?,?,?,?)', (sid, body.book_id, body.list_no, mode, expires))
+            for i, q in enumerate(questions):
+                conn.execute('INSERT INTO challenge_items(session_id, qid, seq, word_id, '
+                             'correct_option_id, options_json) VALUES(?,?,?,?,?,?)',
+                             (sid, q['qid'], i, q['word_id'], q['correct_option_id'],
+                              json.dumps(q['options'], ensure_ascii=False)))
+            best, list_total = 0, len(rows)
+            if mode == 'word':
+                r = conn.execute('SELECT best FROM challenge_scores WHERE book_id=? AND list_no=?',
+                                 (body.book_id, body.list_no)).fetchone()
+                best = r['best'] if r else 0
+    return {
+        'session_id': sid, 'mode': mode, 'total': len(questions), 'best': best,
+        'list_total': list_total,
+        'questions': [dict({'qid': q['qid'], 'word': q['word'], 'options': q['options']},
+                           **status.get(q['word_id'],
+                                        {'favorite': False, 'unfamiliar': False, 'learned': False}))
+                      for q in questions],
+    }
+
+
 @app.get('/api/challenge')
 def challenge(book_id: int = Query(...), list_no: int = Query(...)):
-    with db.get_conn() as conn:
-        ids = [r['id'] for r in conn.execute(
-            'SELECT w.id FROM words w LEFT JOIN word_status s ON s.word_id=w.id '
-            'WHERE w.book_id=? AND w.list_no=? AND COALESCE(s.learned,0)=0 ORDER BY w.seq',
-            (book_id, list_no)).fetchall()]
-        questions = _challenge_options(conn, book_id, ids)
-        best = conn.execute('SELECT best FROM challenge_scores WHERE book_id=? AND list_no=?',
-                            (book_id, list_no)).fetchone()
-    return {'questions': questions, 'total': len(questions), 'best': best['best'] if best else 0, 'list_total': len(ids)}
+    """兼容旧入口：等价于 POST /api/challenge/start（同样不含答案）。"""
+    return challenge_start(ChallengeStartBody(book_id=book_id, list_no=list_no, mode='word'))
+
+
+class ChallengeAnswerBody(BaseModel):
+    session_id: str
+    qid: str
+    option_id: str
+
+
+@app.post('/api/challenge/answer')
+def challenge_answer(body: ChallengeAnswerBody):
+    """判一道题：服务端持有答案；同一题重复提交幂等，不重复计分/入库。"""
+    with db._lock:
+        with db.get_conn() as conn:
+            s = conn.execute("SELECT *, (expires_at > datetime('now','localtime')) AS alive "
+                             'FROM challenge_sessions WHERE id=?', (body.session_id,)).fetchone()
+            if s is None:
+                raise HTTPException(404, '本局已失效，请重新开始')
+            if not s['alive']:
+                raise HTTPException(410, '本局已过期，请重新开始')
+            it = conn.execute('SELECT * FROM challenge_items WHERE session_id=? AND qid=?',
+                              (body.session_id, body.qid)).fetchone()
+            if it is None:
+                raise HTTPException(404, '题目不存在')
+            if it['answered']:
+                return {'ok': True, 'correct': bool(it['is_correct']),
+                        'correct_option_id': it['correct_option_id'],
+                        'status': _status(conn, it['word_id']),
+                        'next_index': _next_unanswered(conn, body.session_id), 'repeated': True}
+            correct = (body.option_id == it['correct_option_id'])
+            conn.execute('UPDATE challenge_items SET answered=1, chosen_option_id=?, is_correct=? '
+                         'WHERE session_id=? AND qid=?',
+                         (body.option_id, 1 if correct else 0, body.session_id, body.qid))
+            if not correct:
+                conn.execute('INSERT OR IGNORE INTO word_status(word_id) VALUES(?)', (it['word_id'],))
+                conn.execute('UPDATE word_status SET unfamiliar=1, learned=0 WHERE word_id=?',
+                             (it['word_id'],))
+                w = conn.execute('SELECT book_id, list_no FROM words WHERE id=?',
+                                 (it['word_id'],)).fetchone()
+                if w is not None:
+                    conn.execute('INSERT OR IGNORE INTO mistakes(word_id, book_id, list_no) '
+                                 'VALUES(?,?,?)', (it['word_id'], w['book_id'], w['list_no']))
+            return {'ok': True, 'correct': bool(correct),
+                    'correct_option_id': it['correct_option_id'],
+                    'status': _status(conn, it['word_id']),
+                    'next_index': _next_unanswered(conn, body.session_id), 'repeated': False}
 
 
 class ChallengeResultBody(BaseModel):
-    book_id: int
-    list_no: int
-    wrong_ids: list = []
-    total: int = 0
-    correct: int = 0
+    session_id: str
+    removed_qids: list = []
 
 
 @app.post('/api/challenge/result')
 def challenge_result(body: ChallengeResultBody):
-    """记词闯关结算：只更新最高分（错词已由 /api/mistakes/add 即时入库）。"""
+    """结算：分数由服务端按会话统计，客户端传的数字一律忽略。"""
     with db._lock:
         with db.get_conn() as conn:
-            conn.execute(
-                'INSERT INTO challenge_scores(book_id, list_no, best) VALUES(?,?,?) '
-                'ON CONFLICT(book_id, list_no) DO UPDATE SET best=MAX(best, excluded.best), '
-                'updated_at=datetime(\'now\',\'localtime\')',
-                (body.book_id, body.list_no, body.correct),
-            )
-    with db.get_conn() as conn:
-        best = conn.execute('SELECT best FROM challenge_scores WHERE book_id=? AND list_no=?',
-                            (body.book_id, body.list_no)).fetchone()
-    return {'ok': True, 'best': best['best'] if best else 0}
+            s = conn.execute('SELECT * FROM challenge_sessions WHERE id=?',
+                             (body.session_id,)).fetchone()
+            if s is None:
+                raise HTTPException(404, '本局不存在')
+            agg = conn.execute(
+                'SELECT COUNT(*) total, COALESCE(SUM(is_correct),0) correct, '
+                'COALESCE(SUM(answered),0) answered FROM challenge_items WHERE session_id=?',
+                (body.session_id,)).fetchone()
+            if body.removed_qids and s['mode'] == 'mistake':
+                ph = ','.join('?' * len(body.removed_qids))
+                for r in conn.execute(
+                        'SELECT word_id FROM challenge_items WHERE session_id=? AND qid IN (%s) '
+                        'AND answered=1 AND is_correct=1' % ph,
+                        [body.session_id] + [str(x) for x in body.removed_qids]).fetchall():
+                    conn.execute('DELETE FROM mistakes WHERE word_id=?', (r['word_id'],))
+            best = 0
+            if s['mode'] == 'word':
+                conn.execute(
+                    'INSERT INTO challenge_scores(book_id, list_no, best) VALUES(?,?,?) '
+                    'ON CONFLICT(book_id, list_no) DO UPDATE SET best=MAX(best, excluded.best), '
+                    "updated_at=datetime('now','localtime')",
+                    (s['book_id'], s['list_no'], agg['correct']))
+                r = conn.execute('SELECT best FROM challenge_scores WHERE book_id=? AND list_no=?',
+                                 (s['book_id'], s['list_no'])).fetchone()
+                best = r['best'] if r else agg['correct']
+            conn.execute('UPDATE challenge_sessions SET finished=1 WHERE id=?', (body.session_id,))
+    return {'ok': True, 'correct': agg['correct'], 'total': agg['total'],
+            'answered': agg['answered'], 'best': best}
 
 
 class MistakesAddBody(BaseModel):
@@ -620,17 +862,9 @@ class MistakesStartBody(BaseModel):
 
 @app.post('/api/mistakes/start')
 def mistakes_start(body: MistakesStartBody):
-    ids = []
-    if body.list_nos:
-        ph = ','.join('?' * len(body.list_nos))
-        with db.get_conn() as conn:
-            ids = [r['word_id'] for r in conn.execute(
-                'SELECT m.word_id FROM mistakes m LEFT JOIN word_status s ON s.word_id=m.word_id '
-                'WHERE m.book_id=? AND m.list_no IN (%s) AND COALESCE(s.learned,0)=0' % ph,
-                [body.book_id] + body.list_nos).fetchall()]
-    with db.get_conn() as conn:
-        questions = _challenge_options(conn, body.book_id, ids)
-    return {'questions': questions, 'total': len(questions)}
+    """兼容旧入口：等价于 POST /api/challenge/start（mode=mistake，同样不含答案）。"""
+    return challenge_start(ChallengeStartBody(book_id=body.book_id, mode='mistake',
+                                              list_nos=body.list_nos))
 
 
 class MistakesResultBody(BaseModel):

@@ -433,6 +433,104 @@ def test_todo_override_is_program_only():
     poslib.set_override('zxqv', [])          # 清理，别影响后续用例
 
 
+def test_challenge_server_side():
+    """杀词：答案不下发、选项干净、服务端判分、幂等、错题/已背规则。"""
+    import collections
+    from backend import app as applib
+
+    path = os.path.join(TMP, 'chg_src.csv')
+    write_csv(path, [
+        ['alpha', 'n. 甲'], ['beta', 'n. 乙'], ['gamma', 'n. 丙'], ['delta', 'n. 丁'],
+        ['run', 'v. 跑'], ['walk', 'v. 走'], ['jump', 'v. 跳'], ['swim', 'v. 游'],
+        ['happy', 'a. 高兴的'], ['sad', 'a. 悲伤的'],
+        ['fast', 'ad. 快速地'], ['slow', 'ad. 缓慢地'],
+    ])
+    importer.import_book(path, 'chg_src')
+    with db.get_conn() as conn:
+        bid = conn.execute("SELECT id FROM word_books WHERE name='chg_src'").fetchone()['id']
+
+    r = applib.challenge_start(applib.ChallengeStartBody(book_id=bid, list_no=1, mode='word'))
+    q0 = r['questions'][0]
+    check('杀词初始响应不含正确答案',
+          not any(k in q0 for k in ('correct', 'correct_index', 'answer')), q0)
+    check('每题四个选项且文本唯一',
+          len(q0['options']) == 4 and len({o['text'] for o in q0['options']}) == 4, q0['options'])
+    with db.get_conn() as conn:
+        it = conn.execute('SELECT word_id, correct_option_id FROM challenge_items '
+                          'WHERE session_id=? AND qid=?', (r['session_id'], q0['qid'])).fetchone()
+    check('服务端持有唯一正确项',
+          bool(it) and sum(1 for o in q0['options'] if o['id'] == it['correct_option_id']) == 1)
+
+    wrong = next(o for o in q0['options'] if o['id'] != it['correct_option_id'])
+    a1 = applib.challenge_answer(applib.ChallengeAnswerBody(
+        session_id=r['session_id'], qid=q0['qid'], option_id=wrong['id']))
+    check('答错由服务端判定', a1['correct'] is False, a1)
+    with db.get_conn() as conn:
+        st = conn.execute('SELECT unfamiliar, learned FROM word_status WHERE word_id=?',
+                          (it['word_id'],)).fetchone()
+        mk = conn.execute('SELECT 1 FROM mistakes WHERE word_id=?', (it['word_id'],)).fetchone()
+    check('答错自动标不熟悉并进错题本',
+          bool(st) and st['unfamiliar'] == 1 and bool(mk), dict(st) if st else None)
+
+    a2 = applib.challenge_answer(applib.ChallengeAnswerBody(
+        session_id=r['session_id'], qid=q0['qid'], option_id=wrong['id']))
+    check('重复提交幂等（不重复计分/入库）',
+          a2.get('repeated') is True and a2['correct'] == a1['correct'], a2)
+
+    res = applib.challenge_result(applib.ChallengeResultBody(session_id=r['session_id']))
+    check('结算分数由服务端统计（忽略客户端数字）',
+          res['correct'] == 0 and res['total'] == r['total'], res)
+
+    with db.get_conn() as conn:
+        conn.execute('UPDATE word_status SET learned=1 WHERE word_id=?', (it['word_id'],))
+    r2 = applib.challenge_start(applib.ChallengeStartBody(book_id=bid, list_no=1, mode='word'))
+    check('已背词不出现在普通杀词',
+          all(q['word'] != q0['word'] for q in r2['questions']), q0['word'])
+
+    with db.get_conn() as conn:
+        conn.execute("UPDATE challenge_sessions SET expires_at='2000-01-01 00:00:00' WHERE id=?",
+                     (r2['session_id'],))
+    expired = False
+    try:
+        qq = r2['questions'][0]
+        applib.challenge_answer(applib.ChallengeAnswerBody(
+            session_id=r2['session_id'], qid=qq['qid'], option_id=qq['options'][0]['id']))
+    except Exception as e:
+        expired = '过期' in str(e) or '410' in str(e)
+    check('会话过期拒绝提交', expired, expired)
+
+    with db.get_conn() as conn:
+        rows = [dict(x) for x in conn.execute(
+            'SELECT id, word, meaning, pos_tags, list_no FROM words WHERE book_id=?', (bid,))]
+    pos = collections.Counter()
+    for _ in range(500):
+        for q in applib._build_questions(rows):
+            ci = next(i for i, o in enumerate(q['options']) if o['id'] == q['correct_option_id'])
+            pos[ci] += 1
+    total = sum(pos.values())
+    check('500+ 题正确答案位置接近均匀',
+          total >= 500 and all(0.17 <= pos[i] / total <= 0.33 for i in range(4)), dict(pos))
+
+    by_text = {r['meaning'].strip(): r for r in rows}
+    src = collections.Counter()
+    for _ in range(100):
+        for q in applib._build_questions(rows):
+            base = by_text[next(o['text'] for o in q['options']
+                                if o['id'] == q['correct_option_id'])]
+            for o in q['options']:
+                if o['id'] == q['correct_option_id']:
+                    continue
+                x = by_text[o['text']]
+                px, pb = applib._pos_family(x['pos_tags']), applib._pos_family(base['pos_tags'])
+                if x['list_no'] == base['list_no'] and px == pb:
+                    src['同List同词性'] += 1
+                elif px == pb:
+                    src['同书同词性'] += 1
+                else:
+                    src['同书其他词性'] += 1
+    check('干扰项全部来自同书', src['跨书'] == 0 and sum(src.values()) > 0, dict(src))
+
+
 def test_truncated_headword_detected():
     """扫描截断的坏行（delt → delta）要认得出来。
 
@@ -572,6 +670,7 @@ def main():
         test_import_fills_pos_tags()
         test_lookup_layer()
         test_pos_writeback_to_excel()
+        test_challenge_server_side()
         test_truncated_headword_detected()
         test_todo_override_is_program_only()
         test_default_book_rename()
