@@ -2194,6 +2194,18 @@ def _storm_markdown(word, c):
         md.append('## 俚语 / 习语')
         md += ['- ' + x for x in idiom]
         md.append('')
+    core = str(c.get('core_word') or '').strip()
+    if core and core.lower() != word.lower():
+        md.append('## 核心词：' + core)
+        reason = str(c.get('core_reason') or '').strip()
+        if reason:
+            md += ['- ' + reason, '']
+        for s in c.get('core_senses') or []:
+            text = '- ' + (s.get('pos') + ' ' if s.get('pos') else '') + s.get('zh', '')
+            if s.get('en'):
+                text += '（' + s['en'] + '）'
+            md.append(text)
+        md.append('')
     family = c.get('word_family') or c.get('root_words') or []
     if family:
         md.append('## 衍生词（各类词性）')
@@ -2237,18 +2249,20 @@ def _storm_normalize(content):
     for k in ('forms', 'collocations', 'prepositions', 'phrases', 'idioms', 'word_family',
               'synonyms', 'antonyms', 'near_synonyms', 'confusables'):
         content[k] = _storm_list_str(content.get(k), drop_codes=(k == 'forms'))
-    senses = content.get('senses')
-    if not isinstance(senses, list):
-        senses = []
-    norm = []
-    for s in senses:
-        if isinstance(s, dict):
-            norm.append({'pos': str(s.get('pos', '') or '').strip(),
-                         'zh': str(s.get('zh', '') or '').strip(),
-                         'en': str(s.get('en', '') or '').strip()})
-        elif isinstance(s, str):
-            norm.append({'pos': '', 'zh': s.strip(), 'en': ''})
-    content['senses'] = norm
+    def _norm_senses(value):
+        if not isinstance(value, list):
+            value = []
+        out = []
+        for s in value:
+            if isinstance(s, dict):
+                out.append({'pos': str(s.get('pos', '') or '').strip(),
+                            'zh': str(s.get('zh', '') or '').strip(),
+                            'en': str(s.get('en', '') or '').strip()})
+            elif isinstance(s, str):
+                out.append({'pos': '', 'zh': s.strip(), 'en': ''})
+        return out
+    content['senses'] = _norm_senses(content.get('senses'))
+    content['core_senses'] = _norm_senses(content.get('core_senses'))
     return content
 
 
@@ -2289,11 +2303,15 @@ def storm_export(fmt: str = 'md', ids: str = ''):
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = '风暴词卡'
-        cols = ['单词', '语言', '词源百科', '使用场景', '释义', '词形变化', '搭配', '介词搭配', '短语', '俚语习语', '衍生词', '同义词', '反义词', '近义词', '形似易混淆', '来源', '更新时间']
+        cols = ['单词', '语言', '词源百科', '使用场景', '释义', '词形变化', '搭配', '介词搭配', '短语', '俚语习语', '核心词', '衍生词', '同义词', '反义词', '近义词', '形似易混淆', '来源', '更新时间']
         ws.append(cols)
         for r in rows:
             c = json.loads(r['content']) if r['content'] else {}
             senses = '；'.join(f"{s.get('pos','')} {s.get('zh','')}" for s in (c.get('senses') or []))
+            core_word = str(c.get('core_word') or '').strip()
+            core_senses = '；'.join((f"{s.get('pos','')} {s.get('zh','')}".strip())
+                                   for s in (c.get('core_senses') or []))
+            core_text = (core_word + ('：' + core_senses if core_senses else '')) if core_word else ''
             ws.append([
                 r['word'], r['language'], c.get('etymology', ''), c.get('usage', ''), senses,
                 '；'.join(c.get('forms') or []),
@@ -2301,6 +2319,7 @@ def storm_export(fmt: str = 'md', ids: str = ''):
                 '；'.join(c.get('prepositions') or []),
                 '；'.join(c.get('phrases') or []),
                 '；'.join(c.get('idioms') or []),
+                core_text,
                 '；'.join(c.get('word_family') or c.get('root_words') or []),
                 '；'.join(c.get('synonyms') or []),
                 '；'.join(c.get('antonyms') or []),
@@ -2347,9 +2366,13 @@ def _storm_fill_family(word):
     最该有的信息之一；这里用一次小请求专门补齐，失败不影响整张卡。
     """
     prompt = (
-        f'列出英语单词「{word}」的常见同根/派生词（不同词性都要）。'
+        f'为「{word}」补同根/派生词。如果它是短语/习语（含空格），先找承载语义的核心实词'
+        '（排除 have / make / take / get / do 这类功能动词），再列该核心词的同根/派生词；'
+        '如 have a blast → 核心词 blast，派生 blaster / blasting / blastoff。'
         '包括同一词根的 -ity / -ize / -ization / -ly 等派生；同一词根的远亲也可列出并注明关系。'
-        '只输出 JSON：{"word_family":["词 词性. 中文翻译"]}。'
+        '只输出 JSON：{"core_word":"核心实词（单字可为空）",'
+        '"core_senses":[{"pos":"词性","zh":"核心词中文释义","en":"英文简释"}],'
+        '"word_family":["词 词性. 中文翻译"]}。'
         '只写真实存在的常见派生，不确定不要编；确实没有就输出空数组。'
     )
     try:
@@ -2361,9 +2384,20 @@ def _storm_fill_family(word):
             s = str(x).strip()
             if s and s not in out:
                 out.append(s)
-        return out[:8]
+        raw_cs = data.get('core_senses') or []
+        core_senses = []
+        for s in raw_cs if isinstance(raw_cs, list) else []:
+            if isinstance(s, dict):
+                core_senses.append({'pos': str(s.get('pos', '') or '').strip(),
+                                    'zh': str(s.get('zh', '') or '').strip(),
+                                    'en': str(s.get('en', '') or '').strip()})
+            elif isinstance(s, str):
+                core_senses.append({'pos': '', 'zh': s.strip(), 'en': ''})
+        return {'core_word': str(data.get('core_word') or '').strip(),
+                'core_senses': core_senses,
+                'word_family': out[:8]}
     except Exception:
-        return []
+        return {'core_word': '', 'core_senses': [], 'word_family': []}
 
 
 @app.post('/api/storm/generate')
@@ -2382,6 +2416,9 @@ def storm_generate(body: StormGenBody):
         f'原始资料：{json.dumps(raw, ensure_ascii=False)[:4000]}\n\n'
         '严格输出一个 JSON 对象，键与要求如下：\n'
         '{"word":"规范大小写后的单词（如 rome→Rome、paris→Paris）",\n'
+        '"core_word":"短语的核心实词（如 have a blast → blast；单字可直接写该词或空字符串）",\n'
+        '"core_reason":"一句话说明为什么它是核心词（单字可空字符串）",\n'
+        '"core_senses":[{"pos":"核心词词性","zh":"核心词中文释义","en":"核心词英文简释"}],\n'
         '"phonetic":"音标或空字符串",\n'
         '"etymology":"词源与百科背景（1-3 句，中文，无资料则空字符串）",\n'
         '"usage":"使用场景/语域/搭配语境（1-3 句，中文，无则空字符串）",\n'
@@ -2409,6 +2446,13 @@ def storm_generate(body: StormGenBody):
         '只要不易混就给 0-3 个最易错的即可；确实容易混就给足数量，不设上限；无则空数组。\n'
         '所有同根/同义/反义/近义/衍生词都要给具体中文翻译，近义词和同义词务必写出语义区别。\n'
         'word_family 必须认真查：只要该词有常见同根派生词（哪怕不是直接变形），就不能返回空数组。'
+        '\n短语规则：如果输入是短语/习语/俚语（含空格），先找出承载语义的核心实词——'
+        '排除 have / make / take / get / do 这类功能动词，常见是名词、动词、形容词或副词'
+        '（如 have a blast → blast、take a toll → toll）；'
+        'core_word 写这个核心词，core_reason 写它与短语的关系；'
+        'word_family 要列核心词的同根/派生词，而不是空数组。'
+        '\ncore_senses 必须是核心词**自己的常见义项**（不是短语的意思），至少列 2-3 个最常见义项；'
+        '单字词 core_senses 可为空数组。'
     )
     data = None
     last_err = None
@@ -2427,10 +2471,16 @@ def storm_generate(body: StormGenBody):
         word = canonical
     content = dict(data)
     content = _storm_normalize(content)
-    if not content.get('word_family'):
-        extra_family = _storm_fill_family(word)
-        if extra_family:
-            content['word_family'] = extra_family
+    need_family = not content.get('word_family')
+    need_core = (' ' in word) and not content.get('core_senses')
+    if need_family or need_core:
+        extra = _storm_fill_family(word)
+        if extra.get('core_word') and not content.get('core_word'):
+            content['core_word'] = extra['core_word']
+        if extra.get('core_senses') and not content.get('core_senses'):
+            content['core_senses'] = extra['core_senses']
+        if extra.get('word_family'):
+            content['word_family'] = extra['word_family']
     content['word'] = word
     content['query'] = q
     content['generated_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
