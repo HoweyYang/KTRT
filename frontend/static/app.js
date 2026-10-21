@@ -3270,7 +3270,7 @@ $('btn-export-notes').addEventListener('click', async () => {
 let chg = { mode: 'word', q: [], i: 0, wrong: [], correct: 0, removed: [], bookId: 0, listNo: 0,
             mistake: false, active: false, sel: -1, session: '', answering: false };
 
-/* 杀词：进入前可开关「答题时展开词卡」——两个模式共用一个偏好 */
+/* 杀词：进入前可开关「答题展开词卡」——两个模式共用一个偏好 */
 ['chg-show-card', 'chg-show-card-m'].forEach((id) => {
   const box = $(id);
   if (!box) return;
