@@ -2340,6 +2340,32 @@ def get_storm(sid: int):
     }
 
 
+def _storm_fill_family(word):
+    """主请求的 word_family 为空时，单独补问一次同根/派生词。
+
+    模型偶尔会把 word_family 留空（popular 就是这样），但同根词恰恰是风暴卡
+    最该有的信息之一；这里用一次小请求专门补齐，失败不影响整张卡。
+    """
+    prompt = (
+        f'列出英语单词「{word}」的常见同根/派生词（不同词性都要）。'
+        '包括同一词根的 -ity / -ize / -ization / -ly 等派生；同一词根的远亲也可列出并注明关系。'
+        '只输出 JSON：{"word_family":["词 词性. 中文翻译"]}。'
+        '只写真实存在的常见派生，不确定不要编；确实没有就输出空数组。'
+    )
+    try:
+        raw = ai.chat([{'role': 'user', 'content': prompt}], max_tokens=500, temperature=0.2)
+        data = _extract_json(raw) or {}
+        items = data.get('word_family') or []
+        out = []
+        for x in items:
+            s = str(x).strip()
+            if s and s not in out:
+                out.append(s)
+        return out[:8]
+    except Exception:
+        return []
+
+
 @app.post('/api/storm/generate')
 def storm_generate(body: StormGenBody):
     raw_word = (body.word or '').strip()
@@ -2361,12 +2387,14 @@ def storm_generate(body: StormGenBody):
         '"usage":"使用场景/语域/搭配语境（1-3 句，中文，无则空字符串）",\n'
         '"senses":[{"pos":"词性","zh":"中文释义","en":"英文简释"}],\n'
         '"forms":["词形变化，只写自然语言，如 过去式 abated、复数 phenomena；'
-        '绝对不要出现 0:/1:/s: 等原始词形代码"],\n'
+        '绝对不要出现 0:/1:/s: 等原始词形代码；形容词/副词通常没有复数，不确定就留空数组"],\n'
         '"collocations":["英文固定搭配 中文翻译"],\n'
         '"prepositions":["该词性专属的介词/小品词搭配 中文翻译，如 abide by 遵守；无则空数组"],\n'
         '"phrases":["普通短语 中文翻译（不要把习语放这里）"],\n'
         '"idioms":["英文习语/俚语 中文翻译（只放真正的习语俚语，无则空数组）"],\n'
-        '"word_family":["衍生词 词性. 中文翻译（不同词性，如 Roman n./adj. 罗马人/罗马的）"],\n'
+        '"word_family":["同根/派生词 词性. 中文翻译——同一词根的常见派生都要列（-ity/-ize/-ization/-ly 等），'
+        '如 popular → popularity n. 流行；popularize v. 使流行；popularization n. 普及；popularly adv. 普遍地；'
+        '同根的远亲（如 populate/population）也可列出并注明关系；不要留空，也不要只重复 forms 里的词形变化"],\n'
         '"synonyms":["同义词 中文翻译；与靶词的语义区别（每词都写区别）"],\n'
         '"antonyms":["反义词 中文翻译"],\n'
         '"near_synonyms":["近义词 中文翻译；与靶词的语义区别（每词都写区别）"],\n'
@@ -2379,7 +2407,8 @@ def storm_generate(body: StormGenBody):
         '判断依据是“这个词本身容不容易被拼错/混用”，不要按固定词类/类别套：'
         '无论名词、动词、形容词、副词，还是地名、物品、现象、人物、活动等，'
         '只要不易混就给 0-3 个最易错的即可；确实容易混就给足数量，不设上限；无则空数组。\n'
-        '所有同根/同义/反义/近义/衍生词都要给具体中文翻译，近义词和同义词务必写出语义区别。'
+        '所有同根/同义/反义/近义/衍生词都要给具体中文翻译，近义词和同义词务必写出语义区别。\n'
+        'word_family 必须认真查：只要该词有常见同根派生词（哪怕不是直接变形），就不能返回空数组。'
     )
     data = None
     last_err = None
@@ -2398,6 +2427,10 @@ def storm_generate(body: StormGenBody):
         word = canonical
     content = dict(data)
     content = _storm_normalize(content)
+    if not content.get('word_family'):
+        extra_family = _storm_fill_family(word)
+        if extra_family:
+            content['word_family'] = extra_family
     content['word'] = word
     content['query'] = q
     content['generated_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
