@@ -3289,6 +3289,19 @@ let chg = { mode: 'word', q: [], i: 0, wrong: [], correct: 0, removed: [], bookI
   });
 });
 
+/* 杀词可选项：答错本局重排 / 连续答对降权（默认关，和词卡开关一样记在本地） */
+[['chg-requeue', 'chg-requeue-m', 'ktrt.chgRequeue'],
+ ['chg-weight', 'chg-weight-m', 'ktrt.chgWeight']].forEach(([id, otherId, key]) => {
+  const box = $(id);
+  if (!box) return;
+  box.checked = localStorage.getItem(key) === '1';
+  box.addEventListener('change', () => {
+    localStorage.setItem(key, box.checked ? '1' : '0');
+    const other = $(otherId);
+    if (other) other.checked = box.checked;
+  });
+});
+
 function refreshChallengeBooks() {
   ['chg-book', 'chg-mbook'].forEach((id) => {
     const s = $(id);
@@ -3543,6 +3556,7 @@ async function answerChallenge(q, idx, btn) {
   }
   const st = r.status || {};
   q.favorite = !!st.favorite; q.unfamiliar = !!st.unfamiliar; q.learned = !!st.learned;
+  if (r.extra && r.extra.qid) chg.q.push(r.extra);   // 答错本局重排：追加到末尾
   const wrap = $('chg-question') && $('chg-question').querySelector('.chg-flags');
   if (wrap) { wrap.innerHTML = chgFlagsHtml(q); wireChgFlags(q); }
   if (chg.mistake && r.correct) {
@@ -3587,7 +3601,10 @@ async function startWordChallenge() {
   if (!chg.bookId || !chg.listNo) { toast('请选择单词书和 List'); return; }
   const r = await api('/api/challenge/start', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ book_id: chg.bookId, list_no: chg.listNo, mode: 'word' }),
+    body: JSON.stringify({
+      book_id: chg.bookId, list_no: chg.listNo, mode: 'word',
+      requeue: $('chg-requeue').checked, weighted: $('chg-weight').checked,
+    }),
   });
   if (!r.questions.length) { toast('该 List 没有可闯关的单词'); return; }
   chg.session = r.session_id;
@@ -3606,7 +3623,10 @@ async function startMistakeChallenge() {
   if (!listNos.length) { toast('请勾选至少一个 List'); return; }
   const r = await api('/api/challenge/start', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ book_id: chg.bookId, mode: 'mistake', list_nos: listNos }),
+    body: JSON.stringify({
+      book_id: chg.bookId, mode: 'mistake', list_nos: listNos,
+      requeue: $('chg-requeue-m').checked, weighted: $('chg-weight-m').checked,
+    }),
   });
   if (!r.questions.length) { toast('所选 List 没有错题'); return; }
   chg.session = r.session_id;

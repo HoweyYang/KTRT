@@ -433,6 +433,75 @@ def test_todo_override_is_program_only():
     poslib.set_override('zxqv', [])          # 清理，别影响后续用例
 
 
+def test_challenge_scheduling_options():
+    """C 的两个可选项：答错本局重排、连续答对降权。"""
+    from backend import app as applib
+
+    with db.get_conn() as conn:
+        bid = conn.execute("SELECT id FROM word_books WHERE name='chg_src'").fetchone()['id']
+
+    r = applib.challenge_start(applib.ChallengeStartBody(
+        book_id=bid, list_no=1, mode='word', requeue=True))
+    q0 = r['questions'][0]
+    with db.get_conn() as conn:
+        it = conn.execute('SELECT word_id, correct_option_id FROM challenge_items '
+                          'WHERE session_id=? AND qid=?', (r['session_id'], q0['qid'])).fetchone()
+    wrong = next(o for o in q0['options'] if o['id'] != it['correct_option_id'])
+    a = applib.challenge_answer(applib.ChallengeAnswerBody(
+        session_id=r['session_id'], qid=q0['qid'], option_id=wrong['id']))
+    check('答错本局重排会追加一题',
+          bool(a.get('extra')) and a['extra']['word'] == q0['word'], a.get('extra'))
+    with db.get_conn() as conn:
+        n = conn.execute('SELECT COUNT(*) c FROM challenge_items WHERE session_id=?',
+                         (r['session_id'],)).fetchone()['c']
+    check('重排题落在会话末尾', n == r['total'] + 1, (n, r['total']))
+
+    ex = a.get('extra') or {}
+    if ex.get('qid'):
+        with db.get_conn() as conn:
+            it2 = conn.execute('SELECT correct_option_id FROM challenge_items '
+                               'WHERE session_id=? AND qid=?',
+                               (r['session_id'], ex['qid'])).fetchone()
+        wrong2 = next(o for o in ex['options'] if o['id'] != it2['correct_option_id'])
+        a2 = applib.challenge_answer(applib.ChallengeAnswerBody(
+            session_id=r['session_id'], qid=ex['qid'], option_id=wrong2['id']))
+        check('重排题不会无限套娃', not a2.get('extra'), a2.get('extra'))
+
+    with db.get_conn() as conn:
+        st = conn.execute('SELECT streak, last_result FROM challenge_stats WHERE word_id=?',
+                          (it['word_id'],)).fetchone()
+    check('答错把连击清零', bool(st) and st['streak'] == 0 and st['last_result'] == 0,
+          dict(st) if st else None)
+
+    r2 = applib.challenge_start(applib.ChallengeStartBody(book_id=bid, list_no=1, mode='word'))
+    q1 = r2['questions'][0]
+    with db.get_conn() as conn:
+        it3 = conn.execute('SELECT word_id, correct_option_id FROM challenge_items '
+                           'WHERE session_id=? AND qid=?', (r2['session_id'], q1['qid'])).fetchone()
+    right = next(o for o in q1['options'] if o['id'] == it3['correct_option_id'])
+    applib.challenge_answer(applib.ChallengeAnswerBody(
+        session_id=r2['session_id'], qid=q1['qid'], option_id=right['id']))
+    with db.get_conn() as conn:
+        st2 = conn.execute('SELECT streak FROM challenge_stats WHERE word_id=?',
+                           (it3['word_id'],)).fetchone()
+    check('答对累计连击', bool(st2) and st2['streak'] >= 1, st2['streak'] if st2 else None)
+
+    with db.get_conn() as conn:
+        picks = [dict(x) for x in conn.execute(
+            'SELECT w.id, w.word FROM words w LEFT JOIN word_status s ON s.word_id=w.id '
+            'WHERE w.book_id=? AND COALESCE(s.learned,0)=0 AND w.meaning<>"" ORDER BY w.id LIMIT 2',
+            (bid,))]
+        conn.execute('INSERT OR REPLACE INTO challenge_stats(word_id, streak, last_seen, last_result) '
+                     "VALUES(?,?,datetime('now','localtime'),1)", (picks[0]['id'], 9))
+        conn.execute('INSERT OR REPLACE INTO challenge_stats(word_id, streak, last_seen, last_result) '
+                     "VALUES(?,?,datetime('now','localtime'),0)", (picks[1]['id'], 0))
+    rw = applib.challenge_start(applib.ChallengeStartBody(
+        book_id=bid, list_no=1, mode='word', weighted=True))
+    order = [x['word'] for x in rw['questions']]
+    check('连续答对降权：高连击排到后面',
+          order.index(picks[0]['word']) > order.index(picks[1]['word']), order)
+
+
 def test_challenge_server_side():
     """杀词：答案不下发、选项干净、服务端判分、幂等、错题/已背规则。"""
     import collections
@@ -671,6 +740,7 @@ def main():
         test_lookup_layer()
         test_pos_writeback_to_excel()
         test_challenge_server_side()
+        test_challenge_scheduling_options()
         test_truncated_headword_detected()
         test_todo_override_is_program_only()
         test_default_book_rename()

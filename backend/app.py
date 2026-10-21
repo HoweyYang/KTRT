@@ -651,6 +651,8 @@ class ChallengeStartBody(BaseModel):
     list_no: int | None = None
     mode: str = 'word'          # word | mistake
     list_nos: list = []
+    requeue: bool = False       # 答错本局末尾重排（C 的可选项）
+    weighted: bool = False      # 连续答对降权（排到本局后面）
 
 
 @app.post('/api/challenge/start')
@@ -688,6 +690,12 @@ def challenge_start(body: ChallengeStartBody):
             questions = _build_questions(rows, recent)
             if not questions:
                 raise HTTPException(400, '组不出足够干净的四选一题目（检查词书释义是否为空或过短）')
+            if body.weighted:
+                stats = {r['word_id']: dict(r) for r in conn.execute(
+                    'SELECT word_id, streak, last_seen FROM challenge_stats')}
+                questions.sort(key=lambda q: (
+                    (stats.get(q['word_id']) or {}).get('streak') or 0,
+                    (stats.get(q['word_id']) or {}).get('last_seen') or ''))
             ids = [q['word_id'] for q in questions]
             ph = ','.join('?' * len(ids))
             status = {}
@@ -704,8 +712,10 @@ def challenge_start(body: ChallengeStartBody):
                          "WHERE created_at < datetime('now','localtime','-2 days'))")
             conn.execute("DELETE FROM challenge_sessions "
                          "WHERE created_at < datetime('now','localtime','-2 days')")
-            conn.execute('INSERT INTO challenge_sessions(id, book_id, list_no, mode, expires_at) '
-                         'VALUES(?,?,?,?,?)', (sid, body.book_id, body.list_no, mode, expires))
+            conn.execute('INSERT INTO challenge_sessions(id, book_id, list_no, mode, requeue, '
+                         'weighted, expires_at) VALUES(?,?,?,?,?,?,?)',
+                         (sid, body.book_id, body.list_no, mode,
+                          1 if body.requeue else 0, 1 if body.weighted else 0, expires))
             for i, q in enumerate(questions):
                 conn.execute('INSERT INTO challenge_items(session_id, qid, seq, word_id, '
                              'correct_option_id, options_json) VALUES(?,?,?,?,?,?)',
@@ -762,6 +772,15 @@ def challenge_answer(body: ChallengeAnswerBody):
             conn.execute('UPDATE challenge_items SET answered=1, chosen_option_id=?, is_correct=? '
                          'WHERE session_id=? AND qid=?',
                          (body.option_id, 1 if correct else 0, body.session_id, body.qid))
+            srow = conn.execute('SELECT streak FROM challenge_stats WHERE word_id=?',
+                                (it['word_id'],)).fetchone()
+            new_streak = ((srow['streak'] if srow else 0) + 1) if correct else 0
+            conn.execute(
+                'INSERT INTO challenge_stats(word_id, streak, last_seen, last_result) '
+                "VALUES(?,?,datetime('now','localtime'),?) "
+                'ON CONFLICT(word_id) DO UPDATE SET streak=excluded.streak, '
+                'last_seen=excluded.last_seen, last_result=excluded.last_result',
+                (it['word_id'], new_streak, 1 if correct else 0))
             if not correct:
                 conn.execute('INSERT OR IGNORE INTO word_status(word_id) VALUES(?)', (it['word_id'],))
                 conn.execute('UPDATE word_status SET unfamiliar=1, learned=0 WHERE word_id=?',
@@ -771,10 +790,35 @@ def challenge_answer(body: ChallengeAnswerBody):
                 if w is not None:
                     conn.execute('INSERT OR IGNORE INTO mistakes(word_id, book_id, list_no) '
                                  'VALUES(?,?,?)', (it['word_id'], w['book_id'], w['list_no']))
+            extra = None
+            if (not correct) and s['requeue'] and not it['origin_qid']:
+                rows = [dict(r) for r in conn.execute(
+                    'SELECT id, word, meaning, pos_tags, list_no FROM words WHERE book_id=?',
+                    (s['book_id'],))]
+                row = next((x for x in rows if x['id'] == it['word_id']), None)
+                if row is not None:
+                    nq = _pick_question(secrets.SystemRandom(), row, rows,
+                                        _recent_combos(conn, it['word_id']))
+                    if nq:
+                        seq = conn.execute(
+                            'SELECT COALESCE(MAX(seq),-1)+1 AS s FROM challenge_items '
+                            'WHERE session_id=?', (body.session_id,)).fetchone()['s']
+                        conn.execute(
+                            'INSERT INTO challenge_items(session_id, qid, seq, word_id, '
+                            'correct_option_id, options_json, origin_qid) VALUES(?,?,?,?,?,?,?)',
+                            (body.session_id, nq['qid'], seq, nq['word_id'],
+                             nq['correct_option_id'], json.dumps(nq['options'], ensure_ascii=False),
+                             it['qid']))
+                        stt = _status(conn, it['word_id'])
+                        extra = {'qid': nq['qid'], 'word': nq['word'], 'options': nq['options'],
+                                 'favorite': bool(stt['favorite']),
+                                 'unfamiliar': bool(stt['unfamiliar']),
+                                 'learned': bool(stt['learned'])}
             return {'ok': True, 'correct': bool(correct),
                     'correct_option_id': it['correct_option_id'],
                     'status': _status(conn, it['word_id']),
-                    'next_index': _next_unanswered(conn, body.session_id), 'repeated': False}
+                    'next_index': _next_unanswered(conn, body.session_id),
+                    'repeated': False, 'extra': extra}
 
 
 class ChallengeResultBody(BaseModel):

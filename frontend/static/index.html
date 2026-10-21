@@ -130,6 +130,14 @@
               <span>答题时展开词卡</span>
               <input type="checkbox" id="chg-show-card">
             </label>
+            <label class="chg-toggle" data-tip="答错的词在本局末尾再出现一次（每词每局最多一次）">
+              <span>答错本局重排</span>
+              <input type="checkbox" id="chg-requeue">
+            </label>
+            <label class="chg-toggle" data-tip="连续答对的词排到本局后面（仍会出现，只是不占前面）">
+              <span>连续答对降权</span>
+              <input type="checkbox" id="chg-weight">
+            </label>
             <button id="chg-start-word" class="btn primary">开始闯关</button>
           </div>
           <div id="chg-mistake-panel" class="hidden">
@@ -140,6 +148,14 @@
             <label class="chg-toggle">
               <span>答题时展开词卡</span>
               <input type="checkbox" id="chg-show-card-m">
+            </label>
+            <label class="chg-toggle" data-tip="答错的词在本局末尾再出现一次（每词每局最多一次）">
+              <span>答错本局重排</span>
+              <input type="checkbox" id="chg-requeue-m">
+            </label>
+            <label class="chg-toggle" data-tip="连续答对的词排到本局后面（仍会出现，只是不占前面）">
+              <span>连续答对降权</span>
+              <input type="checkbox" id="chg-weight-m">
             </label>
             <button id="chg-start-mistake" class="btn primary">开始错题闯关</button>
           </div>

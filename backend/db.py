@@ -91,6 +91,8 @@ def init_db():
                   book_id INTEGER NOT NULL,
                   list_no INTEGER,
                   mode TEXT NOT NULL DEFAULT 'word',
+                  requeue INTEGER NOT NULL DEFAULT 0,
+                  weighted INTEGER NOT NULL DEFAULT 0,
                   created_at TEXT DEFAULT (datetime('now','localtime')),
                   expires_at TEXT NOT NULL,
                   finished INTEGER NOT NULL DEFAULT 0
@@ -105,10 +107,17 @@ def init_db():
                   answered INTEGER NOT NULL DEFAULT 0,
                   chosen_option_id TEXT,
                   is_correct INTEGER,
+                  origin_qid TEXT,
                   PRIMARY KEY(session_id, qid)
                 );
                 CREATE INDEX IF NOT EXISTS idx_challenge_items_word
                   ON challenge_items(word_id);
+                CREATE TABLE IF NOT EXISTS challenge_stats(
+                  word_id INTEGER PRIMARY KEY,
+                  streak INTEGER NOT NULL DEFAULT 0,
+                  last_seen TEXT,
+                  last_result INTEGER
+                );
                 CREATE TABLE IF NOT EXISTS settings(
                   key TEXT PRIMARY KEY,
                   value TEXT
@@ -176,6 +185,15 @@ def init_db():
             ocols = {r[1] for r in conn.execute('PRAGMA table_info(word_pos_override)')}
             if 'source' not in ocols:
                 conn.execute("ALTER TABLE word_pos_override ADD COLUMN source TEXT DEFAULT 'user'")
+            # 旧库补列：杀词的可选调度（本局重排 / 连续答对降权）与重排来源
+            scols = {r[1] for r in conn.execute('PRAGMA table_info(challenge_sessions)')}
+            if 'requeue' not in scols:
+                conn.execute('ALTER TABLE challenge_sessions ADD COLUMN requeue INTEGER DEFAULT 0')
+            if 'weighted' not in scols:
+                conn.execute('ALTER TABLE challenge_sessions ADD COLUMN weighted INTEGER DEFAULT 0')
+            icols = {r[1] for r in conn.execute('PRAGMA table_info(challenge_items)')}
+            if 'origin_qid' not in icols:
+                conn.execute('ALTER TABLE challenge_items ADD COLUMN origin_qid TEXT')
             # 旧库改名：默认收藏册「外部单词收藏册」→「自定义单词收藏册」
             renamed = conn.execute("SELECT id FROM word_books WHERE name=?",
                                    ('自定义单词收藏册',)).fetchone()
