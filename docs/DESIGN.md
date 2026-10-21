@@ -40,7 +40,7 @@
 - 开一局：`POST /api/challenge/start` 建会话（SQLite `challenge_sessions` / `challenge_items`，30 分钟有效）。
 - 作答：`POST /api/challenge/answer {session_id,qid,option_id}`；重复提交幂等；答错在同一事务里
   标「不熟悉」并写 `mistakes`。
-- 结算：`POST /api/challenge/result {session_id}`，分数由服务端按会话统计，最高分只增不减。
+- 结算：`POST /api/challenge/result {session_id}`，分数由本地后端（`127.0.0.1:8000`）按会话统计，最高分只增不减。
 - 干扰项：同 List 同词性 → 同书同词性 → 同书；归一化去重，过滤近义（中文重合 ≥60%）、
   正确答案文本包含干扰项（pebble/marble 那种泄漏）、空值与超长释义；记住最近 3 局组合避免高度重复。
 - 两个**可选**调度（默认关，和「答题时展开词卡」一样记在本地）：
