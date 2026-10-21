@@ -17,7 +17,7 @@
   #define OUT_BASE "KTRTSetup-lite"
 #endif
 
-#define APP_VERSION "2.4"
+#define APP_VERSION "2.4b"
 #define APP_NAME "KillTimeRecitationTool"
 
 [Setup]
